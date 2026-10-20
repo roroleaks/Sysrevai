@@ -2,6 +2,10 @@
 
 <div align="center">
 
+<p align="center">
+  <img src="icon.jpg" alt="SysRevAI App Icon" width="170" style="border-radius:28px;box-shadow:0 8px 30px rgba(15,107,107,.4);border:2px solid rgba(255,255,255,.2)"/>
+</p>
+
 [![Live Web Application](https://img.shields.io/badge/🌐_Live_Deployment-sysrevai.vercel.app-0f6b6b?style=for-the-badge&logo=vercel&logoColor=white)](https://sysrevai.vercel.app)
 [![GitHub Stars](https://img.shields.io/github/stars/roroleaks/Sysrevai?style=for-the-badge&logo=github&color=0a4a4a)](https://github.com/roroleaks/Sysrevai)
 [![License: MIT](https://img.shields.io/badge/License-MIT-teal.svg?style=for-the-badge)](LICENSE)

@@ -1,0 +1,34 @@
+{
+  "short_name": "Sysrevai",
+  "name": "Sysrevai — Systematic Review AI",
+  "description": "PRISMA 2020 AI-Assisted Systematic Review Platform with Cochrane Risk of Bias, PICOS Screening, and Vancouver Citations.",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "type": "image/png",
+      "sizes": "64x64"
+    },
+    {
+      "src": "/icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon.jpg",
+      "type": "image/jpeg",
+      "sizes": "1024x1000"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0a4a4a",
+  "theme_color": "#0f6b6b",
+  "display": "standalone",
+  "orientation": "portrait-primary"
+}
