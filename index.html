@@ -481,10 +481,23 @@ button.secondary:disabled { opacity: .55; cursor: not-allowed; }
 .paper-preview p  { margin-bottom: .70rem; text-align: justify; font-size: .88rem; }
 .paper-preview .ab-label { font-weight: 700; }
 .paper-preview .kw { font-size: .82rem; font-style: italic; color: #444; }
-.paper-preview .ref-e { font-size: .80rem; margin-bottom: .4rem; color: #222; }
-.cite-num { color: #1d4ed8; font-weight: 600; font-size: .78rem; text-decoration: none; }
+.cite-num, sup.cite-num {
+  font-size: 0.74em;
+  line-height: 0;
+  vertical-align: super;
+  position: relative;
+  top: -0.28em;
+  font-weight: 700;
+  color: #1d4ed8;
+  cursor: pointer;
+  text-decoration: none;
+  padding: 0 1px;
+}
+sup.cite-num:hover, .cite-num:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
 
-/* Data tables */
 .sr-table {
   width: 100%; border-collapse: collapse; font-size: .82rem; margin: 14px 0;
 }
@@ -2321,11 +2334,45 @@ function switchTab(tabId, btn) {
   if (btn) btn.classList.add('active');
 }
 
+let CITATION_STYLE = 'superscript'; // 'superscript' [¹] | 'superscript_nobrackets' ¹ | 'bracket' [1]
+
+function citify(text) {
+  if (!text) return '';
+  const clean = cleanHtmlText(text);
+  return clean.replace(/\[(\d+(?:\s*,\s*\d+)*)\]/g, (_, nums) => {
+    if (CITATION_STYLE === 'superscript_nobrackets') {
+      return `<sup class="cite-num" title="Vancouver Reference ${nums}">${nums}</sup>`;
+    } else if (CITATION_STYLE === 'bracket') {
+      return `<span class="cite-num" title="Vancouver Reference ${nums}">[${nums}]</span>`;
+    } else {
+      // Default: "Upper case" superscript with bracket [¹]
+      return `<sup class="cite-num" title="Vancouver Reference ${nums}">[${nums}]</sup>`;
+    }
+  });
+}
+
+function changeCitationStyle(style) {
+  CITATION_STYLE = style;
+  if (STATE.review) {
+    renderPaperPreview(STATE.review);
+  }
+}
+
 function renderPaperPreview(review) {
   const container = document.getElementById('paper-preview');
   const ab = review.abstractObj;
 
   container.innerHTML = `
+    <!-- Citation Style Selector Bar -->
+    <div style="display:flex;align-items:center;justify-content:space-between;background:#f8fafb;border:1px solid var(--border);border-radius:8px;padding:8px 14px;margin-bottom:14px;font-size:.82rem;flex-wrap:wrap;gap:8px">
+      <span style="font-weight:600;color:var(--accent)">🔤 Vancouver Citation Format:</span>
+      <div style="display:flex;gap:6px">
+        <button type="button" class="mini-btn ${CITATION_STYLE === 'superscript' ? 'mini-btn-good' : ''}" onclick="changeCitationStyle('superscript')">Upper Case Superscript [¹] ✓</button>
+        <button type="button" class="mini-btn ${CITATION_STYLE === 'superscript_nobrackets' ? 'mini-btn-good' : ''}" onclick="changeCitationStyle('superscript_nobrackets')">Upper Case Superscript ¹ (No Brackets)</button>
+        <button type="button" class="mini-btn ${CITATION_STYLE === 'bracket' ? 'mini-btn-good' : ''}" onclick="changeCitationStyle('bracket')">Baseline [1]</button>
+      </div>
+    </div>
+
     <h1>${review.title}</h1>
     <div class="p-meta">
       <strong>Dr. Raouf Roshdy</strong><br/>
@@ -2335,30 +2382,30 @@ function renderPaperPreview(review) {
     <hr/>
 
     <div class="s-head">Abstract</div>
-    <p><span class="ab-label">Background:</span> ${ab.background}</p>
-    <p><span class="ab-label">Objectives:</span> ${ab.objectives}</p>
-    <p><span class="ab-label">Methods:</span> ${ab.methods}</p>
-    <p><span class="ab-label">Results:</span> ${ab.results}</p>
-    <p><span class="ab-label">Conclusions:</span> ${ab.conclusions}</p>
-    <p><span class="ab-label">Registration:</span> ${ab.registration}</p>
+    <p><span class="ab-label">Background:</span> ${citify(ab.background)}</p>
+    <p><span class="ab-label">Objectives:</span> ${citify(ab.objectives)}</p>
+    <p><span class="ab-label">Methods:</span> ${citify(ab.methods)}</p>
+    <p><span class="ab-label">Results:</span> ${citify(ab.results)}</p>
+    <p><span class="ab-label">Conclusions:</span> ${citify(ab.conclusions)}</p>
+    <p><span class="ab-label">Registration:</span> ${citify(ab.registration)}</p>
 
     <p style="margin-top:10px"><span class="ab-label">Keywords:</span> <span class="kw">${review.keywords.join('; ')}</span></p>
     <hr/>
 
     <div class="s-head">1. Introduction</div>
-    ${review.intro.split('\n\n').map(p => `<p>${cleanHtmlText(p).replace(/\n/g, '<br/>')}</p>`).join('')}
+    ${review.intro.split('\n\n').map(p => `<p>${citify(p).replace(/\n/g, '<br/>')}</p>`).join('')}
 
     <div class="s-head">2. Methods</div>
-    ${review.methods.split('\n\n').map(p => `<p>${cleanHtmlText(p).replace(/\n/g, '<br/>')}</p>`).join('')}
+    ${review.methods.split('\n\n').map(p => `<p>${citify(p).replace(/\n/g, '<br/>')}</p>`).join('')}
 
     <div class="s-head">3. Results</div>
-    ${review.results.split('\n\n').map(p => `<p>${cleanHtmlText(p).replace(/\n/g, '<br/>')}</p>`).join('')}
+    ${review.results.split('\n\n').map(p => `<p>${citify(p).replace(/\n/g, '<br/>')}</p>`).join('')}
 
     <div class="s-head">4. Discussion</div>
-    ${review.discussion.split('\n\n').map(p => `<p>${cleanHtmlText(p).replace(/\n/g, '<br/>')}</p>`).join('')}
+    ${review.discussion.split('\n\n').map(p => `<p>${citify(p).replace(/\n/g, '<br/>')}</p>`).join('')}
 
     <div class="s-head">5. Conclusions &amp; Clinical Recommendations</div>
-    ${review.conclusions.split('\n\n').map(p => `<p>${cleanHtmlText(p).replace(/\n/g, '<br/>')}</p>`).join('')}
+    ${review.conclusions.split('\n\n').map(p => `<p>${citify(p).replace(/\n/g, '<br/>')}</p>`).join('')}
 
     <hr/>
     <div class="s-head">References</div>
