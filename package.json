@@ -1,0 +1,22 @@
+{
+  "name": "sysrevai",
+  "version": "1.0.0",
+  "description": "AI-Assisted Systematic Review Platform (PRISMA 2020 Compliant) with PICOS framework, automated inclusion/exclusion screening, Cochrane Risk of Bias appraisal, data extraction tables, and dual PDF export.",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [
+    "systematic-review",
+    "prisma-2020",
+    "picos",
+    "risk-of-bias",
+    "europe-pmc",
+    "semantic-scholar",
+    "evidence-synthesis",
+    "vancouver-style",
+    "medical-research",
+    "pdf-export"
+  ],
+  "author": "Dr. Raouf Roshdy",
+  "license": "MIT"
+}
