@@ -86,15 +86,29 @@ Sysrevai enforces structured clinical framing to eliminate retrieval ambiguity:
 - **Intervention (I)**: Experimental pharmacologic, surgical, or technological therapy.
 - **Comparator (C)**: Placebo, active comparator, or standard of care.
 - **Outcomes (O)**: Quantifiable clinical endpoints (e.g. MACE, mortality, biomarkers).
-- **Study Design (S)**: Randomized Controlled Trials (RCTs), prospective cohorts, registries.
+- **Study Design (S)**: Strictly restricted to 9 empirical clinical study designs.
 
-### 2. ⚖️ Pre-Specified Inclusion & Exclusion Screening Engine
+### 2. 🔬 Strict Restriction to 9 Empirical Study Types
+Sysrevai searches and synthesizes **only 9 empirical research designs**, with the exact study type prominently identified and written on every paper card in search results, in the filter selector, across the manuscript narrative (Section 3.2 and 3.3), and in Table 1:
+1. 🎲 **Randomized controlled trials (RCTs)**
+2. ⚖️ **Non-randomized controlled trials**
+3. 👥 **Cohort studies (prospective or retrospective)**
+4. 🔍 **Case-control studies**
+5. 📊 **Cross-sectional studies**
+6. 🎯 **Diagnostic accuracy studies**
+7. 📋 **Case series and case reports**
+8. 💬 **Qualitative studies**
+9. 🔬 **Observational studies**
+
+*All non-empirical literature (narrative reviews, secondary systematic reviews, editorials, commentaries, opinion pieces, letters, and pre-clinical animal/in-vitro assays) are systematically excluded with transparent, auditable rationales.*
+
+### 3. ⚖️ Pre-Specified Inclusion & Exclusion Screening Engine
 Rather than relying on uninterpretable LLM judgements, Sysrevai executes a **two-tier algorithmic screening engine**:
-- **Inclusion Rules**: Verifies clinical population, controlled comparative designs, and primary endpoints.
+- **Inclusion Rules**: Confirms human clinical population, comparative/interventional exposures, empirical findings, and validation as one of the 9 eligible study types.
 - **Exclusion Rules**: Automatically filters:
   - 🚫 *Pre-clinical animal models, in-vitro experiments, or cell-line assays*
-  - 🚫 *Narrative reviews, editorials, commentaries, perspectives, or study protocols*
-  - 🚫 *Case reports or small case series ($N < 20$ participants)*
+  - 🚫 *Narrative reviews, secondary systematic reviews, editorials, commentaries, or letters*
+  - 🚫 *Non-empirical opinion pieces or conference abstracts without methodological data*
   - 🚫 *Duplicate cohort publications or redundant secondary data reports*
 - **Traceable Rationales**: Every excluded record is permanently tagged with its exact reason for exclusion.
 - **Investigator Overrides**: Reviewers can re-classify any paper with one click (`[✔ Include]` / `[✖ Exclude]`), dynamically updating the PRISMA diagram in real-time.

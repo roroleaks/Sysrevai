@@ -458,15 +458,25 @@ button.secondary:disabled { opacity: .55; cursor: not-allowed; }
 .source-s2    { background: #f5f3ff; color: #6d28d9; border: 1px solid #ddd6fe; }
 .source-both  { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
 
-/* Design badges */
-.design-badge { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 2px 9px; font-size: .72rem; font-weight: 700; }
+/* Design badges for 9 Empirical Study Types */
+.design-badge { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 3px 10px; font-size: .75rem; font-weight: 700; }
 .design-rct { background: #dcfce7; color: #15803d; border: 1px solid #86efac; }
-.design-meta { background: #ede9fe; color: #6d28d9; border: 1px solid #c4b5fd; }
+.design-nonrct { background: #ecfeff; color: #0e7490; border: 1px solid #a5f3fc; }
 .design-cohort { background: #e0f2fe; color: #0369a1; border: 1px solid #7dd3fc; }
 .design-casecontrol { background: #e0e7ff; color: #3730a3; border: 1px solid #a5b4fc; }
 .design-cross { background: #fef3c7; color: #b45309; border: 1px solid #fde68a; }
-.design-exp { background: #ccfbf1; color: #0f766e; border: 1px solid #5eead4; }
-.design-review { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
+.design-diag { background: #fae8ff; color: #86198f; border: 1px solid #f0abfc; }
+.design-caseseries { background: #ffedd5; color: #c2410c; border: 1px solid #fed7aa; }
+.design-qual { background: #f3e8ff; color: #6b21a8; border: 1px solid #d8b4fe; }
+.design-obs { background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; }
+.design-ineligible { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+
+/* 9-Study-Type display grid and pills */
+.study-types-grid { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 16px; }
+.study-type-pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 999px; font-size: .78rem; font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.03); }
+.study-type-prominent { display: inline-flex; align-items: center; gap: 5px; background: #f8fafc; border: 1px solid var(--border); padding: 4px 10px; border-radius: 6px; font-size: .80rem; color: var(--navy); margin-top: 4px; }
+.filter-select { border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; font-size: .82rem; font-family: inherit; background: var(--card-bg); color: var(--text); outline: none; cursor: pointer; }
+.filter-select:focus { border-color: var(--accent); }
 
 /* Full text badge */
 .ft-badge { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 2px 9px; font-size: .72rem; font-weight: 600; text-decoration: none; }
@@ -710,7 +720,26 @@ sup.cite-num:hover, .cite-num:hover {
       </div>
       <div class="pico-field">
         <label>🔬 Study Design (S)</label>
-        <input type="text" id="pico-s" placeholder="e.g. Randomized Controlled Trials (RCTs), Prospective Cohorts" value="Randomized Controlled Trials (RCTs) and prospective comparative cohorts"/>
+        <input type="text" id="pico-s" placeholder="e.g. 9 empirical study designs" value="Randomized controlled trials (RCTs), Non-randomized trials, Cohorts, Case-control, Cross-sectional, Diagnostic accuracy, Case series/reports, Qualitative, Observational"/>
+      </div>
+    </div>
+
+    <!-- Targeted Empirical Study Types Banner -->
+    <div style="background:#f8fafc; border:1px solid var(--border); border-radius:8px; padding:12px 16px; margin: 16px 0 16px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+        <span style="font-size:.85rem;font-weight:700;color:var(--navy)">🎯 Targeted Empirical Study Designs (Search &amp; Synthesis Restricted to 9 Types):</span>
+        <span style="font-size:.75rem;color:var(--muted)">All non-empirical reviews, commentaries, &amp; animal models are systematically excluded</span>
+      </div>
+      <div class="study-types-grid" style="margin:4px 0 0">
+        <span class="study-type-pill design-rct">🎲 Randomized controlled trials (RCTs)</span>
+        <span class="study-type-pill design-nonrct">⚖️ Non-randomized controlled trials</span>
+        <span class="study-type-pill design-cohort">👥 Cohort studies (prospective or retrospective)</span>
+        <span class="study-type-pill design-casecontrol">🔍 Case-control studies</span>
+        <span class="study-type-pill design-cross">📊 Cross-sectional studies</span>
+        <span class="study-type-pill design-diag">🎯 Diagnostic accuracy studies</span>
+        <span class="study-type-pill design-caseseries">📋 Case series and case reports</span>
+        <span class="study-type-pill design-qual">💬 Qualitative studies</span>
+        <span class="study-type-pill design-obs">🔬 Observational studies</span>
       </div>
     </div>
 
@@ -727,9 +756,9 @@ sup.cite-num:hover, .cite-num:hover {
         </h3>
         <ul class="criteria-list" id="inclusion-list">
           <li class="criteria-item"><span>Human clinical investigations (adult population &ge; 18 years)</span><button onclick="removeCriterion(this,'inc')">&times;</button></li>
-          <li class="criteria-item"><span>Randomized controlled trials (RCTs) or prospective comparative cohorts</span><button onclick="removeCriterion(this,'inc')">&times;</button></li>
-          <li class="criteria-item"><span>Evaluates targeted intervention against placebo or active control</span><button onclick="removeCriterion(this,'inc')">&times;</button></li>
-          <li class="criteria-item"><span>Reports quantitative clinical efficacy, safety, or survival endpoints</span><button onclick="removeCriterion(this,'inc')">&times;</button></li>
+          <li class="criteria-item"><span>Strictly one of 9 empirical designs (RCT, Non-RCT, Cohort, Case-Control, Cross-Sectional, Diagnostic, Case Series/Report, Qualitative, Observational)</span><button onclick="removeCriterion(this,'inc')">&times;</button></li>
+          <li class="criteria-item"><span>Evaluates targeted intervention or clinical exposure against comparator/control</span><button onclick="removeCriterion(this,'inc')">&times;</button></li>
+          <li class="criteria-item"><span>Reports empirical primary outcomes, findings, or qualitative analyses</span><button onclick="removeCriterion(this,'inc')">&times;</button></li>
           <li class="criteria-item"><span>Peer-reviewed primary research published in scholarly biomedical journals</span><button onclick="removeCriterion(this,'inc')">&times;</button></li>
         </ul>
         <div class="criteria-add-box">
@@ -746,10 +775,10 @@ sup.cite-num:hover, .cite-num:hover {
         </h3>
         <ul class="criteria-list" id="exclusion-list">
           <li class="criteria-item"><span>Pre-clinical animal models, in-vitro studies, or tissue culture experiments</span><button onclick="removeCriterion(this,'exc')">&times;</button></li>
-          <li class="criteria-item"><span>Narrative reviews, editorials, commentaries, perspectives, or study protocols</span><button onclick="removeCriterion(this,'exc')">&times;</button></li>
-          <li class="criteria-item"><span>Case reports, case series with sample size &lt; 20 participants</span><button onclick="removeCriterion(this,'exc')">&times;</button></li>
+          <li class="criteria-item"><span>Narrative reviews, secondary systematic reviews, editorials, commentaries, letters, or protocols</span><button onclick="removeCriterion(this,'exc')">&times;</button></li>
+          <li class="criteria-item"><span>Non-empirical opinion pieces, meeting summaries, or conference abstracts without data</span><button onclick="removeCriterion(this,'exc')">&times;</button></li>
           <li class="criteria-item"><span>Duplicate cohort publications or redundant secondary data reports</span><button onclick="removeCriterion(this,'exc')">&times;</button></li>
-          <li class="criteria-item"><span>Studies lacking a comparative control arm or missing primary clinical endpoints</span><button onclick="removeCriterion(this,'exc')">&times;</button></li>
+          <li class="criteria-item"><span>Studies lacking primary clinical data or missing methodological details</span><button onclick="removeCriterion(this,'exc')">&times;</button></li>
         </ul>
         <div class="criteria-add-box">
           <input type="text" id="new-exc-input" placeholder="Add exclusion rule…"/>
@@ -996,10 +1025,22 @@ sup.cite-num:hover, .cite-num:hover {
           <button type="button" class="filter-btn active" onclick="setScreenFilter('all', this)">All Records (<span id="cnt-all">0</span>)</button>
           <button type="button" class="filter-btn" onclick="setScreenFilter('included', this)">🟢 Included (<span id="cnt-inc">0</span>)</button>
           <button type="button" class="filter-btn" onclick="setScreenFilter('excluded', this)">🔴 Excluded (<span id="cnt-exc">0</span>)</button>
-          <button type="button" class="filter-btn" onclick="setScreenFilter('borderline', this)">🟡 Borderline / Needs Review (<span id="cnt-bor">0</span>)</button>
+          <button type="button" class="filter-btn" onclick="setScreenFilter('borderline', this)">🟡 Borderline (<span id="cnt-bor">0</span>)</button>
         </div>
-        <div>
-          <input type="text" id="paper-search-input" placeholder="Search within papers…" oninput="filterPaperCards()" style="padding:5px 10px;font-size:.82rem;width:200px"/>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <select id="filter-study-type" class="filter-select" onchange="filterPaperCards()">
+            <option value="all">🔬 All Study Types (9 Types)</option>
+            <option value="rct">🎲 Randomized controlled trials (RCTs)</option>
+            <option value="non-rct">⚖️ Non-randomized controlled trials</option>
+            <option value="cohort">👥 Cohort studies</option>
+            <option value="case-control">🔍 Case-control studies</option>
+            <option value="cross-sectional">📊 Cross-sectional studies</option>
+            <option value="diagnostic-accuracy">🎯 Diagnostic accuracy studies</option>
+            <option value="case-series-reports">📋 Case series &amp; case reports</option>
+            <option value="qualitative">💬 Qualitative studies</option>
+            <option value="observational">🔬 Observational studies</option>
+          </select>
+          <input type="text" id="paper-search-input" placeholder="Search within papers…" oninput="filterPaperCards()" style="padding:6px 10px;font-size:.82rem;width:180px"/>
         </div>
       </div>
 
@@ -1479,8 +1520,8 @@ async function fetchEuropePMC(topic, pageSize, yearRange, signal) {
     const fromYear = currentYear - yearRange;
     query += ` AND (PUB_YEAR:[${fromYear} TO ${currentYear}])`;
   }
-  // Ensure we retrieve peer-reviewed journal articles
-  query += ' AND (SRC:MED OR SRC:PMC)';
+  // Ensure we retrieve primary peer-reviewed empirical records and exclude reviews, editorials, comments
+  query += ' AND (SRC:MED OR SRC:PMC) NOT (PUB_TYPE:"Review" OR PUB_TYPE:"Editorial" OR PUB_TYPE:"Letter" OR PUB_TYPE:"Comment")';
 
   const params = new URLSearchParams({
     query: query,
@@ -1670,30 +1711,156 @@ function deduplicatePapers(rawPapers) {
 function classifyStudyDesign(paper) {
   const text = `${paper.title} ${paper.abstract} ${(paper.pubType || []).join(' ')} ${(paper.meshHeadings || []).join(' ')}`.toLowerCase();
 
-  if (/\b(systematic review|meta-analysis|prisma|cochrane database of systematic reviews)\b/i.test(text)) {
-    return { name: 'Systematic Review / Meta-Analysis', code: 'meta', badgeClass: 'design-meta', weight: 1.0 };
+  // 1. Identify Pre-clinical Animal / Cell Culture / In-Vitro Models (Ineligible)
+  if (/\b(rat|rats|mice|mouse|murine|rabbit|in vitro|cell line|isolated cardiomyocytes|canine|bovine|porcine|zebrafish)\b/i.test(text) &&
+      !/\b(human|patients|clinical trial|men|women|cohort|participants|subjects|volunteers)\b/i.test(text)) {
+    return {
+      code: 'ineligible-animal',
+      name: 'Preclinical Animal / In-Vitro Model',
+      short: 'Preclinical',
+      badgeClass: 'design-ineligible',
+      icon: '🐁',
+      isEligible: false,
+      exclusionReason: 'Pre-clinical animal or in-vitro experimental model'
+    };
   }
-  if (/\b(randomized controlled trial|randomised controlled trial|double-blind|placebo-controlled|rct|clinical trial, phase (?:iii|iv|3|4))\b/i.test(text)) {
-    return { name: 'Randomized Controlled Trial (RCT)', code: 'rct', badgeClass: 'design-rct', weight: 1.0 };
+
+  // 2. Identify Non-Empirical Literature: Narrative Reviews, Secondary Syntheses, Editorials, Letters (Ineligible)
+  if (/\b(systematic review|meta-analysis|meta analysis|prisma statement|scoping review|narrative review|critical review|literature review|editorial|commentary|author reply|letter to the editor|correspondence|perspective|viewpoint|meeting report|book review)\b/i.test(text) ||
+      (paper.pubType && paper.pubType.some(pt => /review|editorial|letter|comment/i.test(pt)))) {
+    return {
+      code: 'ineligible-review',
+      name: 'Non-Empirical Review / Editorial / Commentary',
+      short: 'Non-Empirical / Review',
+      badgeClass: 'design-ineligible',
+      icon: '📚',
+      isEligible: false,
+      exclusionReason: 'Non-primary literature (narrative review, secondary synthesis, editorial, commentary, or letter)'
+    };
   }
-  if (/\b(cohort study|prospective cohort|longitudinal study|follow-up study)\b/i.test(text)) {
-    return { name: 'Prospective Cohort Study', code: 'cohort', badgeClass: 'design-cohort', weight: 0.85 };
+
+  // 3. Classify strictly into the 9 Empirical Study Types:
+
+  // (1) Randomized controlled trials (RCTs)
+  if (/\b(randomized controlled trial|randomised controlled trial|randomized clinical trial|randomised clinical trial|randomly assigned|random allocation|double-blind|triple-blind|placebo-controlled|rct|cluster-randomized|crossover trial)\b/i.test(text) ||
+      (paper.pubType && paper.pubType.some(pt => /randomized controlled trial/i.test(pt)))) {
+    return {
+      code: 'rct',
+      name: 'Randomized controlled trials (RCTs)',
+      short: 'RCT',
+      badgeClass: 'design-rct',
+      icon: '🎲',
+      isEligible: true,
+      weight: 1.0
+    };
   }
-  if (/\b(case-control study|retrospective cohort|matched cohort)\b/i.test(text)) {
-    return { name: 'Case-Control / Retrospective Study', code: 'casecontrol', badgeClass: 'design-casecontrol', weight: 0.75 };
+
+  // (2) Diagnostic accuracy studies
+  if (/\b(diagnostic accuracy|diagnostic performance|sensitivity and specificity|receiver operating characteristic|roc curve|auc-roc|positive predictive value|negative predictive value|area under the curve|gold standard comparison|index test|reference standard|diagnostic test accuracy)\b/i.test(text)) {
+    return {
+      code: 'diagnostic-accuracy',
+      name: 'Diagnostic accuracy studies',
+      short: 'Diagnostic Accuracy',
+      badgeClass: 'design-diag',
+      icon: '🎯',
+      isEligible: true,
+      weight: 0.85
+    };
   }
-  if (/\b(cross-sectional|survey|prevalence study)\b/i.test(text)) {
-    return { name: 'Cross-Sectional Study', code: 'cross', badgeClass: 'design-cross', weight: 0.65 };
+
+  // (3) Non-randomized controlled trials
+  if (/\b(non-randomized|non-randomised|quasi-experimental|controlled clinical trial|open-label trial|phase [12iI]{1,2} trial|interventional non-randomized|before-and-after study|before-after study|interrupted time series)\b/i.test(text)) {
+    return {
+      code: 'non-rct',
+      name: 'Non-randomized controlled trials',
+      short: 'Non-RCT Trial',
+      badgeClass: 'design-nonrct',
+      icon: '⚖️',
+      isEligible: true,
+      weight: 0.80
+    };
   }
-  if (/\b(in vitro|animal model|murine|mice|rat model|cell culture|isolated tissue)\b/i.test(text)) {
-    return { name: 'Preclinical / In-Vitro Model', code: 'exp', badgeClass: 'design-exp', weight: 0.3 };
+
+  // (4) Qualitative studies
+  if (/\b(qualitative study|qualitative research|thematic analysis|grounded theory|semi-structured interview|in-depth interview|focus group|phenomenological|ethnographic|qualitative synthesis|inductive thematic)\b/i.test(text)) {
+    return {
+      code: 'qualitative',
+      name: 'Qualitative studies',
+      short: 'Qualitative Study',
+      badgeClass: 'design-qual',
+      icon: '💬',
+      isEligible: true,
+      weight: 0.70
+    };
   }
-  return { name: 'Clinical Observational Study', code: 'obs', badgeClass: 'design-review', weight: 0.70 };
+
+  // (5) Cohort studies (prospective or retrospective)
+  if (/\b(cohort study|prospective cohort|retrospective cohort|longitudinal cohort|follow-up cohort|population-based cohort|birth cohort|incident cohort|longitudinal study|follow-up study)\b/i.test(text)) {
+    return {
+      code: 'cohort',
+      name: 'Cohort studies (prospective or retrospective)',
+      short: 'Cohort Study',
+      badgeClass: 'design-cohort',
+      icon: '👥',
+      isEligible: true,
+      weight: 0.85
+    };
+  }
+
+  // (6) Case-control studies
+  if (/\b(case-control|case control|nested case-control|matched case-control|case-referent)\b/i.test(text)) {
+    return {
+      code: 'case-control',
+      name: 'Case-control studies',
+      short: 'Case-Control',
+      badgeClass: 'design-casecontrol',
+      icon: '🔍',
+      isEligible: true,
+      weight: 0.75
+    };
+  }
+
+  // (7) Cross-sectional studies
+  if (/\b(cross-sectional|cross sectional|prevalence study|point-prevalence|cross-sectional survey)\b/i.test(text)) {
+    return {
+      code: 'cross-sectional',
+      name: 'Cross-sectional studies',
+      short: 'Cross-Sectional',
+      badgeClass: 'design-cross',
+      icon: '📊',
+      isEligible: true,
+      weight: 0.65
+    };
+  }
+
+  // (8) Case series and case reports
+  if (/\b(case series|case report|case report series|clinical case report|single-patient case|series of \d+ cases|consecutive case series)\b/i.test(text)) {
+    return {
+      code: 'case-series-reports',
+      name: 'Case series and case reports',
+      short: 'Case Series / Report',
+      badgeClass: 'design-caseseries',
+      icon: '📋',
+      isEligible: true,
+      weight: 0.60
+    };
+  }
+
+  // (9) Observational studies (default empirical human clinical design)
+  return {
+    code: 'observational',
+    name: 'Observational studies',
+    short: 'Observational Study',
+    badgeClass: 'design-obs',
+    icon: '🔬',
+    isEligible: true,
+    weight: 0.70
+  };
 }
 
 function evaluateRiskOfBias(paper) {
-  // Evaluates 5 Cochrane RoB 2 / ROBINS-I aligned domains:
-  // D1: Randomization process / Selection
+  // Evaluates 5 Cochrane RoB 2 / ROBINS-I / QUADAS-2 aligned domains:
+  // D1: Randomization / Selection / Index Test
   // D2: Deviations from intended interventions / Allocation
   // D3: Missing outcome data / Attrition
   // D4: Measurement of the outcome / Detection
@@ -1709,20 +1876,24 @@ function evaluateRiskOfBias(paper) {
     d5: 'Low'
   };
 
-  // D1: Randomization
+  // D1: Selection / Sequence Generation / Index Test
   if (design.code === 'rct') {
-    if (/random(?:ized|ised|ly)|allocation concealment|permuted block/i.test(text)) {
+    if (/random(?:ized|ised|ly)|allocation concealment|permuted block|centralized randomization/i.test(text)) {
       domains.d1 = 'Low';
     } else {
       domains.d1 = 'Some Concerns';
     }
-  } else if (design.code === 'cohort' || design.code === 'casecontrol') {
-    domains.d1 = /propensity score|multivariable|adjusted|matched/i.test(text) ? 'Some Concerns' : 'High';
+  } else if (design.code === 'cohort' || design.code === 'case-control' || design.code === 'observational') {
+    domains.d1 = /propensity score|multivariable|adjusted|matched|confounder/i.test(text) ? 'Some Concerns' : 'High';
+  } else if (design.code === 'diagnostic-accuracy') {
+    domains.d1 = /blinded to reference|independent interpretation|consecutive enrollment/i.test(text) ? 'Low' : 'Some Concerns';
+  } else if (design.code === 'qualitative') {
+    domains.d1 = /purposive sampling|saturation|triangulation/i.test(text) ? 'Low' : 'Some Concerns';
   } else {
-    domains.d1 = 'High';
+    domains.d1 = 'Some Concerns';
   }
 
-  // D2: Deviations
+  // D2: Deviations / Allocation
   if (/double-blind|blinded|masked|placebo-controlled|intention-to-treat|itt/i.test(text)) {
     domains.d2 = 'Low';
   } else if (/open-label|unblinded|single-center/i.test(text)) {
@@ -1739,14 +1910,14 @@ function evaluateRiskOfBias(paper) {
   }
 
   // D4: Measurement of outcome
-  if (/adjudicated|blinded endpoint|central laboratory|validated scale|standardized criteria/i.test(text)) {
+  if (/adjudicated|blinded endpoint|central laboratory|validated scale|standardized criteria|reference standard/i.test(text)) {
     domains.d4 = 'Low';
   } else {
     domains.d4 = 'Low';
   }
 
   // D5: Selective reporting
-  if (/pre-specified|registered at clinicaltrials\.gov|primary outcome|protocol/i.test(text)) {
+  if (/pre-specified|registered at clinicaltrials\.gov|primary outcome|protocol|registered trial/i.test(text)) {
     domains.d5 = 'Low';
   } else {
     domains.d5 = 'Some Concerns';
@@ -1758,10 +1929,10 @@ function evaluateRiskOfBias(paper) {
 
   let overall = 'Low Risk';
   let overallClass = 'rob-low';
-  if (highCount >= 1 || (design.code === 'exp')) {
+  if (highCount >= 1 || !design.isEligible) {
     overall = 'High Risk';
     overallClass = 'rob-high';
-  } else if (someCount >= 2 || design.code === 'casecontrol') {
+  } else if (someCount >= 2 || design.code === 'case-control' || design.code === 'case-series-reports') {
     overall = 'Some Concerns';
     overallClass = 'rob-some';
   }
@@ -1781,30 +1952,24 @@ function screenPaperAgainstCriteria(paper, topic, pico, incCriteria, excCriteria
   const matchedInclusions = [];
   const violatedExclusions = [];
 
-  // Check 1: Pre-clinical / animal / in-vitro exclusion
-  if (/\b(rat|rats|mice|mouse|murine|rabbit|in vitro|cell line|isolated cardiomyocytes|canine|bovine)\b/i.test(text) &&
-      !/\b(human|patients|clinical trial|men|women|cohort|participants)\b/i.test(text)) {
+  // Check 1: Ineligible Study Design (Animal models, reviews, commentaries, etc.)
+  if (!design.isEligible) {
     status = 'EXCLUDED';
-    primaryReason = 'Exclusion: Pre-clinical animal or in-vitro experimental model';
-    violatedExclusions.push('Pre-clinical / in-vitro model');
+    primaryReason = design.exclusionReason || 'Exclusion: Ineligible publication type (only 9 empirical clinical study designs are included)';
+    violatedExclusions.push(design.name);
   }
 
   // Check 2: Publication type exclusion (editorials, letters, commentaries)
-  if (/\b(editorial|author reply|letter to editor|commentary|perspective|erratum|corrigendum|meeting abstract|study protocol)\b/i.test(text) ||
-      (paper.pubType && paper.pubType.some(pt => /editorial|letter|comment/i.test(pt)))) {
-    status = 'EXCLUDED';
-    primaryReason = 'Exclusion: Non-primary literature (editorial, letter, commentary, or protocol)';
-    violatedExclusions.push('Editorial / letter / commentary');
+  if (status !== 'EXCLUDED') {
+    if (/\b(editorial|author reply|letter to editor|commentary|perspective|erratum|corrigendum|meeting abstract|study protocol)\b/i.test(text) ||
+        (paper.pubType && paper.pubType.some(pt => /editorial|letter|comment/i.test(pt)))) {
+      status = 'EXCLUDED';
+      primaryReason = 'Exclusion: Non-primary literature (editorial, letter, commentary, or protocol)';
+      violatedExclusions.push('Editorial / letter / commentary');
+    }
   }
 
-  // Check 3: Check sample size / case report
-  if (/\b(case report|a case of|single-patient|case study of a)\b/i.test(text)) {
-    status = 'EXCLUDED';
-    primaryReason = 'Exclusion: Single case report or narrative case series';
-    violatedExclusions.push('Case report (< 20 patients)');
-  }
-
-  // Check 4: Abstract presence & clinical endpoints
+  // Check 3: Abstract presence & clinical endpoints
   if (!paper.abstract || paper.abstract.length < 50) {
     if (status !== 'EXCLUDED') {
       status = 'BORDERLINE';
@@ -1812,7 +1977,7 @@ function screenPaperAgainstCriteria(paper, topic, pico, incCriteria, excCriteria
     }
   }
 
-  // Check 5: PICOS Intervention / Outcome match
+  // Check 4: PICOS Intervention / Outcome match
   const topicWords = cleanQueryKeywords(topic).toLowerCase().split(' ').filter(w => w.length > 3);
   let topicWordHits = 0;
   for (const w of topicWords) {
@@ -1820,7 +1985,7 @@ function screenPaperAgainstCriteria(paper, topic, pico, incCriteria, excCriteria
   }
   const matchRatio = topicWords.length ? topicWordHits / topicWords.length : 1;
 
-  if (status !== 'EXCLUDED' && matchRatio < 0.25) {
+  if (status !== 'EXCLUDED' && matchRatio < 0.20) {
     status = 'EXCLUDED';
     primaryReason = 'Exclusion: Off-target clinical intervention, population, or outcomes';
     violatedExclusions.push('Off-target PICOS domain');
@@ -1828,13 +1993,11 @@ function screenPaperAgainstCriteria(paper, topic, pico, incCriteria, excCriteria
 
   // Matched Inclusions
   if (status === 'INCLUDED') {
-    if (design.code === 'rct' || design.code === 'cohort' || design.code === 'meta') {
-      matchedInclusions.push(`Eligible study design: ${design.name}`);
-    }
-    if (/\b(patients|participants|cohort|men|women|adults)\b/i.test(text)) {
+    matchedInclusions.push(`Study Type: ${design.name}`);
+    if (/\b(patients|participants|cohort|men|women|adults|cases|subjects)\b/i.test(text)) {
       matchedInclusions.push('Human clinical population');
     }
-    matchedInclusions.push('Reports comparative clinical outcomes');
+    matchedInclusions.push('Empirical primary research findings');
   }
 
   return {
@@ -1984,13 +2147,13 @@ class SystematicReviewGenerator {
 
     const p1 = `2.1 Protocol and Registration\n\nThis systematic review was conducted in strict accordance with the Preferred Reporting Items for Systematic Reviews and Meta-Analyses (PRISMA 2020) statement. The study protocol was pre-specified with explicit eligibility criteria, search architectures, and risk of bias assessment paradigms.`;
 
-    const p2 = `2.2 Eligibility Criteria\n\nStudies were evaluated against pre-specified inclusion and exclusion criteria. Inclusion criteria required: (1) human clinical investigations in adult cohorts; (2) randomized controlled trials (RCTs) or prospective comparative cohorts; (3) clear evaluation of ${this.pico.i || 'the intervention'} against an eligible comparator (${this.pico.c || 'control'}); and (4) report of quantitative clinical outcomes. Exclusion criteria eliminated: (1) pre-clinical animal models or in-vitro experiments; (2) narrative reviews, editorials, commentaries, and letters; (3) case reports (<20 patients); and (4) duplicate or redundant cohort publications.`;
+    const p2 = `2.2 Eligibility Criteria\n\nStudies were evaluated against pre-specified inclusion and exclusion criteria in accordance with PRISMA 2020 guidelines. Inclusion criteria strictly restricted eligibility to 9 empirical clinical study designs: (1) Randomized controlled trials (RCTs); (2) Non-randomized controlled trials; (3) Cohort studies (prospective or retrospective); (4) Case-control studies; (5) Cross-sectional studies; (6) Diagnostic accuracy studies; (7) Case series and case reports; (8) Qualitative studies; and (9) Observational studies evaluating ${this.pico.i || 'the intervention'} against eligible comparators (${this.pico.c || 'control regimens or standard care'}) with reported empirical clinical endpoints. Exclusion criteria eliminated: (1) pre-clinical animal models, in-vitro investigations, or cell culture assays; (2) narrative reviews, secondary systematic reviews, editorials, commentaries, perspectives, and correspondence; (3) non-empirical abstracts lacking methodology; and (4) duplicate or redundant cohort publications.`;
 
     const p3 = `2.3 Information Sources & Search Strategy\n\nComprehensive electronic database queries of Europe PMC (EMBL-EBI, incorporating PubMed, PubMed Central, and MEDLINE) and the Semantic Scholar Academic Graph (Allen Institute for AI) were executed concurrently. Search terms combined controlled vocabulary (Medical Subject Headings [MeSH]) and free-text keywords relating to "${this.topic}". Search limits spanned ${minY} to ${maxY}.`;
 
     const p4 = `2.4 Study Selection & Screening Process\n\nRetrieved candidate records were processed through an automated cross-database deduplication engine matching registered PMIDs, DOIs, Semantic Scholar corpus IDs, and normalized title keys. Exactly ${this.duplicatesRemoved} duplicate records were excluded. All unique records underwent two-stage screening (title/abstract followed by full-text evaluation) against the eligibility criteria, with reasons for exclusion systematically recorded.`;
 
-    const p5 = `2.5 Risk of Bias & Methodological Quality Appraisal\n\nMethodological quality and internal validity of included studies were appraised across five core domains aligned with the Cochrane RoB 2 and ROBINS-I assessment tools: (D1) Randomization and selection process; (D2) Deviations from intended interventions; (D3) Incomplete outcome data; (D4) Measurement of outcome; and (D5) Selective reporting. Each domain was rated as Low Risk, Some Concerns, or High Risk of Bias.`;
+    const p5 = `2.5 Risk of Bias & Methodological Quality Appraisal\n\nMethodological quality and internal validity of included studies were appraised across five core domains aligned with the Cochrane RoB 2, ROBINS-I, and QUADAS-2 assessment tools: (D1) Randomization and selection process / index test; (D2) Deviations from intended interventions; (D3) Incomplete outcome data; (D4) Measurement of outcome / reference standard; and (D5) Selective reporting. Each domain was rated as Low Risk, Some Concerns, or High Risk of Bias.`;
 
     return [p1, p2, p3, p4, p5].join('\n\n');
   }
@@ -2002,24 +2165,24 @@ class SystematicReviewGenerator {
     
     const designs = {};
     this.papers.forEach(p => {
-      const d = p.screening?.design?.name || 'Clinical Study';
+      const d = p.screening?.design?.name || 'Observational studies';
       designs[d] = (designs[d] || 0) + 1;
     });
     const designSummary = Object.entries(designs).map(([k, v]) => `${k} (n=${v})`).join(', ');
 
-    const p1 = `3.1 Study Selection (PRISMA Flow Dynamics)\n\nThe electronic search identified ${this.totalIdentified} total candidate records across Europe PMC and Semantic Scholar. Removal of ${this.duplicatesRemoved} duplicates yielded ${this.totalIdentified - this.duplicatesRemoved} unique records screened based on title and abstract. Following exclusion of ineligible pre-clinical and non-original publications, exactly ${n} primary studies met all criteria and were included in the final qualitative and quantitative evidence synthesis.`;
+    const p1 = `3.1 Study Selection (PRISMA Flow Dynamics)\n\nThe electronic search identified ${this.totalIdentified} total candidate records across Europe PMC and Semantic Scholar. Removal of ${this.duplicatesRemoved} duplicates yielded ${this.totalIdentified - this.duplicatesRemoved} unique records screened based on title and abstract. Following algorithmic filtering to restrict eligibility strictly to 9 empirical clinical designs and eliminate pre-clinical or review publications, exactly ${n} primary studies met all criteria and were included in the final qualitative and quantitative evidence synthesis.`;
 
     const p2 = `3.2 Study Characteristics\n\nThe ${n} included studies spanned publication dates between ${Math.min(...years, 2015)} and ${Math.max(...years, 2026)} (mean year: ${avgYear}). Study designs comprised: ${designSummary}. All included studies provided structured participant demographics, intervention dosages, and quantitative clinical outcome data.`;
 
-    // 3.3 Synthesis of individual studies with 100% citation parity
+    // 3.3 Synthesis of individual studies with 100% citation parity and explicit Study Type
     let p3 = `3.3 Synthesis of Included Studies & Primary Findings\n\n`;
     this.papers.forEach((p, idx) => {
       const auth = p.authors ? p.authors.split(',')[0].trim() + (p.authors.includes(',') ? ' et al.' : '') : 'Investigators';
-      const des = p.screening?.design?.name || 'clinical investigation';
+      const des = p.screening?.design?.name || 'Observational studies';
       const rob = p.screening?.rob?.overall || 'Low Risk';
       const chars = extractStudyCharacteristics(p, this.pico);
 
-      p3 += `${auth} (${p.year}) ${this.cite(idx)}, in a ${des.toLowerCase()} (${chars.sampleSize}), evaluated ${this.topic}. Risk of bias was appraised as ${rob}. The authors reported: "${chars.outcomeFinding}" These findings directly corroborate primary efficacy endpoints across the synthesized cohort.\n\n`;
+      p3 += `${auth} (${p.year}) ${this.cite(idx)}, in a study designed as a **${des}** (${chars.sampleSize}), evaluated ${this.topic}. Risk of bias was appraised as ${rob}. The authors reported: "${chars.outcomeFinding}" These findings directly corroborate primary efficacy endpoints across the synthesized cohort.\n\n`;
     });
 
     const p4 = `3.4 Methodological Quality & Risk of Bias Assessment\n\nEvaluation of the ${n} studies using Cochrane-aligned domains demonstrated high overall methodological rigor. Randomized controlled trials exhibited adequate sequence generation and allocation concealment. Observational cohorts demonstrated robust multivariable adjustment for clinical confounders. No major selective reporting biases were detected.`;
@@ -2083,11 +2246,13 @@ function renderPaperCards() {
 
   const filter = STATE.activeFilter;
   const searchQ = (document.getElementById('paper-search-input')?.value || '').toLowerCase().trim();
+  const typeFilter = (document.getElementById('filter-study-type')?.value || 'all');
 
   let displayed = STATE.papers.filter(p => {
     if (filter === 'included' && p.screening?.status !== 'INCLUDED') return false;
     if (filter === 'excluded' && p.screening?.status !== 'EXCLUDED') return false;
     if (filter === 'borderline' && p.screening?.status !== 'BORDERLINE') return false;
+    if (typeFilter !== 'all' && (p.screening?.design?.code !== typeFilter)) return false;
     if (searchQ) {
       const match = (p.title + ' ' + p.authors + ' ' + p.abstract).toLowerCase();
       if (!match.includes(searchQ)) return false;
@@ -2118,7 +2283,7 @@ function renderPaperCards() {
       : '<span class="source-badge source-epmc">🇪🇺 Europe PMC</span>';
 
     const design = paper.screening?.design || classifyStudyDesign(paper);
-    const designBadge = `<span class="design-badge ${design.badgeClass}">🔬 ${design.name}</span>`;
+    const designBadge = `<span class="design-badge ${design.badgeClass}">${design.icon || '🔬'} <strong>${design.name}</strong></span>`;
 
     const rob = paper.screening?.rob || evaluateRiskOfBias(paper);
     const robBadge = `<span class="rob-pill ${rob.overallClass}">🛡️ ${rob.overall}</span>`;
@@ -2177,6 +2342,11 @@ function renderPaperCards() {
       <h3 class="r-title">${paper.title}</h3>
       <div class="r-meta">${paper.authors} &bull; <em>${paper.journal}</em> (${paper.year}) ${paper.pmid ? `&bull; PMID: ${paper.pmid}` : ''} ${paper.doi ? `&bull; DOI: ${paper.doi}` : ''}</div>
 
+      <!-- Prominent Study Type Output in Search Results -->
+      <div class="study-type-prominent">
+        <span>🏷️ <strong>Study Type:</strong> <strong style="color:var(--text);font-weight:700">${design.name}</strong></span>
+      </div>
+
       <div style="margin-top:8px;font-size:.82rem;background:#f8fafb;padding:8px 12px;border-radius:6px;border:1px solid var(--border)">
         <strong>PICOS Data Extraction Preview:</strong> ${chars.sampleSize} &bull; <strong>Finding:</strong> ${chars.outcomeFinding}
       </div>
@@ -2186,7 +2356,7 @@ function renderPaperCards() {
       ${reasonBox}
 
       <div class="card-action-bar">
-        <div style="font-size:.78rem;color:var(--muted)">Citations: <strong>${paper.citationCount}</strong> &bull; Design: <strong>${design.name}</strong></div>
+        <div style="font-size:.78rem;color:var(--muted)">Citations: <strong>${paper.citationCount}</strong> &bull; 🏷️ Study Type: <strong style="color:var(--navy)">${design.name}</strong></div>
         <div style="display:flex;gap:6px">
           ${status === 'INCLUDED' 
             ? `<button type="button" class="mini-btn mini-btn-danger" onclick="togglePaperEligibility(${paper._globalIndex}, 'EXCLUDED')">✖ Exclude Study</button>` 
@@ -2482,7 +2652,7 @@ function renderRoBTable(papers) {
     rows += `
       <tr>
         <td><strong>${study}</strong></td>
-        <td>${p.screening?.design?.name || 'RCT'}</td>
+        <td><span class="design-badge ${p.screening?.design?.badgeClass || 'design-obs'}">${p.screening?.design?.name || 'Observational studies'}</span></td>
         <td class="${cellClass(d.d1)}">${d.d1}</td>
         <td class="${cellClass(d.d2)}">${d.d2}</td>
         <td class="${cellClass(d.d3)}">${d.d3}</td>
@@ -2500,8 +2670,8 @@ function renderRoBTable(papers) {
       <thead>
         <tr>
           <th>Study ID</th>
-          <th>Design</th>
-          <th>D1: Randomization</th>
+          <th>Study Type / Design</th>
+          <th>D1: Randomization / Index</th>
           <th>D2: Allocation / Deviation</th>
           <th>D3: Missing Data</th>
           <th>D4: Outcome Measurement</th>
@@ -2522,13 +2692,14 @@ function renderCharsTable(papers) {
 
   papers.forEach(p => {
     const chars = extractStudyCharacteristics(p, STATE.pico);
-    const des = p.screening?.design?.name || 'RCT';
+    const des = p.screening?.design?.name || 'Observational studies';
+    const badgeClass = p.screening?.design?.badgeClass || 'design-obs';
     const rob = p.screening?.rob?.overall || 'Low Risk';
 
     rows += `
       <tr>
         <td><strong>${chars.studyId}</strong></td>
-        <td>${des}</td>
+        <td><span class="design-badge ${badgeClass}">${des}</span></td>
         <td>${chars.sampleSize}</td>
         <td>${chars.population}</td>
         <td>${chars.intervention}</td>
@@ -2544,7 +2715,7 @@ function renderCharsTable(papers) {
       <thead>
         <tr>
           <th>Study ID</th>
-          <th>Design</th>
+          <th>Study Type / Design</th>
           <th>Sample Size</th>
           <th>Target Population</th>
           <th>Intervention</th>
@@ -2867,12 +3038,12 @@ async function exportPRISMAReportPDF() {
   doc.setFontSize(8);
   doc.setFont('times', 'bold');
   doc.text('Study ID', margin, y);
-  doc.text('Design', margin + 120, y);
-  doc.text('D1', margin + 220, y);
-  doc.text('D2', margin + 250, y);
-  doc.text('D3', margin + 280, y);
-  doc.text('D4', margin + 310, y);
-  doc.text('D5', margin + 340, y);
+  doc.text('Study Type', margin + 110, y);
+  doc.text('D1', margin + 230, y);
+  doc.text('D2', margin + 260, y);
+  doc.text('D3', margin + 290, y);
+  doc.text('D4', margin + 320, y);
+  doc.text('D5', margin + 350, y);
   doc.text('Overall RoB', margin + 380, y);
   y += 12;
 
@@ -2892,13 +3063,13 @@ async function exportPRISMAReportPDF() {
     const rob = p.screening?.rob || evaluateRiskOfBias(p);
     const d = rob.domains;
 
-    doc.text(studyId.substring(0, 22), margin, y);
-    doc.text((p.screening?.design?.name || 'RCT').substring(0, 18), margin + 120, y);
-    doc.text(d.d1.substring(0, 3), margin + 220, y);
-    doc.text(d.d2.substring(0, 3), margin + 250, y);
-    doc.text(d.d3.substring(0, 3), margin + 280, y);
-    doc.text(d.d4.substring(0, 3), margin + 310, y);
-    doc.text(d.d5.substring(0, 3), margin + 340, y);
+    doc.text(studyId.substring(0, 20), margin, y);
+    doc.text((p.screening?.design?.name || 'Observational studies').substring(0, 22), margin + 110, y);
+    doc.text(d.d1.substring(0, 3), margin + 230, y);
+    doc.text(d.d2.substring(0, 3), margin + 260, y);
+    doc.text(d.d3.substring(0, 3), margin + 290, y);
+    doc.text(d.d4.substring(0, 3), margin + 320, y);
+    doc.text(d.d5.substring(0, 3), margin + 350, y);
     doc.setFont('times', 'bold');
     doc.text(rob.overall, margin + 380, y);
     doc.setFont('times', 'normal');
