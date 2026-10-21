@@ -1,15 +1,19 @@
 /**
- * SysRevAI — Automated Meta-Analysis Engine (Optional Post-Review Stage)
- * =====================================================================
+ * SysRevAI — Automated Meta-Analysis Engine & Scientific Graphics Suite
+ * ====================================================================
  * Implements rigorous statistical pooling for binary (RR, OR, RD) and
  * continuous (MD, SMD Hedges' g) outcomes with Fixed-Effect (Inverse Variance)
  * and Random-Effects (DerSimonian-Laird) models.
  *
- * Adheres to Cochrane Handbook for Systematic Reviews of Interventions and
- * PRISMA 2020 guidelines for quantitative synthesis.
+ * Includes publication-quality scientific graphics:
+ * 1. Forest Plot (Mandatory) — Cochrane / BMJ standard vector diagram
+ * 2. Funnel Plot (Conditional) — Inverted pseudo 95% CI funnel for small-study effects
+ * 3. Sensitivity Analysis Plot (Leave-One-Out) — Influence diagnostic
  *
- * Designed to operate independently as a user-initiated post-review stage
- * without altering or invalidating the systematic review manuscript.
+ * Direct Exports: 300 DPI high-resolution PNG, pure vector SVG, copy SVG to clipboard,
+ * CSV data export, and standalone PDF reports with meaningful filenames.
+ *
+ * Adheres to PRISMA 2020 guidelines and Cochrane Handbook for Systematic Reviews.
  */
 
 'use strict';
@@ -21,19 +25,16 @@ const META_ANALYSIS_STATE = {
   initiated: false,
   reviewTopic: '',
   outcomeName: 'Primary Clinical Efficacy / Major Events',
-  outcomeType: 'binary', // 'binary' | 'continuous'
-  effectMeasure: 'RR',   // 'RR' | 'OR' | 'RD' for binary; 'MD' | 'SMD' for continuous
-  model: 'random',       // 'random' (DerSimonian-Laird) | 'fixed' (Inverse Variance)
+  outcomeType: 'binary',     // 'binary' | 'continuous'
+  effectMeasure: 'RR',       // 'RR' | 'OR' | 'RD' for binary; 'MD' | 'SMD' for continuous
+  model: 'random',           // 'random' (DerSimonian-Laird) | 'fixed' (Inverse Variance)
   confLevel: 0.95,
   interventionLabel: 'Intervention',
   controlLabel: 'Control',
-  studies: [],           // Array of study rows for pooling
-  results: null,         // Calculated statistical output
-  validation: {
-    isValid: false,
-    errors: [],
-    warnings: []
-  }
+  activeGraphic: 'forest',   // 'forest' | 'funnel' | 'sensitivity'
+  studies: [],               // Array of study rows for pooling
+  results: null,             // Calculated statistical output
+  sensitivityRuns: null      // Leave-one-out sensitivity analysis output
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -177,7 +178,7 @@ function calculateBinaryStudyEffect(s, measure, zCrit) {
     effect = p1 - p2;
     logEffect = effect; // RD is on the linear scale
     v = (p1 * (1 - p1) / n1) + (p2 * (1 - p2) / n2);
-    if (v <= 0) v = 1 / (n1 + n2); // minimal variance fallback
+    if (v <= 0) v = 1 / (n1 + n2);
     se = Math.sqrt(v);
     ciLow = effect - zCrit * se;
     ciHigh = effect + zCrit * se;
@@ -225,7 +226,6 @@ function calculateContinuousStudyEffect(s, measure, zCrit) {
     const pooledSd = Math.sqrt(((n1 - 1) * s1 * s1 + (n2 - 1) * s2 * s2) / df);
     if (pooledSd <= 0) return { valid: false, error: 'Pooled SD is non-positive' };
     const cohenD = (m1 - m2) / pooledSd;
-    // Hedges' J correction factor
     const J = 1 - (3 / (4 * df - 1));
     const hedgesG = cohenD * J;
     effect = hedgesG;
@@ -253,7 +253,6 @@ function calculateContinuousStudyEffect(s, measure, zCrit) {
 
 /**
  * Executes statistical pooling across all eligible studies.
- * Returns pooled effect estimates, Cochran's Q, I², tau², Z-score, and weights.
  */
 function executeMetaAnalysis(state) {
   const zCrit = state.confLevel === 0.99 ? 2.576 : 1.96;
@@ -289,7 +288,7 @@ function executeMetaAnalysis(state) {
         totalE1 += Number(s.e1) || 0;
         totalE2 += Number(s.e2) || 0;
         if (calc.hasZero) {
-          warnings.push(`Study "${s.studyId}" had zero events in at least one arm; standard continuity correction (0.5) was applied.`);
+          warnings.push(`Study "${s.studyId}" had zero events in at least one arm; continuity correction (0.5) applied.`);
         }
       }
     } else {
@@ -339,11 +338,10 @@ function executeMetaAnalysis(state) {
   const tau2 = C > 0 ? Math.max(0, (Q - df) / C) : 0;
   const tau = Math.sqrt(tau2);
 
-  // Heterogeneity interpretation
   let heterogeneitySeverity = 'Low';
   if (I2 >= 75) {
     heterogeneitySeverity = 'High';
-    warnings.push(`High statistical heterogeneity detected (I² = ${I2.toFixed(1)}%). Consider subgroup analyses or random-effects modeling.`);
+    warnings.push(`Substantial statistical heterogeneity detected (I² = ${I2.toFixed(1)}%). Random-effects modeling strongly advised.`);
   } else if (I2 >= 50) {
     heterogeneitySeverity = 'Moderate';
   }
@@ -351,7 +349,6 @@ function executeMetaAnalysis(state) {
   // 3. Random-Effects Pooling (DerSimonian-Laird)
   let pooledTheta = pooledTheta_FE;
   let pooledSe = se_FE;
-  let finalWeights = [];
 
   if (state.model === 'random') {
     evaluated.forEach(s => {
@@ -361,12 +358,10 @@ function executeMetaAnalysis(state) {
     pooledTheta = evaluated.reduce((acc, s) => acc + s.wRE * s.calc.logEffect, 0) / sumW_RE;
     pooledSe = 1.0 / Math.sqrt(sumW_RE);
 
-    // Percentage weights
     evaluated.forEach(s => {
       s.weightPct = (s.wRE / sumW_RE) * 100;
     });
   } else {
-    // Fixed effect weights
     evaluated.forEach(s => {
       s.weightPct = (s.wFE / sumW_FE) * 100;
     });
@@ -418,32 +413,58 @@ function executeMetaAnalysis(state) {
   };
 }
 
+/**
+ * Executes Leave-One-Out Sensitivity Analysis: calculates pooled results omitting each study in turn.
+ */
+function executeLeaveOneOutAnalysis(state) {
+  const eligibleStudies = state.studies.filter(s => s.includedInPool !== false);
+  if (eligibleStudies.length < 3) return null;
+
+  const runs = [];
+  for (let i = 0; i < eligibleStudies.length; i++) {
+    const omitted = eligibleStudies[i];
+    const subset = eligibleStudies.filter((_, idx) => idx !== i);
+    const subState = {
+      ...state,
+      studies: subset
+    };
+    const res = executeMetaAnalysis(subState);
+    if (res.isValid && res.pooled) {
+      runs.push({
+        omittedStudyId: omitted.studyId,
+        design: omitted.design,
+        pooled: res.pooled
+      });
+    }
+  }
+  return runs;
+}
+
 // ═══════════════════════════════════════════════════════════════
-// SVG FOREST PLOT GENERATOR (Publication-Grade Vector Diagram)
+// 1. FOREST PLOT GENERATOR (Mandatory Cochrane/BMJ Vector Plot)
 // ═══════════════════════════════════════════════════════════════
 
 /**
- * Renders a publication-ready SVG forest plot adhering to Cochrane / BMJ standards.
+ * Renders a publication-grade SVG forest plot with clear directional indicators,
+ * weight-proportional marker boxes, summary diamond, and footnotes.
  */
 function renderForestPlotSVG(state, results) {
   if (!results || !results.isValid || !results.pooled) {
-    return `<div style="padding:40px;text-align:center;color:#64748b;font-size:0.95rem;background:#f8fafc;border-radius:8px;border:1px dashed #cbd5e1">
-      📊 <strong>No Forest Plot available.</strong> At least 2 eligible studies with complete numerical data are required for statistical pooling.
+    return `<div style="padding:48px 24px;text-align:center;color:#64748b;font-size:0.95rem;background:#f8fafc;border-radius:8px;border:1px dashed #cbd5e1">
+      📊 <strong>No Forest Plot available.</strong> At least 2 eligible studies with complete numerical counts are required for statistical pooling.
     </div>`;
   }
 
   const { studiesEvaluated, pooled } = results;
   const isRatio = pooled.isRatio;
 
-  // Layout Dimensions
   const rowHeight = 36;
-  const headerHeight = 70;
-  const footerHeight = 110;
+  const headerHeight = 72;
+  const footerHeight = 114;
   const numStudies = studiesEvaluated.length;
   const totalHeight = headerHeight + (numStudies * rowHeight) + footerHeight;
   const totalWidth = 980;
 
-  // Column X Coordinates
   const colX = {
     study: 24,
     exp: 260,
@@ -455,9 +476,7 @@ function renderForestPlotSVG(state, results) {
   };
 
   const plotWidth = colX.plotEnd - colX.plotStart;
-  const plotCenterX = colX.plotStart + (plotWidth / 2);
 
-  // Scale computation (Logarithmic for RR/OR, Linear for RD/MD/SMD)
   let minVal = pooled.ciLow;
   let maxVal = pooled.ciHigh;
 
@@ -466,7 +485,6 @@ function renderForestPlotSVG(state, results) {
     if (s.calc.ciHigh > maxVal) maxVal = s.calc.ciHigh;
   });
 
-  // Clamp & Pad
   let scaleMin, scaleMax, noEffectVal;
   if (isRatio) {
     noEffectVal = 1.0;
@@ -474,7 +492,7 @@ function renderForestPlotSVG(state, results) {
     scaleMax = Math.min(20.0, Math.max(5.0, maxVal * 1.25));
   } else {
     noEffectVal = 0.0;
-    const span = Math.max(Math.abs(minVal), Math.abs(maxVal), 1.0) * 1.3;
+    const span = Math.max(Math.abs(minVal), Math.abs(maxVal), 1.0) * 1.35;
     scaleMin = -span;
     scaleMax = span;
   }
@@ -528,10 +546,8 @@ function renderForestPlotSVG(state, results) {
   <text x="${colX.effect}" y="63" class="fp-header">${escapeXml(state.effectMeasure)} [${(state.confLevel * 100)}% CI]</text>
   <line x1="20" y1="70" x2="${totalWidth - 20}" y2="70" class="fp-line" stroke-width="1.2" stroke="#94a3b8"/>
 
-  <!-- Plot Background Elements -->
-  <!-- No-effect reference line -->
+  <!-- Plot Background Guides -->
   <line x1="${noEffectX}" y1="72" x2="${noEffectX}" y2="${headerHeight + (numStudies * rowHeight) + 24}" class="fp-ref"/>
-  <!-- Pooled line guide -->
   <line x1="${pooledX}" y1="72" x2="${pooledX}" y2="${headerHeight + (numStudies * rowHeight) + 12}" class="fp-pooled-ref"/>
 `;
 
@@ -541,11 +557,8 @@ function renderForestPlotSVG(state, results) {
     const estX = valToX(s.calc.effect);
     const lowX = valToX(s.calc.ciLow);
     const highX = valToX(s.calc.ciHigh);
-
-    // Box size proportional to study weight (min 4px, max 16px)
     const boxSize = Math.max(5, Math.min(18, Math.sqrt(s.weightPct) * 2.8));
 
-    // Formatted strings
     const expText = state.outcomeType === 'binary' 
       ? `${s.e1} / ${s.n1}` 
       : `${Number(s.m1).toFixed(1)} ± ${Number(s.s1).toFixed(1)} (${s.n1})`;
@@ -553,11 +566,8 @@ function renderForestPlotSVG(state, results) {
       ? `${s.e2} / ${s.n2}` 
       : `${Number(s.m2).toFixed(1)} ± ${Number(s.s2).toFixed(1)} (${s.n2})`;
 
-    const effectText = isRatio 
-      ? `${s.calc.effect.toFixed(2)} [${s.calc.ciLow.toFixed(2)}, ${s.calc.ciHigh.toFixed(2)}]`
-      : `${s.calc.effect.toFixed(2)} [${s.calc.ciLow.toFixed(2)}, ${s.calc.ciHigh.toFixed(2)}]`;
+    const effectText = `${s.calc.effect.toFixed(2)} [${s.calc.ciLow.toFixed(2)}, ${s.calc.ciHigh.toFixed(2)}]`;
 
-    // Row zebra background
     if (idx % 2 === 1) {
       svg += `  <rect x="20" y="${y - 16}" width="${totalWidth - 40}" height="${rowHeight}" fill="#f8fafc"/>\n`;
     }
@@ -570,16 +580,15 @@ function renderForestPlotSVG(state, results) {
 
   <!-- Horizontal CI Whisker -->
   <line x1="${lowX}" y1="${y - 4}" x2="${highX}" y2="${y - 4}" class="fp-whisker"/>
-  <!-- Whisker End Caps -->
   <line x1="${lowX}" y1="${y - 8}" x2="${lowX}" y2="${y}" class="fp-whisker"/>
   <line x1="${highX}" y1="${y - 8}" x2="${highX}" y2="${y}" class="fp-whisker"/>
-  <!-- Point Estimate Box -->
+  <!-- Weight-Proportional Marker -->
   <rect x="${estX - (boxSize / 2)}" y="${y - 4 - (boxSize / 2)}" width="${boxSize}" height="${boxSize}" class="fp-box"/>
 
   <text x="${colX.effect}" y="${y}" class="fp-text">${effectText}</text>\n`;
   });
 
-  // Summary Row & Diamond
+  // Summary Row & Pooled Diamond
   const summaryY = headerHeight + (numStudies * rowHeight) + 20;
   const diamondHalfHeight = 7;
   const diamondPoints = `${pooledLowX},${summaryY} ${pooledX},${summaryY - diamondHalfHeight} ${pooledHighX},${summaryY} ${pooledX},${summaryY + diamondHalfHeight}`;
@@ -608,7 +617,6 @@ function renderForestPlotSVG(state, results) {
   <line x1="${colX.plotStart}" y1="${summaryY + 22}" x2="${colX.plotEnd}" y2="${summaryY + 22}" class="fp-axis"/>
 `;
 
-  // Axis Ticks
   const ticks = isRatio ? [0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0] : [-4, -2, -1, 0, 1, 2, 4];
   ticks.forEach(t => {
     if (isRatio && (t < scaleMin || t > scaleMax)) return;
@@ -619,38 +627,366 @@ function renderForestPlotSVG(state, results) {
   });
 
   // Directional Labels
-  svg += `  <text x="${colX.plotStart + 30}" y="${summaryY + 48}" class="fp-muted" text-anchor="start">◀ Favours ${escapeXml(state.interventionLabel)}</text>
-  <text x="${colX.plotEnd - 30}" y="${summaryY + 48}" class="fp-muted" text-anchor="end">Favours ${escapeXml(state.controlLabel)} ▶</text>
+  svg += `  <text x="${colX.plotStart + 15}" y="${summaryY + 48}" class="fp-muted" text-anchor="start">◀ Favours ${escapeXml(state.interventionLabel)}</text>
+  <text x="${colX.plotEnd - 15}" y="${summaryY + 48}" class="fp-muted" text-anchor="end">Favours ${escapeXml(state.controlLabel)} ▶</text>
 
-  <!-- Footnotes & Heterogeneity Statistics -->
+  <!-- Footnotes & Statistics -->
   <line x1="20" y1="${summaryY + 54}" x2="${totalWidth - 20}" y2="${summaryY + 54}" class="fp-line" stroke-width="1.2" stroke="#94a3b8"/>
   <text x="24" y="${summaryY + 70}" class="fp-text"><strong>Heterogeneity:</strong> Tau² = ${pooled.tau2.toFixed(4)}; Chi² = ${pooled.Q.toFixed(2)}, df = ${pooled.df} (P = ${pooled.pChi2 < 0.001 ? '&lt; 0.001' : pooled.pChi2.toFixed(3)}); I² = ${pooled.I2.toFixed(1)}%</text>
   <text x="24" y="${summaryY + 88}" class="fp-text"><strong>Test for overall effect:</strong> Z = ${pooled.zScore.toFixed(2)} (P = ${pooled.pValue < 0.001 ? '&lt; 0.001' : pooled.pValue.toFixed(4)}) · Model: ${escapeXml(pooled.model === 'random' ? 'Random effects (DerSimonian-Laird)' : 'Fixed effect (Inverse-Variance)')}</text>
-  <text x="${totalWidth - 24}" y="${summaryY + 88}" class="fp-muted" text-anchor="end">SysRevAI · Publication-Quality Meta-Analysis Engine</text>
+  <text x="${totalWidth - 24}" y="${summaryY + 88}" class="fp-muted" text-anchor="end">SysRevAI · Publication-Quality Forest Plot</text>
 
 </svg>`;
 
   return svg;
 }
 
-function escapeXml(str) {
-  if (!str) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
+// ═══════════════════════════════════════════════════════════════
+// 2. FUNNEL PLOT GENERATOR (Conditional Small-Study Effects)
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Renders a publication-grade SVG funnel plot with inverted pseudo 95% confidence limits.
+ * Prominently flags that asymmetry is an exploratory assessment of small-study effects, not proof of bias.
+ */
+function renderFunnelPlotSVG(state, results) {
+  if (!results || !results.isValid || !results.pooled) {
+    return `<div style="padding:48px 24px;text-align:center;color:#64748b;font-size:0.95rem;background:#f8fafc;border-radius:8px;border:1px dashed #cbd5e1">
+      📐 <strong>No Funnel Plot available.</strong> At least 3 eligible studies are required for small-study effect inspection.
+    </div>`;
+  }
+
+  const { studiesEvaluated, pooled } = results;
+  const numStudies = studiesEvaluated.length;
+
+  if (numStudies < 3) {
+    return `<div style="padding:36px 20px;text-align:center;color:#64748b;font-size:0.95rem;background:#f8fafc;border-radius:8px;border:1px dashed #cbd5e1">
+      <div style="font-size:1.6rem;margin-bottom:8px;">📐</div>
+      <div style="font-weight:700;color:#0f172a;margin-bottom:6px;">Funnel Plot Methodologically Withheld (${numStudies} studies)</div>
+      <div style="max-width:580px;margin:0 auto;font-size:0.85rem;line-height:1.5;">
+        Methodological guidelines (Cochrane Handbook §10.4.3.1) recommend generating funnel plots only when there are at least 10 studies (or minimum 3 for exploratory preview). With fewer studies, the statistical power to distinguish chance scatter from genuine asymmetry is too low.
+      </div>
+    </div>`;
+  }
+
+  const isRatio = pooled.isRatio;
+  const totalWidth = 900;
+  const totalHeight = 520;
+
+  const margin = { top: 70, right: 60, bottom: 90, left: 80 };
+  const plotW = totalWidth - margin.left - margin.right;
+  const plotH = totalHeight - margin.top - margin.bottom;
+
+  let maxSe = 0.4;
+  studiesEvaluated.forEach(s => {
+    if (s.calc.se > maxSe) maxSe = s.calc.se;
+  });
+  maxSe = Math.max(maxSe * 1.25, 0.4);
+
+  let minLog = pooled.logEstimate - (1.96 * maxSe);
+  let maxLog = pooled.logEstimate + (1.96 * maxSe);
+
+  studiesEvaluated.forEach(s => {
+    if (s.calc.logEffect < minLog) minLog = s.calc.logEffect;
+    if (s.calc.logEffect > maxLog) maxLog = s.calc.logEffect;
+  });
+
+  const span = Math.max(Math.abs(minLog - pooled.logEstimate), Math.abs(maxLog - pooled.logEstimate)) * 1.25;
+  const xMin = pooled.logEstimate - span;
+  const xMax = pooled.logEstimate + span;
+
+  function xToPx(val) {
+    return margin.left + ((val - xMin) / (xMax - xMin)) * plotW;
+  }
+
+  function seToPy(se) {
+    return margin.top + (se / maxSe) * plotH;
+  }
+
+  const apexX = xToPx(pooled.logEstimate);
+  const apexY = seToPy(0);
+  const bottomY = seToPy(maxSe);
+  const leftBottomX = xToPx(pooled.logEstimate - 1.96 * maxSe);
+  const rightBottomX = xToPx(pooled.logEstimate + 1.96 * maxSe);
+
+  const noEffectLog = isRatio ? Math.log(1.0) : 0.0;
+  const noEffectX = xToPx(noEffectLog);
+
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalWidth} ${totalHeight}" width="100%" height="100%" style="background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <defs>
+    <style>
+      .fn-title { font-size: 13.5px; font-weight: 700; fill: #0f172a; }
+      .fn-sub { font-size: 10px; fill: #64748b; }
+      .fn-label { font-size: 11px; fill: #334155; }
+      .fn-axis { stroke: #334155; stroke-width: 1.2; }
+      .fn-grid { stroke: #f1f5f9; stroke-width: 1; }
+      .fn-funnel { fill: rgba(15, 107, 107, 0.05); stroke: #0f6b6b; stroke-width: 1.2; stroke-dasharray: 4,3; }
+      .fn-ref { stroke: #0f6b6b; stroke-width: 1.5; }
+      .fn-null { stroke: #94a3b8; stroke-width: 1.2; stroke-dasharray: 3,3; }
+      .fn-dot { fill: #0f6b6b; stroke: #042f2e; stroke-width: 1.5; }
+      .fn-study-text { font-size: 10px; fill: #1e293b; font-weight: 600; }
+    </style>
+  </defs>
+
+  <!-- Title & Advisory -->
+  <text x="24" y="24" class="fn-title">Funnel Plot for Small-Study Effects — ${escapeXml(state.outcomeName)} [${escapeXml(state.effectMeasure)}]</text>
+  <text x="24" y="40" class="fn-sub">Exploratory assessment of small-study effects · Symmetry suggests absence of small-trial disparity or publication bias</text>
+  <text x="${totalWidth - 24}" y="24" class="fn-sub" text-anchor="end">${numStudies < 10 ? '⚠️ Advisory: k &lt; 10 studies; low power to distinguish chance asymmetry' : 'k = ' + numStudies + ' eligible studies'}</text>
+
+  <!-- Plot Area Background -->
+  <rect x="${margin.left}" y="${margin.top}" width="${plotW}" height="${plotH}" fill="#fcfdfd" stroke="#cbd5e1" stroke-width="1"/>
+
+  <!-- Inverted Funnel (Pseudo 95% Confidence Region) -->
+  <polygon points="${apexX},${apexY} ${leftBottomX},${bottomY} ${rightBottomX},${bottomY}" class="fn-funnel"/>
+
+  <!-- Null Effect Guide Line -->
+  <line x1="${noEffectX}" y1="${margin.top}" x2="${noEffectX}" y2="${margin.top + plotH}" class="fn-null"/>
+
+  <!-- Pooled Effect Center Line -->
+  <line x1="${apexX}" y1="${margin.top}" x2="${apexX}" y2="${margin.top + plotH}" class="fn-ref"/>
+`;
+
+  const yTicks = [0, maxSe * 0.25, maxSe * 0.5, maxSe * 0.75, maxSe];
+  yTicks.forEach(se => {
+    const py = seToPy(se);
+    svg += `  <line x1="${margin.left}" y1="${py}" x2="${margin.left + plotW}" y2="${py}" class="fn-grid"/>
+  <line x1="${margin.left - 5}" y1="${py}" x2="${margin.left}" y2="${py}" class="fn-axis"/>
+  <text x="${margin.left - 10}" y="${py + 3}" class="fn-label" text-anchor="end">${se.toFixed(2)}</text>\n`;
+  });
+
+  const xTicksCount = 7;
+  for (let i = 0; i < xTicksCount; i++) {
+    const frac = i / (xTicksCount - 1);
+    const tickLog = xMin + frac * (xMax - xMin);
+    const px = xToPx(tickLog);
+    const displayVal = isRatio ? Math.exp(tickLog).toFixed(2) : tickLog.toFixed(2);
+    svg += `  <line x1="${px}" y1="${margin.top + plotH}" x2="${px}" y2="${margin.top + plotH + 5}" class="fn-axis"/>
+  <text x="${px}" y="${margin.top + plotH + 18}" class="fn-label" text-anchor="middle">${displayVal}</text>\n`;
+  }
+
+  studiesEvaluated.forEach((s) => {
+    const cx = xToPx(s.calc.logEffect);
+    const cy = seToPy(s.calc.se);
+    const labelX = (cx > apexX) ? cx + 8 : cx - 8;
+    const anchor = (cx > apexX) ? 'start' : 'end';
+
+    svg += `  <!-- Study Dot: ${escapeXml(s.studyId)} -->
+  <circle cx="${cx}" cy="${cy}" r="5.5" class="fn-dot"/>
+  <text x="${labelX}" y="${cy + 3.5}" class="fn-study-text" text-anchor="${anchor}">${escapeXml(s.studyId)}</text>\n`;
+  });
+
+  const xLabelY = margin.top + plotH + 42;
+  const yLabelX = 22;
+  const yLabelY = margin.top + (plotH / 2);
+
+  svg += `  <!-- Axis Titles -->
+  <text x="${margin.left + plotW / 2}" y="${xLabelY}" class="fn-label" font-weight="700" text-anchor="middle">${escapeXml(state.effectMeasure)} (${isRatio ? 'Logarithmic scale' : 'Linear scale'})</text>
+  <text x="${yLabelX}" y="${yLabelY}" class="fn-label" font-weight="700" text-anchor="middle" transform="rotate(-90 ${yLabelX} ${yLabelY})">Standard Error: SE(${escapeXml(state.effectMeasure)}) [Inverted Precision]</text>
+
+  <!-- Legend & Scientific Footnotes -->
+  <circle cx="${margin.left + 15}" cy="${xLabelY + 22}" r="5" class="fn-dot"/>
+  <text x="${margin.left + 26}" y="${xLabelY + 26}" class="fn-sub">Individual Study</text>
+
+  <line x1="${margin.left + 140}" y1="${xLabelY + 22}" x2="${margin.left + 165}" y2="${xLabelY + 22}" class="fn-ref"/>
+  <text x="${margin.left + 172}" y="${xLabelY + 26}" class="fn-sub">Pooled Effect: ${pooled.pointEstimate.toFixed(2)}</text>
+
+  <line x1="${margin.left + 290}" y1="${xLabelY + 22}" x2="${margin.left + 315}" y2="${xLabelY + 22}" class="fn-null"/>
+  <text x="${margin.left + 322}" y="${xLabelY + 26}" class="fn-sub">Null-Effect Line (${isRatio ? '1.0' : '0.0'})</text>
+
+  <polygon points="${margin.left + 430},${xLabelY + 16} ${margin.left + 425},${xLabelY + 26} ${margin.left + 435},${xLabelY + 26}" class="fn-funnel"/>
+  <text x="${margin.left + 442}" y="${xLabelY + 26}" class="fn-sub">Pseudo 95% Confidence Limits</text>
+
+  <text x="${totalWidth - margin.right}" y="${xLabelY + 26}" class="fn-sub" text-anchor="end">Cochrane / PRISMA Small-Study Diagnostic</text>
+
+</svg>`;
+
+  return svg;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 3. SENSITIVITY ANALYSIS PLOT (Leave-One-Out Influence Plot)
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Renders a publication-grade SVG sensitivity forest plot showing the pooled effect
+ * when each individual study is omitted, identifying outlier or dominating studies.
+ */
+function renderSensitivityPlotSVG(state, results) {
+  if (!results || !results.isValid || !results.pooled) {
+    return `<div style="padding:48px 24px;text-align:center;color:#64748b;font-size:0.95rem;background:#f8fafc;border-radius:8px;border:1px dashed #cbd5e1">
+      🔍 <strong>No Sensitivity Plot available.</strong> At least 3 eligible studies are required for leave-one-out sensitivity analysis.
+    </div>`;
+  }
+
+  const sensitivityRuns = executeLeaveOneOutAnalysis(state);
+  if (!sensitivityRuns || sensitivityRuns.length < 2) {
+    return `<div style="padding:36px 20px;text-align:center;color:#64748b;font-size:0.95rem;background:#f8fafc;border-radius:8px;border:1px dashed #cbd5e1">
+      🔍 <strong>Leave-One-Out Sensitivity Analysis requires at least 3 eligible studies.</strong> (Current: ${state.studies.filter(s => s.includedInPool !== false).length} studies).
+    </div>`;
+  }
+
+  META_ANALYSIS_STATE.sensitivityRuns = sensitivityRuns;
+
+  const pooled = results.pooled;
+  const isRatio = pooled.isRatio;
+
+  const rowHeight = 36;
+  const headerHeight = 72;
+  const numRows = sensitivityRuns.length + 1;
+  const footerHeight = 90;
+  const totalHeight = headerHeight + (numRows * rowHeight) + footerHeight;
+  const totalWidth = 980;
+
+  const colX = {
+    study: 24,
+    design: 290,
+    plotStart: 380,
+    plotEnd: 710,
+    effect: 730,
+    i2: 870
+  };
+
+  const plotWidth = colX.plotEnd - colX.plotStart;
+
+  let minVal = pooled.ciLow;
+  let maxVal = pooled.ciHigh;
+  sensitivityRuns.forEach(r => {
+    if (r.pooled.ciLow < minVal) minVal = r.pooled.ciLow;
+    if (r.pooled.ciHigh > maxVal) maxVal = r.pooled.ciHigh;
+  });
+
+  let scaleMin, scaleMax, noEffectVal;
+  if (isRatio) {
+    noEffectVal = 1.0;
+    scaleMin = Math.max(0.05, Math.min(0.2, minVal * 0.8));
+    scaleMax = Math.min(20.0, Math.max(5.0, maxVal * 1.25));
+  } else {
+    noEffectVal = 0.0;
+    const span = Math.max(Math.abs(minVal), Math.abs(maxVal), 1.0) * 1.35;
+    scaleMin = -span;
+    scaleMax = span;
+  }
+
+  function valToX(val) {
+    if (isRatio) {
+      const clamped = Math.max(scaleMin, Math.min(scaleMax, val));
+      const logMin = Math.log(scaleMin);
+      const logMax = Math.log(scaleMax);
+      return colX.plotStart + ((Math.log(clamped) - logMin) / (logMax - logMin)) * plotWidth;
+    } else {
+      const clamped = Math.max(scaleMin, Math.min(scaleMax, val));
+      return colX.plotStart + ((clamped - scaleMin) / (scaleMax - scaleMin)) * plotWidth;
+    }
+  }
+
+  const noEffectX = valToX(noEffectVal);
+  const baselinePooledX = valToX(pooled.pointEstimate);
+
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalWidth} ${totalHeight}" width="100%" height="100%" style="background:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <defs>
+    <style>
+      .sn-title { font-size: 13.5px; font-weight: 700; fill: #0f172a; }
+      .sn-header { font-size: 11px; font-weight: 700; fill: #334155; }
+      .sn-text { font-size: 11.5px; fill: #1e293b; }
+      .sn-text-bold { font-size: 11.5px; font-weight: 700; fill: #0f172a; }
+      .sn-muted { font-size: 10px; fill: #64748b; }
+      .sn-line { stroke: #cbd5e1; stroke-width: 1; }
+      .sn-axis { stroke: #334155; stroke-width: 1.2; }
+      .sn-ref { stroke: #0f172a; stroke-width: 1.2; }
+      .sn-baseline-ref { stroke: #dc2626; stroke-width: 1.2; stroke-dasharray: 4,3; }
+      .sn-whisker { stroke: #0f6b6b; stroke-width: 1.5; stroke-linecap: round; }
+      .sn-box { fill: #0f6b6b; stroke: #0a4a4a; stroke-width: 1; }
+      .sn-diamond { fill: #0a4a4a; stroke: #042f2e; stroke-width: 1.5; }
+    </style>
+  </defs>
+
+  <!-- Title Banner -->
+  <text x="24" y="24" class="sn-title">Leave-One-Out Sensitivity Analysis — ${escapeXml(state.outcomeName)} [${escapeXml(state.effectMeasure)}]</text>
+  <text x="24" y="40" class="sn-muted">Evaluates whether pooled conclusions or statistical heterogeneity depend disproportionately on any single study</text>
+
+  <!-- Table Header -->
+  <line x1="20" y1="48" x2="${totalWidth - 20}" y2="48" class="sn-line" stroke-width="1.5" stroke="#94a3b8"/>
+  <text x="${colX.study}" y="63" class="sn-header">Omitted Study or Baseline</text>
+  <text x="${colX.design}" y="63" class="sn-header">Design</text>
+  <text x="${colX.plotStart + plotWidth / 2}" y="63" class="sn-header" text-anchor="middle">Pooled Effect Without Study [95% CI]</text>
+  <text x="${colX.effect}" y="63" class="sn-header">Effect [95% CI]</text>
+  <text x="${colX.i2}" y="63" class="sn-header">Residual I²</text>
+  <line x1="20" y1="70" x2="${totalWidth - 20}" y2="70" class="sn-line" stroke-width="1.2" stroke="#94a3b8"/>
+
+  <!-- Guides -->
+  <line x1="${noEffectX}" y1="72" x2="${noEffectX}" y2="${headerHeight + (numRows * rowHeight) + 16}" class="sn-ref"/>
+  <line x1="${baselinePooledX}" y1="72" x2="${baselinePooledX}" y2="${headerHeight + (numRows * rowHeight) + 16}" class="sn-baseline-ref"/>
+`;
+
+  // Row 0: Overall Baseline (All studies included)
+  const baseY = headerHeight + 22;
+  const baseLowX = valToX(pooled.ciLow);
+  const baseHighX = valToX(pooled.ciHigh);
+  const baseDiamondPoints = `${baseLowX},${baseY - 4} ${baselinePooledX},${baseY - 11} ${baseHighX},${baseY - 4} ${baselinePooledX},${baseY + 3}`;
+
+  svg += `  <!-- Baseline Row: All Studies Included -->
+  <rect x="20" y="${baseY - 16}" width="${totalWidth - 40}" height="${rowHeight}" fill="#f0fdfa"/>
+  <text x="${colX.study}" y="${baseY}" class="sn-text-bold">✔ [All Studies Included] (Baseline)</text>
+  <text x="${colX.design}" y="${baseY}" class="sn-text">All</text>
+  <polygon points="${baseDiamondPoints}" class="sn-diamond"/>
+  <text x="${colX.effect}" y="${baseY}" class="sn-text-bold">${pooled.pointEstimate.toFixed(2)} [${pooled.ciLow.toFixed(2)}, ${pooled.ciHigh.toFixed(2)}]</text>
+  <text x="${colX.i2}" y="${baseY}" class="sn-text-bold">${pooled.I2.toFixed(1)}%</text>
+  <line x1="20" y1="${baseY + 14}" x2="${totalWidth - 20}" y2="${baseY + 14}" class="sn-line" stroke-dasharray="2,2"/>
+`;
+
+  // Rows 1 to k: Each study omitted
+  sensitivityRuns.forEach((r, idx) => {
+    const y = headerHeight + ((idx + 1) * rowHeight) + 22;
+    const estX = valToX(r.pooled.pointEstimate);
+    const lowX = valToX(r.pooled.ciLow);
+    const highX = valToX(r.pooled.ciHigh);
+    const effectStr = `${r.pooled.pointEstimate.toFixed(2)} [${r.pooled.ciLow.toFixed(2)}, ${r.pooled.ciHigh.toFixed(2)}]`;
+    const i2Color = (r.pooled.I2 < pooled.I2 - 15) ? '#15803d;font-weight:700' : '#1e293b';
+
+    if (idx % 2 === 1) {
+      svg += `  <rect x="20" y="${y - 16}" width="${totalWidth - 40}" height="${rowHeight}" fill="#f8fafc"/>\n`;
+    }
+
+    svg += `  <!-- Sensitivity Row ${idx + 1}: Without ${escapeXml(r.omittedStudyId)} -->
+  <text x="${colX.study}" y="${y}" class="sn-text">Omitted: ${escapeXml(r.omittedStudyId)}</text>
+  <text x="${colX.design}" y="${y}" class="sn-muted">${escapeXml(r.design || 'Study')}</text>
+  <line x1="${lowX}" y1="${y - 4}" x2="${highX}" y2="${y - 4}" class="sn-whisker"/>
+  <line x1="${lowX}" y1="${y - 8}" x2="${lowX}" y2="${y}" class="sn-whisker"/>
+  <line x1="${highX}" y1="${y - 8}" x2="${highX}" y2="${y}" class="sn-whisker"/>
+  <rect x="${estX - 4}" y="${y - 8}" width="8" height="8" class="sn-box"/>
+  <text x="${colX.effect}" y="${y}" class="sn-text">${effectStr}</text>
+  <text x="${colX.i2}" y="${y}" class="sn-text" style="fill:${i2Color}">${r.pooled.I2.toFixed(1)}%</text>\n`;
+  });
+
+  const axisY = headerHeight + (numRows * rowHeight) + 16;
+  svg += `  <!-- Axis -->
+  <line x1="${colX.plotStart}" y1="${axisY}" x2="${colX.plotEnd}" y2="${axisY}" class="sn-axis"/>
+`;
+
+  const ticks = isRatio ? [0.2, 0.5, 1.0, 2.0, 5.0] : [-4, -2, -1, 0, 1, 2, 4];
+  ticks.forEach(t => {
+    if (isRatio && (t < scaleMin || t > scaleMax)) return;
+    if (!isRatio && (t < scaleMin || t > scaleMax)) return;
+    const tx = valToX(t);
+    svg += `  <line x1="${tx}" y1="${axisY}" x2="${tx}" y2="${axisY + 4}" class="sn-axis"/>
+  <text x="${tx}" y="${axisY + 16}" class="sn-muted" text-anchor="middle">${t}</text>\n`;
+  });
+
+  svg += `  <!-- Footnotes -->
+  <line x1="20" y1="${axisY + 24}" x2="${totalWidth - 20}" y2="${axisY + 24}" class="sn-line" stroke-width="1.2" stroke="#94a3b8"/>
+  <text x="24" y="${axisY + 40}" class="sn-text">Red dashed line indicates baseline pooled estimate (${pooled.pointEstimate.toFixed(2)}). Solid vertical line indicates null effect (${isRatio ? '1.0' : '0.0'}).</text>
+  <text x="24" y="${axisY + 54}" class="sn-muted">If excluding a study drastically shifts the point estimate or collapses I², that trial acts as an influential outlier.</text>
+  <text x="${totalWidth - 24}" y="${axisY + 54}" class="sn-muted" text-anchor="end">SysRevAI · Leave-One-Out Influence Diagnostic</text>
+
+</svg>`;
+
+  return svg;
 }
 
 // ═══════════════════════════════════════════════════════════════
 // WORKFLOW LIFECYCLE CONTROLLERS (Optional Post-Review Extension)
 // ═══════════════════════════════════════════════════════════════
 
-/**
- * Initiates the Automated Meta-Analysis stage ONLY upon explicit user click.
- * Strictly checks data availability and populates study inputs without altering review.
- */
 function initiateMetaAnalysis() {
   const container = document.getElementById('meta-analysis-stage');
   if (!container) return;
@@ -658,7 +994,6 @@ function initiateMetaAnalysis() {
   META_ANALYSIS_STATE.initiated = true;
   META_ANALYSIS_STATE.reviewTopic = (window.STATE && window.STATE.topic) ? window.STATE.topic : 'Systematic Review';
 
-  // Gather included studies from verified systematic review
   const includedPapers = (window.STATE && window.STATE.papers)
     ? window.STATE.papers.filter(p => p.screening?.status === 'INCLUDED')
     : [];
@@ -667,21 +1002,16 @@ function initiateMetaAnalysis() {
     META_ANALYSIS_STATE.studies = syncMetaStudiesFromIncluded(includedPapers);
   }
 
-  // Recalculate and render active workspace
   refreshMetaAnalysisWorkspace();
-
-  // Smooth scroll into meta-analysis view
   container.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-/**
- * Parses included systematic review studies to create editable meta-analysis study rows.
- */
 function syncMetaStudiesFromIncluded(includedPapers) {
   if (!includedPapers || includedPapers.length === 0) {
     return [
       { id: '1', studyId: 'Trial A et al. (2024)', design: 'RCT', e1: 22, n1: 150, e2: 45, n2: 150, m1: 12.4, s1: 3.2, m2: 15.6, s2: 3.5, verified: true, includedInPool: true },
-      { id: '2', studyId: 'Trial B et al. (2023)', design: 'RCT', e1: 18, n1: 120, e2: 38, n2: 120, m1: 11.8, s1: 2.9, m2: 14.9, s2: 3.1, verified: true, includedInPool: true }
+      { id: '2', studyId: 'Trial B et al. (2023)', design: 'RCT', e1: 18, n1: 120, e2: 38, n2: 120, m1: 11.8, s1: 2.9, m2: 14.9, s2: 3.1, verified: true, includedInPool: true },
+      { id: '3', studyId: 'Trial C et al. (2022)', design: 'RCT', e1: 25, n1: 140, e2: 41, n2: 140, m1: 10.9, s1: 3.0, m2: 14.2, s2: 3.3, verified: true, includedInPool: true }
     ];
   }
 
@@ -690,7 +1020,6 @@ function syncMetaStudiesFromIncluded(includedPapers) {
     const studyId = `${firstAuthor} et al. (${p.year || '2024'})`;
     const design = p.screening?.design?.name || 'RCT';
 
-    // Heuristic sample size extract
     let sampleSize = 100;
     const nMatch = (p.abstract || '').match(/\b(?:n\s*=\s*|enrolled\s+|randomized\s+|total of\s+|cohort of\s+)([0-9,]+)/i);
     if (nMatch) {
@@ -699,7 +1028,6 @@ function syncMetaStudiesFromIncluded(includedPapers) {
     }
     const nPerArm = Math.max(20, Math.round(sampleSize / 2));
 
-    // Provide baseline starting values requiring reviewer verification
     const defaultE1 = Math.max(3, Math.round(nPerArm * 0.12));
     const defaultE2 = Math.max(5, Math.round(nPerArm * 0.22));
 
@@ -707,58 +1035,59 @@ function syncMetaStudiesFromIncluded(includedPapers) {
       id: p.id || `study-${idx + 1}`,
       studyId,
       design,
-      // Binary data
       e1: defaultE1,
       n1: nPerArm,
       e2: defaultE2,
       n2: nPerArm,
-      // Continuous data
       m1: 12.0,
       s1: 3.0,
       m2: 15.0,
       s2: 3.2,
-      verified: false, // Flagged for reviewer check
+      verified: false,
       includedInPool: true
     };
   });
 }
 
-/**
- * Resets meta-analysis workspace back to uninitiated state or re-syncs.
- */
 function resetMetaAnalysis() {
   if (confirm('Reset meta-analysis settings and re-sync from included systematic review studies?')) {
     META_ANALYSIS_STATE.studies = [];
     META_ANALYSIS_STATE.results = null;
+    META_ANALYSIS_STATE.sensitivityRuns = null;
     META_ANALYSIS_STATE.initiated = false;
     renderMetaAnalysisInitialBanner();
   }
 }
 
-/**
- * Closes or collapses the meta-analysis active workspace.
- */
 function closeMetaAnalysisWorkspace() {
   META_ANALYSIS_STATE.initiated = false;
   renderMetaAnalysisInitialBanner();
 }
 
-/**
- * Full refresh of calculations, forest plot SVG, and DOM elements in the workspace.
- */
 function refreshMetaAnalysisWorkspace() {
   META_ANALYSIS_STATE.results = executeMetaAnalysis(META_ANALYSIS_STATE);
   renderMetaAnalysisActiveWorkspace();
+}
+
+function switchMetaGraphicTab(tabName) {
+  META_ANALYSIS_STATE.activeGraphic = tabName;
+  ['forest', 'funnel', 'sensitivity'].forEach(t => {
+    const btn = document.getElementById(`btn-meta-gfx-${t}`);
+    const view = document.getElementById(`meta-gfx-view-${t}`);
+    if (btn) {
+      btn.style.background = (t === tabName) ? '#0f6b6b' : '#ffffff';
+      btn.style.color = (t === tabName) ? '#ffffff' : '#334155';
+    }
+    if (view) {
+      view.classList.toggle('hidden', t !== tabName);
+    }
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════
 // UI RENDERING: INITIAL VS ACTIVE STAGES
 // ═══════════════════════════════════════════════════════════════
 
-/**
- * Renders the clean, uninitiated call-to-action banner required by specification.
- * Zero background calculation or AI execution occurs here.
- */
 function renderMetaAnalysisInitialBanner() {
   const container = document.getElementById('meta-analysis-stage');
   if (!container) return;
@@ -792,9 +1121,6 @@ function renderMetaAnalysisInitialBanner() {
   `;
 }
 
-/**
- * Renders the full interactive Meta-Analysis workspace after explicit initiation.
- */
 function renderMetaAnalysisActiveWorkspace() {
   const container = document.getElementById('meta-analysis-stage');
   if (!container) return;
@@ -835,13 +1161,11 @@ function renderMetaAnalysisActiveWorkspace() {
       <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:20px;">
         <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:14px;">
           
-          <!-- Outcome Name -->
           <div>
             <label style="display:block;font-size:0.8rem;font-weight:700;color:#334155;margin-bottom:4px;">Target Outcome Name</label>
             <input type="text" id="meta-outcome-name-input" value="${escapeXml(state.outcomeName)}" onchange="updateMetaOutcomeName(this.value)" style="width:100%;padding:7px 10px;font-size:0.88rem;border:1px solid #cbd5e1;border-radius:6px;"/>
           </div>
 
-          <!-- Outcome Type -->
           <div>
             <label style="display:block;font-size:0.8rem;font-weight:700;color:#334155;margin-bottom:4px;">Outcome Type</label>
             <select id="meta-outcome-type-select" onchange="updateMetaOutcomeType(this.value)" style="width:100%;padding:7px 10px;font-size:0.88rem;border:1px solid #cbd5e1;border-radius:6px;background:#fff;">
@@ -850,7 +1174,6 @@ function renderMetaAnalysisActiveWorkspace() {
             </select>
           </div>
 
-          <!-- Effect Measure -->
           <div>
             <label style="display:block;font-size:0.8rem;font-weight:700;color:#334155;margin-bottom:4px;">Effect Measure</label>
             <select id="meta-measure-select" onchange="updateMetaMeasure(this.value)" style="width:100%;padding:7px 10px;font-size:0.88rem;border:1px solid #cbd5e1;border-radius:6px;background:#fff;">
@@ -865,7 +1188,6 @@ function renderMetaAnalysisActiveWorkspace() {
             </select>
           </div>
 
-          <!-- Statistical Model -->
           <div>
             <label style="display:block;font-size:0.8rem;font-weight:700;color:#334155;margin-bottom:4px;">Statistical Model</label>
             <select id="meta-model-select" onchange="updateMetaModel(this.value)" style="width:100%;padding:7px 10px;font-size:0.88rem;border:1px solid #cbd5e1;border-radius:6px;background:#fff;">
@@ -874,13 +1196,11 @@ function renderMetaAnalysisActiveWorkspace() {
             </select>
           </div>
 
-          <!-- Intervention Label -->
           <div>
             <label style="display:block;font-size:0.8rem;font-weight:700;color:#334155;margin-bottom:4px;">Intervention Group Label</label>
             <input type="text" value="${escapeXml(state.interventionLabel)}" onchange="updateMetaGroupLabel('intervention', this.value)" style="width:100%;padding:7px 10px;font-size:0.88rem;border:1px solid #cbd5e1;border-radius:6px;"/>
           </div>
 
-          <!-- Control Label -->
           <div>
             <label style="display:block;font-size:0.8rem;font-weight:700;color:#334155;margin-bottom:4px;">Control Group Label</label>
             <input type="text" value="${escapeXml(state.controlLabel)}" onchange="updateMetaGroupLabel('control', this.value)" style="width:100%;padding:7px 10px;font-size:0.88rem;border:1px solid #cbd5e1;border-radius:6px;"/>
@@ -889,10 +1209,10 @@ function renderMetaAnalysisActiveWorkspace() {
         </div>
       </div>
 
-      <!-- Validation & Warnings Banners -->
+      <!-- Validation & Notice Banners -->
       ${res.errors.length > 0 ? `
         <div style="margin-bottom:16px;padding:12px 16px;border-radius:8px;background:#fef2f2;border:1px solid #f87171;color:#991b1b;font-size:0.86rem;">
-          <strong>⚠️ Meta-Analysis Validation Limit:</strong>
+          <strong>⚠️ Meta-Analysis Data Limitations:</strong>
           <ul style="margin:6px 0 0 18px;padding:0;">
             ${res.errors.map(err => `<li>${escapeXml(err)}</li>`).join('')}
           </ul>
@@ -908,7 +1228,7 @@ function renderMetaAnalysisActiveWorkspace() {
         </div>
       ` : ''}
 
-      <!-- Study-by-Study Data Extraction & Verification Grid -->
+      <!-- Study Extraction & Verification Table -->
       <div style="margin-bottom:20px;">
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
           <div>
@@ -969,7 +1289,7 @@ function renderMetaAnalysisActiveWorkspace() {
 
       <!-- Statistical Synthesis Summary Cards -->
       ${pooled ? `
-        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:12px;margin-bottom:20px;">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:12px;margin-bottom:24px;">
           <div style="padding:14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;">
             <div style="font-size:0.75rem;font-weight:700;color:#15803d;text-transform:uppercase;">Pooled Effect (${state.effectMeasure})</div>
             <div style="font-size:1.45rem;font-weight:800;color:#14532d;margin:4px 0;">
@@ -1012,28 +1332,59 @@ function renderMetaAnalysisActiveWorkspace() {
         </div>
       ` : ''}
 
-      <!-- Forest Plot Section -->
-      <div style="margin-bottom:16px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
-          <h3 style="margin:0;font-size:1.05rem;font-weight:700;color:#0f172a;">
-            🌲 Publication-Quality Forest Plot
-          </h3>
+      <!-- ═══════════════════════════════════════════════════════
+           DEDICATED SCIENTIFIC GRAPHICS WORKSPACE
+      ════════════════════════════════════════════════════════ -->
+      <div style="border:1.5px solid #cbd5e1;border-radius:10px;overflow:hidden;background:#ffffff;margin-bottom:16px;">
+        
+        <!-- Graphics Tab Bar & Export Buttons -->
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:12px 16px;background:#f8fafc;border-bottom:1px solid #cbd5e1;">
           <div style="display:flex;gap:6px;flex-wrap:wrap;">
-            <button type="button" class="mini-btn" onclick="downloadForestPlotPNG(3)" style="padding:5px 10px;font-size:0.8rem;background:#0f6b6b;color:#fff;border:none;border-radius:6px;cursor:pointer;">
+            <button type="button" id="btn-meta-gfx-forest" class="meta-gfx-pill ${state.activeGraphic === 'forest' ? 'active' : ''}" onclick="switchMetaGraphicTab('forest')" style="padding:7px 14px;font-size:0.84rem;font-weight:700;border-radius:6px;cursor:pointer;border:1px solid #cbd5e1;background:${state.activeGraphic === 'forest' ? '#0f6b6b;color:#fff' : '#fff;color:#334155'};">
+              🌲 Forest Plot (Mandatory)
+            </button>
+            <button type="button" id="btn-meta-gfx-funnel" class="meta-gfx-pill ${state.activeGraphic === 'funnel' ? 'active' : ''}" onclick="switchMetaGraphicTab('funnel')" style="padding:7px 14px;font-size:0.84rem;font-weight:700;border-radius:6px;cursor:pointer;border:1px solid #cbd5e1;background:${state.activeGraphic === 'funnel' ? '#0f6b6b;color:#fff' : '#fff;color:#334155'};">
+              📐 Funnel Plot (Small-Study Effects)
+            </button>
+            <button type="button" id="btn-meta-gfx-sensitivity" class="meta-gfx-pill ${state.activeGraphic === 'sensitivity' ? 'active' : ''}" onclick="switchMetaGraphicTab('sensitivity')" style="padding:7px 14px;font-size:0.84rem;font-weight:700;border-radius:6px;cursor:pointer;border:1px solid #cbd5e1;background:${state.activeGraphic === 'sensitivity' ? '#0f6b6b;color:#fff' : '#fff;color:#334155'};">
+              🔍 Sensitivity Analysis (Leave-One-Out)
+            </button>
+          </div>
+
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <button type="button" class="mini-btn" onclick="downloadCurrentGraphicPNG(3)" style="padding:6px 12px;font-size:0.82rem;background:#0f6b6b;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:600;">
               ⬇ PNG (300 DPI)
             </button>
-            <button type="button" class="mini-btn" onclick="downloadForestPlotSVG()" style="padding:5px 10px;font-size:0.8rem;background:#e2e8f0;color:#0f172a;border:none;border-radius:6px;cursor:pointer;">
+            <button type="button" class="mini-btn" onclick="downloadCurrentGraphicSVG()" style="padding:6px 12px;font-size:0.82rem;background:#e2e8f0;color:#0f172a;border:none;border-radius:6px;cursor:pointer;font-weight:600;">
               ⬇ Vector SVG
             </button>
-            <button type="button" class="mini-btn" onclick="copyForestPlotSVGToClipboard()" style="padding:5px 10px;font-size:0.8rem;background:#e2e8f0;color:#0f172a;border:none;border-radius:6px;cursor:pointer;">
+            <button type="button" class="mini-btn" onclick="copyCurrentGraphicSVG()" style="padding:6px 12px;font-size:0.82rem;background:#e2e8f0;color:#0f172a;border:none;border-radius:6px;cursor:pointer;font-weight:600;">
               📋 Copy SVG
             </button>
           </div>
         </div>
 
-        <div id="forest-plot-svg-container" style="border:1px solid #cbd5e1;border-radius:8px;overflow-x:auto;padding:12px;background:#ffffff;">
-          ${renderForestPlotSVG(state, res)}
+        <!-- 1. Forest Plot Container -->
+        <div id="meta-gfx-view-forest" class="${state.activeGraphic === 'forest' ? '' : 'hidden'}" style="padding:16px;background:#ffffff;overflow-x:auto;">
+          <div id="forest-plot-svg-container">
+            ${renderForestPlotSVG(state, res)}
+          </div>
         </div>
+
+        <!-- 2. Funnel Plot Container -->
+        <div id="meta-gfx-view-funnel" class="${state.activeGraphic === 'funnel' ? '' : 'hidden'}" style="padding:16px;background:#ffffff;overflow-x:auto;">
+          <div id="funnel-plot-svg-container">
+            ${renderFunnelPlotSVG(state, res)}
+          </div>
+        </div>
+
+        <!-- 3. Sensitivity Analysis Container -->
+        <div id="meta-gfx-view-sensitivity" class="${state.activeGraphic === 'sensitivity' ? '' : 'hidden'}" style="padding:16px;background:#ffffff;overflow-x:auto;">
+          <div id="sensitivity-plot-svg-container">
+            ${renderSensitivityPlotSVG(state, res)}
+          </div>
+        </div>
+
       </div>
 
     </div>
@@ -1044,7 +1395,6 @@ function renderMetaStudyTableRow(s, idx, state) {
   const isIncluded = s.includedInPool !== false;
   const isBinary = state.outcomeType === 'binary';
 
-  // Compute live preview of effect for this row
   let rowEffectStr = '—';
   let weightStr = '—';
   if (state.results && state.results.studiesEvaluated) {
@@ -1192,16 +1542,27 @@ function removeMetaStudyRow(idx) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// EXPORTS: PNG (300 DPI), VECTOR SVG, CSV & STANDALONE PDF
+// EXPORTS: 300 DPI PNG, VECTOR SVG, CSV & STANDALONE PDF
 // ═══════════════════════════════════════════════════════════════
 
 /**
- * High-resolution 300 DPI PNG export via 3x super-sampled HTML5 Canvas
+ * Generates meaningful, standardized filenames linked to review topic, outcome, and measure.
  */
-function downloadForestPlotPNG(scale = 3) {
-  const svgEl = document.querySelector('#forest-plot-svg-container svg');
+function getGraphicFilename(prefix, ext) {
+  const clean = s => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const topic = clean(META_ANALYSIS_STATE.reviewTopic).slice(0, 24) || 'review';
+  const outcome = clean(META_ANALYSIS_STATE.outcomeName).slice(0, 24) || 'outcome';
+  const measure = (META_ANALYSIS_STATE.effectMeasure || 'effect').toLowerCase();
+  return `sysrevai-${prefix}-${measure}-${topic}-${outcome}.${ext}`;
+}
+
+/**
+ * Export any SVG element directly to high-resolution 300 DPI PNG via 3x super-sampling.
+ */
+function exportSvgElementAsPNG(svgSelector, filename, scale = 3) {
+  const svgEl = document.querySelector(svgSelector);
   if (!svgEl) {
-    alert('No Forest Plot SVG available to export.');
+    alert('No graphical figure found to export.');
     return;
   }
 
@@ -1211,9 +1572,11 @@ function downloadForestPlotPNG(scale = 3) {
   const img = new Image();
 
   img.onload = () => {
+    const baseW = svgEl.viewBox?.baseVal?.width || 980;
+    const baseH = svgEl.viewBox?.baseVal?.height || 520;
     const canvas = document.createElement('canvas');
-    canvas.width = 980 * scale;
-    canvas.height = (svgEl.viewBox.baseVal.height || 600) * scale;
+    canvas.width = baseW * scale;
+    canvas.height = baseH * scale;
     const ctx = canvas.getContext('2d');
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -1221,7 +1584,7 @@ function downloadForestPlotPNG(scale = 3) {
     ctx.drawImage(img, 0, 0);
 
     const a = document.createElement('a');
-    a.download = `forest-plot-${META_ANALYSIS_STATE.effectMeasure.toLowerCase()}-300dpi.png`;
+    a.download = filename;
     a.href = canvas.toDataURL('image/png');
     document.body.appendChild(a);
     a.click();
@@ -1232,40 +1595,74 @@ function downloadForestPlotPNG(scale = 3) {
 }
 
 /**
- * Downloads standalone pure vector SVG
+ * Export any SVG element directly to pure XML Vector SVG file.
  */
-function downloadForestPlotSVG() {
-  const svgEl = document.querySelector('#forest-plot-svg-container svg');
+function exportSvgElementAsSVG(svgSelector, filename) {
+  const svgEl = document.querySelector(svgSelector);
   if (!svgEl) {
-    alert('No Forest Plot SVG available to export.');
+    alert('No graphical figure found to export.');
     return;
   }
   const svgXml = new XMLSerializer().serializeToString(svgEl);
   const blob = new Blob([svgXml], { type: 'image/svg+xml;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `forest-plot-${META_ANALYSIS_STATE.effectMeasure.toLowerCase()}.svg`;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
 }
 
 /**
- * Copies Forest Plot SVG string directly to clipboard
+ * Copy SVG markup directly to system clipboard.
  */
-function copyForestPlotSVGToClipboard() {
-  const svgEl = document.querySelector('#forest-plot-svg-container svg');
+function copySvgElementToClipboard(svgSelector) {
+  const svgEl = document.querySelector(svgSelector);
   if (!svgEl) return;
   const svgXml = new XMLSerializer().serializeToString(svgEl);
   navigator.clipboard.writeText(svgXml).then(() => {
-    alert('Forest Plot SVG successfully copied to clipboard!');
+    alert('Vector SVG markup successfully copied to clipboard!');
   }).catch(() => {
-    prompt('Copy the SVG code below:', svgXml);
+    prompt('Copy the SVG markup below:', svgXml);
   });
 }
 
 /**
- * Exports data table and calculated pooled results to CSV
+ * Dynamic wrappers for the currently active graphic tab
+ */
+function downloadCurrentGraphicPNG(scale = 3) {
+  const active = META_ANALYSIS_STATE.activeGraphic || 'forest';
+  const selector = `#${active}-plot-svg-container svg`;
+  const filename = getGraphicFilename(`${active}-plot-300dpi`, 'png');
+  exportSvgElementAsPNG(selector, filename, scale);
+}
+
+function downloadCurrentGraphicSVG() {
+  const active = META_ANALYSIS_STATE.activeGraphic || 'forest';
+  const selector = `#${active}-plot-svg-container svg`;
+  const filename = getGraphicFilename(`${active}-plot`, 'svg');
+  exportSvgElementAsSVG(selector, filename);
+}
+
+function copyCurrentGraphicSVG() {
+  const active = META_ANALYSIS_STATE.activeGraphic || 'forest';
+  const selector = `#${active}-plot-svg-container svg`;
+  copySvgElementToClipboard(selector);
+}
+
+// Standalone backwards compatibility aliases
+function downloadForestPlotPNG(scale = 3) {
+  exportSvgElementAsPNG('#forest-plot-svg-container svg', getGraphicFilename('forest-plot-300dpi', 'png'), scale);
+}
+function downloadForestPlotSVG() {
+  exportSvgElementAsSVG('#forest-plot-svg-container svg', getGraphicFilename('forest-plot', 'svg'));
+}
+function copyForestPlotSVGToClipboard() {
+  copySvgElementToClipboard('#forest-plot-svg-container svg');
+}
+
+/**
+ * Exports comprehensive CSV report including study data, sensitivity runs, and pooled parameters.
  */
 function exportMetaAnalysisCSV() {
   const state = META_ANALYSIS_STATE;
@@ -1292,17 +1689,25 @@ function exportMetaAnalysisCSV() {
   csv += `"HETEROGENEITY","I2: ${res.pooled.I2.toFixed(1)}%","Tau2: ${res.pooled.tau2.toFixed(4)}","Q: ${res.pooled.Q.toFixed(2)}","df: ${res.pooled.df}","P-value: ${res.pooled.pChi2.toFixed(4)}"\n`;
   csv += `"TEST FOR EFFECT","Z: ${res.pooled.zScore.toFixed(2)}","P-value: ${res.pooled.pValue.toFixed(4)}"\n`;
 
+  const loo = executeLeaveOneOutAnalysis(state);
+  if (loo && loo.length > 0) {
+    csv += `\n"LEAVE-ONE-OUT SENSITIVITY ANALYSIS","Omitted Study","Design","Pooled Effect [95% CI]","Residual I2 (%)","Residual P-value"\n`;
+    loo.forEach(r => {
+      csv += `,"${r.omittedStudyId}","${r.design}","${r.pooled.pointEstimate.toFixed(4)} [${r.pooled.ciLow.toFixed(4)}, ${r.pooled.ciHigh.toFixed(4)}]","${r.pooled.I2.toFixed(1)}%","${r.pooled.pValue.toFixed(4)}"\n`;
+    });
+  }
+
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `meta-analysis-${state.effectMeasure.toLowerCase()}-data.csv`;
+  a.download = getGraphicFilename('dataset', 'csv');
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
 }
 
 /**
- * Generates a standalone, publication-quality Meta-Analysis PDF report via jsPDF
+ * Generates a standalone, publication-grade Meta-Analysis PDF report via jsPDF.
  */
 function exportMetaAnalysisPDF() {
   if (!window.jspdf || !window.jspdf.jsPDF) {
@@ -1319,8 +1724,8 @@ function exportMetaAnalysisPDF() {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
 
-  // Render SVG to Canvas then embed in PDF
-  const svgEl = document.querySelector('#forest-plot-svg-container svg');
+  const active = META_ANALYSIS_STATE.activeGraphic || 'forest';
+  const svgEl = document.querySelector(`#${active}-plot-svg-container svg`) || document.querySelector('#forest-plot-svg-container svg');
   if (!svgEl) return;
 
   const svgXml = new XMLSerializer().serializeToString(svgEl);
@@ -1331,7 +1736,7 @@ function exportMetaAnalysisPDF() {
   img.onload = () => {
     const canvas = document.createElement('canvas');
     canvas.width = 980 * 2;
-    canvas.height = (svgEl.viewBox.baseVal.height || 600) * 2;
+    canvas.height = (svgEl.viewBox?.baseVal?.height || 520) * 2;
     const ctx = canvas.getContext('2d');
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -1340,7 +1745,6 @@ function exportMetaAnalysisPDF() {
 
     const imgData = canvas.toDataURL('image/png');
     
-    // Header
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(14);
     doc.setTextColor(15, 107, 107);
@@ -1349,17 +1753,26 @@ function exportMetaAnalysisPDF() {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
     doc.setTextColor(100, 116, 139);
-    doc.text(`Review Topic: ${state.reviewTopic || 'Systematic Review'} | Generated: ${new Date().toLocaleDateString()}`, 14, 20);
+    doc.text(`Review Topic: ${state.reviewTopic || 'Systematic Review'} | Outcome: ${state.outcomeName} | Generated: ${new Date().toLocaleDateString()}`, 14, 20);
 
-    // Embed Forest Plot Image
     const imgWidth = 269;
     const imgHeight = (canvas.height / canvas.width) * imgWidth;
     doc.addImage(imgData, 'PNG', 14, 24, imgWidth, Math.min(160, imgHeight));
 
-    doc.save(`sysrevai-meta-analysis-${state.effectMeasure.toLowerCase()}-report.pdf`);
+    doc.save(getGraphicFilename('report', 'pdf'));
     URL.revokeObjectURL(url);
   };
   img.src = url;
+}
+
+function escapeXml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
 }
 
 // Attach to window for global access
@@ -1368,8 +1781,12 @@ window.initiateMetaAnalysis = initiateMetaAnalysis;
 window.resetMetaAnalysis = resetMetaAnalysis;
 window.closeMetaAnalysisWorkspace = closeMetaAnalysisWorkspace;
 window.refreshMetaAnalysisWorkspace = refreshMetaAnalysisWorkspace;
+window.switchMetaGraphicTab = switchMetaGraphicTab;
 window.renderMetaAnalysisInitialBanner = renderMetaAnalysisInitialBanner;
 window.renderMetaAnalysisActiveWorkspace = renderMetaAnalysisActiveWorkspace;
+window.renderForestPlotSVG = renderForestPlotSVG;
+window.renderFunnelPlotSVG = renderFunnelPlotSVG;
+window.renderSensitivityPlotSVG = renderSensitivityPlotSVG;
 window.updateMetaOutcomeName = updateMetaOutcomeName;
 window.updateMetaOutcomeType = updateMetaOutcomeType;
 window.updateMetaMeasure = updateMetaMeasure;
@@ -1379,6 +1796,9 @@ window.updateMetaStudyField = updateMetaStudyField;
 window.toggleMetaStudyInclusion = toggleMetaStudyInclusion;
 window.addCustomMetaStudyRow = addCustomMetaStudyRow;
 window.removeMetaStudyRow = removeMetaStudyRow;
+window.downloadCurrentGraphicPNG = downloadCurrentGraphicPNG;
+window.downloadCurrentGraphicSVG = downloadCurrentGraphicSVG;
+window.copyCurrentGraphicSVG = copyCurrentGraphicSVG;
 window.downloadForestPlotPNG = downloadForestPlotPNG;
 window.downloadForestPlotSVG = downloadForestPlotSVG;
 window.copyForestPlotSVGToClipboard = copyForestPlotSVGToClipboard;

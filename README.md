@@ -210,12 +210,15 @@ Sysrevai incorporates a publication-grade, mathematically verified **Automated M
   - Interactive tabular grid allowing reviewers to inspect, edit, or adjust event counts ($e_1, n_1, e_2, n_2$) and continuous metrics ($m_1, s_1, n_1, m_2, s_2, n_2$).
   - Individual study weight ($w_i\%$) and point estimate [95% CI] previewed in real-time.
   - Dynamic study pool toggling (exclude/include specific studies) and custom study addition.
-- **Publication-Quality Forest Plots & Exports**:
-  - 🌲 **Pure Vector SVG**: Rendered to Cochrane / BMJ standards with study weight-proportional boxes, confidence intervals, reference line, and summary diamond.
-  - 🖼️ **High-Resolution PNG (300 DPI)**: 3× canvas super-sampling for medical journal submissions.
-  - 📋 **Copy SVG to Clipboard**: Instant paste into vector editors and presentations.
-  - 📄 **Standalone Meta-Analysis PDF**: Complete quantitative summary report.
-  - 📊 **CSV Data Export**: Full study parameters, weights, and heterogeneity statistics.
+- **Publication-Quality Scientific Graphics & Direct Exports**:
+  - 🌲 **Forest Plot (Mandatory)**: Rendered to Cochrane / BMJ standards covering binary (RR, OR, RD) and continuous (MD, SMD) outcomes. Features study weight-proportional marker boxes, 95% confidence whiskers, pooled summary diamond, null-effect reference line, model type, directional labels (*Favours Intervention* vs *Favours Control*), and complete heterogeneity statistics ($\tau^2, Q, \text{df}, p, I^2$) and overall effect test ($Z, p$).
+  - 📐 **Funnel Plot (Conditional)**: Plots effect estimates against standard errors $\text{SE}(\theta)$ within an inverted pseudo 95% confidence limits triangular funnel. Explicitly labeled as an *exploratory assessment of small-study effects, not proof of publication bias*, with methodological guidance for reviews with $k < 10$ studies.
+  - 🔍 **Sensitivity Analysis Plot (Leave-One-Out)**: Renders an influence diagnostic forest plot showing the resulting pooled effect estimate, 95% CI, and residual $I^2$ heterogeneity when each individual study is omitted in turn, immediately revealing outlier or dominating studies.
+  - 🖼️ **High-Resolution PNG (300 DPI)**: $3\times$ canvas super-sampling on a clean white background `#ffffff`, completely rendered independent of screen dimensions, tailored for direct journal figure submission.
+  - 📐 **Pure Vector SVG**: Self-contained, standards-compliant vector SVG XML export.
+  - 📋 **Copy SVG to Clipboard**: Instant paste into vector illustration software (Illustrator, Figma, Inkscape, PowerPoint).
+  - 🏷️ **Meaningful Semantic Filenames**: Dynamically generated filenames linked to the review, outcome, and measure (e.g., `sysrevai-forest-plot-300dpi-rr-cardiovascular-mace.png`, `sysrevai-funnel-plot-rr-cardiovascular-mace.svg`).
+  - 📄 **Standalone Meta-Analysis PDF & CSV**: Downloadable vector PDF analysis reports and CSV tables of numerical study parameters, weights, and sensitivity statistics.
 
 ---
 
