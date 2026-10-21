@@ -141,6 +141,7 @@ function calculateBinaryStudyEffect(s, measure, zCrit) {
 
   // Continuity correction (0.5) if any zero cells occur
   const hasZero = (e1 === 0 || e2 === 0 || e1 === n1 || e2 === n2);
+  const isDoubleZero = (e1 === 0 && e2 === 0);
   let adjE1 = e1, adjN1 = n1, adjE2 = e2, adjN2 = n2;
   if (hasZero && (measure === 'RR' || measure === 'OR')) {
     adjE1 += 0.5; adjN1 += 1.0;
@@ -187,6 +188,7 @@ function calculateBinaryStudyEffect(s, measure, zCrit) {
   return {
     valid: true,
     hasZero,
+    isDoubleZero,
     effect,
     logEffect,
     variance: v,
@@ -287,7 +289,9 @@ function executeMetaAnalysis(state) {
         totalN2 += Number(s.n2) || 0;
         totalE1 += Number(s.e1) || 0;
         totalE2 += Number(s.e2) || 0;
-        if (calc.hasZero) {
+        if (calc.isDoubleZero) {
+          warnings.push(`Study "${s.studyId}" had 0 events in both treatment and control arms; 0.5 continuity correction applied per protocol.`);
+        } else if (calc.hasZero) {
           warnings.push(`Study "${s.studyId}" had zero events in at least one arm; continuity correction (0.5) applied.`);
         }
       }
@@ -567,13 +571,14 @@ function renderForestPlotSVG(state, results) {
       : `${Number(s.m2).toFixed(1)} ± ${Number(s.s2).toFixed(1)} (${s.n2})`;
 
     const effectText = `${s.calc.effect.toFixed(2)} [${s.calc.ciLow.toFixed(2)}, ${s.calc.ciHigh.toFixed(2)}]`;
+    const displayStudyId = s.studyId && s.studyId.length > 34 ? (s.studyId.slice(0, 32) + '…') : (s.studyId || '');
 
     if (idx % 2 === 1) {
       svg += `  <rect x="20" y="${y - 16}" width="${totalWidth - 40}" height="${rowHeight}" fill="#f8fafc"/>\n`;
     }
 
     svg += `  <!-- Row ${idx + 1}: ${escapeXml(s.studyId)} -->
-  <text x="${colX.study}" y="${y}" class="fp-text">${escapeXml(s.studyId)}</text>
+  <text x="${colX.study}" y="${y}" class="fp-text"><title>${escapeXml(s.studyId)}</title>${escapeXml(displayStudyId)}</text>
   <text x="${colX.exp}" y="${y}" class="fp-text">${expText}</text>
   <text x="${colX.ctrl}" y="${y}" class="fp-text">${ctrlText}</text>
   <text x="${colX.weight}" y="${y}" class="fp-text">${s.weightPct.toFixed(1)}%</text>
@@ -943,12 +948,16 @@ function renderSensitivityPlotSVG(state, results) {
     const effectStr = `${r.pooled.pointEstimate.toFixed(2)} [${r.pooled.ciLow.toFixed(2)}, ${r.pooled.ciHigh.toFixed(2)}]`;
     const i2Color = (r.pooled.I2 < pooled.I2 - 15) ? '#15803d;font-weight:700' : '#1e293b';
 
+    const fullOmittedLabel = `Omitted: ${r.omittedStudyId}`;
+    const displayOmittedId = r.omittedStudyId && r.omittedStudyId.length > 28 ? (r.omittedStudyId.slice(0, 26) + '…') : (r.omittedStudyId || '');
+    const displayLabel = `Omitted: ${displayOmittedId}`;
+
     if (idx % 2 === 1) {
       svg += `  <rect x="20" y="${y - 16}" width="${totalWidth - 40}" height="${rowHeight}" fill="#f8fafc"/>\n`;
     }
 
     svg += `  <!-- Sensitivity Row ${idx + 1}: Without ${escapeXml(r.omittedStudyId)} -->
-  <text x="${colX.study}" y="${y}" class="sn-text">Omitted: ${escapeXml(r.omittedStudyId)}</text>
+  <text x="${colX.study}" y="${y}" class="sn-text"><title>${escapeXml(fullOmittedLabel)}</title>${escapeXml(displayLabel)}</text>
   <text x="${colX.design}" y="${y}" class="sn-muted">${escapeXml(r.design || 'Study')}</text>
   <line x1="${lowX}" y1="${y - 4}" x2="${highX}" y2="${y - 4}" class="sn-whisker"/>
   <line x1="${lowX}" y1="${y - 8}" x2="${lowX}" y2="${y}" class="sn-whisker"/>

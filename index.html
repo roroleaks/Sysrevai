@@ -1889,6 +1889,11 @@ function resetApp() {
     window.META_ANALYSIS_STATE.initiated = false;
     window.META_ANALYSIS_STATE.studies = [];
     window.META_ANALYSIS_STATE.results = null;
+    window.META_ANALYSIS_STATE.sensitivityRuns = null;
+    window.META_ANALYSIS_STATE.activeGraphic = 'forest';
+    if (typeof window.renderMetaAnalysisInitialBanner === 'function') {
+      window.renderMetaAnalysisInitialBanner();
+    }
   }
   showSection('step-1');
   setStep(1);
@@ -2134,34 +2139,7 @@ function classifyStudyDesign(paper) {
 
   // 3. Classify strictly into the 9 Empirical Study Types:
 
-  // (1) Randomized controlled trials (RCTs)
-  if (/\b(randomized controlled trial|randomised controlled trial|randomized clinical trial|randomised clinical trial|randomly assigned|random allocation|double-blind|triple-blind|placebo-controlled|rct|cluster-randomized|crossover trial)\b/i.test(text) ||
-      (paper.pubType && paper.pubType.some(pt => /randomized controlled trial/i.test(pt)))) {
-    return {
-      code: 'rct',
-      name: 'Randomized controlled trials (RCTs)',
-      short: 'RCT',
-      badgeClass: 'design-rct',
-      icon: '🎲',
-      isEligible: true,
-      weight: 1.0
-    };
-  }
-
-  // (2) Diagnostic accuracy studies
-  if (/\b(diagnostic accuracy|diagnostic performance|sensitivity and specificity|receiver operating characteristic|roc curve|auc-roc|positive predictive value|negative predictive value|area under the curve|gold standard comparison|index test|reference standard|diagnostic test accuracy)\b/i.test(text)) {
-    return {
-      code: 'diagnostic-accuracy',
-      name: 'Diagnostic accuracy studies',
-      short: 'Diagnostic Accuracy',
-      badgeClass: 'design-diag',
-      icon: '🎯',
-      isEligible: true,
-      weight: 0.85
-    };
-  }
-
-  // (3) Non-randomized controlled trials
+  // (1) Non-randomized controlled trials (Evaluated before RCT to prevent hyphenated non-randomized false match)
   if (/\b(non-randomized|non-randomised|quasi-experimental|controlled clinical trial|open-label trial|phase [12iI]{1,2} trial|interventional non-randomized|before-and-after study|before-after study|interrupted time series)\b/i.test(text)) {
     return {
       code: 'non-rct',
@@ -2174,8 +2152,35 @@ function classifyStudyDesign(paper) {
     };
   }
 
+  // (2) Randomized controlled trials (RCTs)
+  if ((/\b(randomized controlled trial|randomised controlled trial|randomized clinical trial|randomised clinical trial|randomly assigned|random allocation|double-blind|triple-blind|placebo-controlled|rct|cluster-randomized|crossover trial)\b/i.test(text) && !/\bnon[- ]/i.test(text)) ||
+      (paper.pubType && paper.pubType.some(pt => /randomized controlled trial/i.test(pt)))) {
+    return {
+      code: 'rct',
+      name: 'Randomized controlled trials (RCTs)',
+      short: 'RCT',
+      badgeClass: 'design-rct',
+      icon: '🎲',
+      isEligible: true,
+      weight: 1.0
+    };
+  }
+
+  // (3) Diagnostic accuracy studies
+  if (/\b(diagnostic accuracy|diagnostic performance|sensitivity and specificity|receiver operating characteristic|roc curve|auc-roc|positive predictive value|negative predictive value|area under the curve|gold standard comparison|index test|reference standard|diagnostic test accuracy)\b/i.test(text)) {
+    return {
+      code: 'diagnostic-accuracy',
+      name: 'Diagnostic accuracy studies',
+      short: 'Diagnostic Accuracy',
+      badgeClass: 'design-diag',
+      icon: '🎯',
+      isEligible: true,
+      weight: 0.85
+    };
+  }
+
   // (4) Qualitative studies
-  if (/\b(qualitative study|qualitative research|thematic analysis|grounded theory|semi-structured interview|in-depth interview|focus group|phenomenological|ethnographic|qualitative synthesis|inductive thematic)\b/i.test(text)) {
+  if (/\b(qualitative study|qualitative research|qualitative interview|qualitative exploration|qualitative method|thematic analysis|thematic interview|grounded theory|semi-structured interview|in-depth interview|focus group|phenomenological|ethnographic|qualitative synthesis|inductive thematic)\b/i.test(text)) {
     return {
       code: 'qualitative',
       name: 'Qualitative studies',
