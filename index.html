@@ -142,28 +142,48 @@ footer a { color: #fff; text-decoration: underline; }
 }
 
 /* ═══════════════════════════════════════════════════
-   PIPELINE STEPPER
+   PIPELINE STEPPER (Strict Single-Line Layout)
 ═══════════════════════════════════════════════════ */
 .pipeline-stepper {
-  display: flex; gap: 0; margin-bottom: 24px;
-  border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  align-items: stretch;
+  gap: 0;
+  margin-bottom: 24px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: #f8fafb;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
 }
 .pipeline-step-item {
-  flex: 1; padding: 12px 14px;
-  border-right: 1px solid var(--border); background: #f8fafb;
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 10px 10px;
+  border-right: 1px solid var(--border);
+  background: #f8fafb;
   transition: all .2s;
+  box-sizing: border-box;
 }
 .pipeline-step-item:last-child { border-right: none; }
 .pipeline-step-item.active { background: var(--accent-light); }
 .pipeline-step-item.done   { background: var(--good-bg); }
 .pipeline-step-tag {
-  font-size: .70rem; font-weight: 700; letter-spacing: .05em;
+  font-size: .68rem; font-weight: 700; letter-spacing: .04em;
   text-transform: uppercase; display: block; margin-bottom: 3px;
+  white-space: nowrap;
 }
 .pipeline-step-tag.active { color: var(--accent); }
 .pipeline-step-tag.done   { color: var(--good); }
 .pipeline-step-tag.muted  { color: var(--muted); }
-.pipeline-step-title { font-size: .84rem; font-weight: 600; color: var(--ink); }
+.pipeline-step-title {
+  font-size: .78rem; font-weight: 600; color: var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  line-height: 1.25;
+}
 .pipeline-step-item:not(.active):not(.done) .pipeline-step-title { color: var(--muted); }
 
 /* ═══════════════════════════════════════════════════
@@ -715,9 +735,22 @@ sup.cite-num:hover, .cite-num:hover, .cite-apa:hover, .cite-harvard:hover {
   .hdr-center h1 { font-size: 1.1rem; }
   .hdr-right { width: 100%; display: flex; justify-content: center; }
   
-  .pipeline-stepper { flex-direction: column; }
-  .pipeline-step-item { border-right: none; border-bottom: 1px solid var(--border); }
-  .pipeline-step-item:last-child { border-bottom: none; }
+  .pipeline-stepper {
+    flex-direction: row !important;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+  }
+  .pipeline-step-item {
+    border-right: 1px solid var(--border) !important;
+    border-bottom: none !important;
+    flex: 0 0 auto;
+    min-width: 145px;
+    padding: 8px 10px;
+  }
+  .pipeline-step-item:last-child {
+    border-right: none !important;
+  }
   
   .criteria-grid { grid-template-columns: 1fr; }
   .prisma-phase { grid-template-columns: 1fr; }
@@ -1037,21 +1070,25 @@ sup.cite-num:hover, .cite-num:hover, .cite-apa:hover, .cite-harvard:hover {
   <section id="step-1" class="card">
     <!-- Pipeline Stepper -->
     <div class="pipeline-stepper" id="pipeline">
-      <div class="pipeline-step-item active" id="ps-1">
+      <div class="pipeline-step-item active" id="ps-1" title="Step 1: PICOS &amp; Eligibility Criteria">
         <span class="pipeline-step-tag active">Step 1 · Active</span>
         <div class="pipeline-step-title">1. PICOS &amp; Eligibility Criteria</div>
       </div>
-      <div class="pipeline-step-item" id="ps-2">
+      <div class="pipeline-step-item" id="ps-2" title="Step 2: Dual Retrieval &amp; Validation">
         <span class="pipeline-step-tag muted">Step 2</span>
         <div class="pipeline-step-title">2. Dual Retrieval &amp; Validation</div>
       </div>
-      <div class="pipeline-step-item" id="ps-3">
+      <div class="pipeline-step-item" id="ps-3" title="Step 3: PRISMA Screening &amp; RoB">
         <span class="pipeline-step-tag muted">Step 3</span>
         <div class="pipeline-step-title">3. PRISMA Screening &amp; RoB</div>
       </div>
-      <div class="pipeline-step-item" id="ps-4">
+      <div class="pipeline-step-item" id="ps-4" title="Step 4: Systematic Review Manuscript">
         <span class="pipeline-step-tag muted">Step 4</span>
         <div class="pipeline-step-title">4. Systematic Review Manuscript</div>
+      </div>
+      <div class="pipeline-step-item" id="ps-5" title="Step 5: Meta-Analysis">
+        <span class="pipeline-step-tag muted">Step 5</span>
+        <div class="pipeline-step-title">5. Meta-Analysis</div>
       </div>
     </div>
 
@@ -2185,7 +2222,7 @@ function showStep1Alert(title, msg) {
 // PIPELINE STEP CONTROLLER
 // ═══════════════════════════════════════════════════════════════
 function setStep(n) {
-  [1, 2, 3, 4].forEach(i => {
+  [1, 2, 3, 4, 5].forEach(i => {
     const el = document.getElementById(`ps-${i}`);
     if (!el) return;
     el.className = 'pipeline-step-item';
@@ -3518,9 +3555,15 @@ function switchTab(tabId, btn) {
   if (btn) btn.classList.add('active');
 
   if (tabId === 'meta') {
+    setStep(5);
     const stageEl = document.getElementById('meta-analysis-stage');
     if (stageEl) {
       stageEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  } else {
+    const s4 = document.getElementById('step-4');
+    if (s4 && !s4.classList.contains('hidden')) {
+      setStep(4);
     }
   }
 }
