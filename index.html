@@ -4369,20 +4369,6 @@ function initSysRevDisclaimer() {
     } catch (e) {}
   }
 
-  function hasUserAccepted() {
-    try {
-      if (localStorage.getItem(DISCLAIMER_STORAGE_KEY) === 'true') return true;
-    } catch (e) {}
-    try {
-      if (document.cookie.split(';').some(c => c.trim().startsWith('sysrev_disclaimer_accepted=true'))) return true;
-    } catch (e) {}
-    return false;
-  }
-
-  if (!hasUserAccepted()) {
-    setTimeout(showDisclaimer, 250);
-  }
-
   agreeBtn.addEventListener('click', hideDisclaimer);
   if (closeBtn) closeBtn.addEventListener('click', hideDisclaimer);
 
