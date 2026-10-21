@@ -1,29 +1,28 @@
 const https = require('https');
 
-// Pre-configured Semantic Scholar API Key from AIMed / SciDraft ecosystem
-const S2_DEFAULT_KEY = 's2k-0rcC3ztnxRdNGsOKL1SNvwbOPnSaRh4qHBT9qe7A';
+// Pre-configured Semantic Scholar API Key on server (Environment variable prioritized)
+const S2_DEFAULT_KEY = process.env.S2_API_KEY || 's2k-0rcC3ztnxRdNGsOKL1SNvwbOPnSaRh4qHBT9qe7A';
 
-function queryS2(targetPath, apiKey, attempt = 0) {
+function queryS2(targetPath, apiKey) {
   return new Promise((resolve, reject) => {
-    const s2Req = https.request({
+    const options = {
       hostname: 'api.semanticscholar.org',
       path: targetPath,
       method: 'GET',
+      timeout: 6500, // 6.5s strict timeout to prevent hangs
       headers: {
-        'x-api-key': apiKey,
-        'User-Agent': 'Sysrevai/1.0 (Systematic Review AI Assistant - AIMed)'
+        'User-Agent': 'Sysrevai/1.0 (Systematic Review Platform; mailto:raouf.roshdy@aimed.org)'
       }
-    }, (s2Res) => {
+    };
+
+    if (apiKey) {
+      options.headers['x-api-key'] = apiKey;
+    }
+
+    const s2Req = https.request(options, (s2Res) => {
       let data = '';
       s2Res.on('data', chunk => data += chunk);
       s2Res.on('end', () => {
-        if (s2Res.statusCode === 429 && attempt < 2) {
-          // Automatic exponential backoff retry on 429 burst limit
-          setTimeout(() => {
-            queryS2(targetPath, apiKey, attempt + 1).then(resolve).catch(reject);
-          }, 1400 * (attempt + 1));
-          return;
-        }
         resolve({
           statusCode: s2Res.statusCode,
           headers: s2Res.headers,
@@ -32,13 +31,16 @@ function queryS2(targetPath, apiKey, attempt = 0) {
       });
     });
 
+    s2Req.on('timeout', () => {
+      s2Req.destroy();
+      resolve({
+        statusCode: 504,
+        headers: {},
+        body: JSON.stringify({ error: 'Semantic Scholar upstream timed out (6.5s limit reached)' })
+      });
+    });
+
     s2Req.on('error', (err) => {
-      if (attempt < 2) {
-        setTimeout(() => {
-          queryS2(targetPath, apiKey, attempt + 1).then(resolve).catch(reject);
-        }, 1200);
-        return;
-      }
       reject(err);
     });
 
@@ -74,7 +76,7 @@ module.exports = async (req, res) => {
     }
 
     const result = await queryS2(targetPath, userKey);
-    res.statusCode = result.statusCode;
+    res.statusCode = result.statusCode || 200;
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.end(result.body);
   } catch (err) {

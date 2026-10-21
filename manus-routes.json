@@ -1,0 +1,30 @@
+{
+  "name": "SysRevAI",
+  "version": "1.0.0",
+  "description": "PRISMA 2020 AI-Assisted Systematic Review Platform",
+  "author": "Dr. Raouf Roshdy",
+  "deployment": "https://sysrevai.vercel.app/",
+  "routes": [
+    {
+      "path": "/",
+      "type": "page",
+      "description": "Interactive PRISMA 2020 Systematic Review, PICOS, Screening, RoB & Meta-Analysis Engine"
+    },
+    {
+      "path": "/api/s2",
+      "type": "api",
+      "description": "Server-side Semantic Scholar Literature Search Proxy"
+    },
+    {
+      "path": "/manus-routes.json",
+      "type": "manifest",
+      "description": "Route manifest and deployment compliance specification"
+    }
+  ],
+  "compliance": {
+    "PRISMA": "PRISMA 2020 Guidelines Compliant (27 items)",
+    "ICMJE": "Vancouver Citation Style Compliant",
+    "Cochrane": "Cochrane Risk of Bias 2.0 Appraisal"
+  },
+  "status": "operational"
+}

@@ -1271,6 +1271,8 @@ sup.cite-num:hover, .cite-num:hover {
 
   <!-- ── STEP 3: PRISMA SCREENING & STUDY APPRAISAL ──────── -->
   <section id="step-3" class="hidden">
+    <!-- Retrieval Status / Partial Results Notice Banner -->
+    <div id="step3-source-notice" class="hidden" style="margin-bottom:14px;background:#f0f9ff;border:1px solid #bae6fd;color:#0369a1;padding:10px 14px;border-radius:8px;font-size:0.84rem;display:flex;align-items:center;gap:8px;"></div>
     <!-- PRISMA 2020 Flow Diagram Interactive Card -->
     <div class="card prisma-container">
       <div class="prisma-header">
@@ -1886,7 +1888,7 @@ sup.cite-num:hover, .cite-num:hover {
      FOOTER
 ══════════════════════════════════ -->
 <footer>
-  Sysrevai v1.0 — AI-Assisted Systematic Review Platform (PRISMA 2020 Compliant) · Powered by <a href="https://europepmc.org" target="_blank" rel="noopener">Europe PMC</a> &amp; <a href="https://www.semanticscholar.org" target="_blank" rel="noopener">Semantic Scholar</a>. Dedicated to Prof. Dr. Abdel Hamid Attia. Copyrights &copy; Dr. Raouf Roshdy 2026.
+  Sysrevai v1.0 — AI-Assisted Systematic Review Platform (PRISMA 2020 Compliant) · Powered by <a href="https://europepmc.org/About" target="_blank" rel="noopener noreferrer">Europe PMC</a> &amp; <a href="https://www.semanticscholar.org" target="_blank" rel="noopener noreferrer">Semantic Scholar</a>. Dedicated to Prof. Dr. Abdel Hamid Attia. Copyrights &copy; Dr. Raouf Roshdy 2026.
 </footer>
 
 </div><!-- .wrap -->
@@ -2242,6 +2244,18 @@ function cleanQueryKeywords(topic) {
     .trim();
 }
 
+function anySignal(signals) {
+  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.any === 'function') {
+    return AbortSignal.any(signals.filter(Boolean));
+  }
+  const controller = new AbortController();
+  signals.filter(Boolean).forEach(sig => {
+    if (sig.aborted) controller.abort();
+    else sig.addEventListener('abort', () => controller.abort(), { once: true });
+  });
+  return controller.signal;
+}
+
 async function fetchEuropePMC(topic, pageSize, yearRange, signal) {
   const currentYear = new Date().getFullYear();
   let query = cleanQueryKeywords(topic);
@@ -2261,41 +2275,52 @@ async function fetchEuropePMC(topic, pageSize, yearRange, signal) {
     sort: 'CITED desc'
   });
 
-  const res = await fetch(`${EPMC_API_BASE}?${params.toString()}`, { signal });
-  if (!res.ok) {
-    const err = new Error(`Europe PMC HTTP ${res.status}`);
-    err.status = res.status;
-    err.engine = 'Europe PMC';
+  const timeoutCtrl = new AbortController();
+  const timeoutId = setTimeout(() => timeoutCtrl.abort(), 7000);
+  const combinedSignal = signal ? anySignal([signal, timeoutCtrl.signal]) : timeoutCtrl.signal;
+
+  try {
+    const res = await fetch(`${EPMC_API_BASE}?${params.toString()}`, { signal: combinedSignal });
+    clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      const err = new Error(`Europe PMC HTTP ${res.status}`);
+      err.status = res.status;
+      err.engine = 'Europe PMC';
+      throw err;
+    }
+    const json = await res.json();
+    const results = json.resultList?.result || [];
+    const hitCount = json.hitCount || results.length;
+
+    const parsed = results.map(item => ({
+      source: 'epmc',
+      sources: ['Europe PMC'],
+      id: item.id || item.pmid || item.doi || Math.random().toString(36).substring(7),
+      pmid: item.pmid || '',
+      doi: item.doi || '',
+      pmcid: item.pmcid || '',
+      title: cleanHtmlText(item.title) || 'Untitled Publication',
+      authors: parseAuthors(item),
+      journal: cleanHtmlText(item.journalInfo?.journal?.title || item.journalTitle || 'Scholarly Journal'),
+      year: Number(item.pubYear) || (item.journalInfo?.yearOfPublication ? Number(item.journalInfo.yearOfPublication) : currentYear),
+      abstract: cleanHtmlText(item.abstractText || ''),
+      citationCount: Number(item.citedByCount || 0),
+      isOpenAccess: item.isOpenAccess === 'Y',
+      meshHeadings: Array.isArray(item.meshHeadingList?.meshHeading) 
+        ? item.meshHeadingList.meshHeading.map(m => m.descriptorName).filter(Boolean) 
+        : [],
+      keywords: Array.isArray(item.keywordList?.keyword)
+        ? item.keywordList.keyword.filter(Boolean)
+        : (item.keywordList?.keyword ? [item.keywordList.keyword] : []),
+      pubType: Array.isArray(item.pubTypeList?.pubType) ? item.pubTypeList.pubType : []
+    }));
+
+    return { results: parsed, hitCount };
+  } catch (err) {
+    clearTimeout(timeoutId);
     throw err;
   }
-  const json = await res.json();
-  const results = json.resultList?.result || [];
-  const hitCount = json.hitCount || results.length;
-
-  const parsed = results.map(item => ({
-    source: 'epmc',
-    sources: ['Europe PMC'],
-    id: item.id || item.pmid || item.doi || Math.random().toString(36).substring(7),
-    pmid: item.pmid || '',
-    doi: item.doi || '',
-    pmcid: item.pmcid || '',
-    title: cleanHtmlText(item.title) || 'Untitled Publication',
-    authors: parseAuthors(item),
-    journal: cleanHtmlText(item.journalInfo?.journal?.title || item.journalTitle || 'Scholarly Journal'),
-    year: Number(item.pubYear) || (item.journalInfo?.yearOfPublication ? Number(item.journalInfo.yearOfPublication) : currentYear),
-    abstract: cleanHtmlText(item.abstractText || ''),
-    citationCount: Number(item.citedByCount || 0),
-    isOpenAccess: item.isOpenAccess === 'Y',
-    meshHeadings: Array.isArray(item.meshHeadingList?.meshHeading) 
-      ? item.meshHeadingList.meshHeading.map(m => m.descriptorName).filter(Boolean) 
-      : [],
-    keywords: Array.isArray(item.keywordList?.keyword)
-      ? item.keywordList.keyword.filter(Boolean)
-      : (item.keywordList?.keyword ? [item.keywordList.keyword] : []),
-    pubType: Array.isArray(item.pubTypeList?.pubType) ? item.pubTypeList.pubType : []
-  }));
-
-  return { results: parsed, hitCount };
 }
 
 function parseAuthors(item) {
@@ -2308,7 +2333,6 @@ function parseAuthors(item) {
 }
 
 async function fetchSemanticScholar(topic, pageSize, yearRange, signal) {
-  const apiKey = S2_USER_KEY || S2_DEFAULT_EMBEDDED_KEY;
   const currentYear = new Date().getFullYear();
   const fields = 'paperId,title,authors,year,abstract,venue,publicationVenue,journal,externalIds,openAccessPdf,citationCount,publicationTypes,fieldsOfStudy';
 
@@ -2318,69 +2342,61 @@ async function fetchSemanticScholar(topic, pageSize, yearRange, signal) {
     queryParams += `&year=${fromYear}-${currentYear}`;
   }
 
-  const endpoints = [
-    { url: `/api/s2?${queryParams}`, isProxy: true },
-    { url: `${S2_API_BASE}/paper/search?${queryParams}`, isProxy: false }
-  ];
+  const timeoutCtrl = new AbortController();
+  const timeoutId = setTimeout(() => timeoutCtrl.abort(), 6500);
+  const combinedSignal = signal ? anySignal([signal, timeoutCtrl.signal]) : timeoutCtrl.signal;
 
-  let lastErr = null;
-  for (const ep of endpoints) {
-    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-    for (let attempt = 0; attempt <= 2; attempt++) {
-      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-      try {
-        const headers = {};
-        if (apiKey) headers['x-api-key'] = apiKey;
-        const res = await fetch(ep.url, { headers, signal });
-        if (!res.ok) {
-          if (res.status === 429 && attempt < 2) {
-            await abortableSleep(1400 * (attempt + 1), signal);
-            continue;
-          }
-          if (res.status === 404 && ep.isProxy) break; // fallback to direct
-          const err = new Error(`Semantic Scholar HTTP ${res.status}`);
-          err.status = res.status;
-          err.engine = 'Semantic Scholar';
-          throw err;
-        }
-        const json = await res.json();
-        const data = json.data || [];
-        const parsed = data.map(item => ({
-          source: 's2',
-          sources: ['Semantic Scholar'],
-          id: item.paperId,
-          paperId: item.paperId,
-          pmid: item.externalIds?.PubMed || '',
-          doi: item.externalIds?.DOI || '',
-          pmcid: item.externalIds?.PubMedCentral || '',
-          title: cleanHtmlText(item.title) || 'Untitled Study',
-          authors: Array.isArray(item.authors) ? item.authors.map(a => a.name).join(', ') : 'Unknown Authors',
-          journal: cleanHtmlText(item.venue || item.publicationVenue?.name || item.journal?.name || 'Academic Journal'),
-          year: item.year || currentYear,
-          abstract: cleanHtmlText(item.abstract || ''),
-          citationCount: Number(item.citationCount || 0),
-          isOpenAccess: Boolean(item.openAccessPdf?.url),
-          openAccessPdfUrl: item.openAccessPdf?.url || '',
-          meshHeadings: [],
-          keywords: Array.isArray(item.fieldsOfStudy) ? item.fieldsOfStudy.filter(Boolean) : [],
-          pubType: Array.isArray(item.publicationTypes) ? item.publicationTypes : []
-        }));
-        return { results: parsed, hitCount: json.total || parsed.length };
-      } catch (err) {
-        if (err.name === 'AbortError') throw err;
-        lastErr = err;
-        if (ep.isProxy && (err instanceof TypeError || err.status === 404)) break;
-        if (attempt < 2) {
-          await abortableSleep(1400, signal);
-          continue;
-        }
-        break;
-      }
+  try {
+    const headers = {};
+    const apiKey = S2_USER_KEY || S2_DEFAULT_EMBEDDED_KEY;
+    if (apiKey) headers['x-api-key'] = apiKey;
+
+    let res = null;
+    try {
+      res = await fetch(`/api/s2?${queryParams}`, { headers, signal: combinedSignal });
+    } catch (proxyErr) {
+      if (proxyErr.name === 'AbortError' && signal?.aborted) throw proxyErr;
+      // Fallback to direct public search only if server proxy was unreachable
+      res = await fetch(`${S2_API_BASE}/paper/search?${queryParams}`, { headers, signal: combinedSignal });
     }
-  }
 
-  if (lastErr) throw lastErr;
-  return { results: [], hitCount: 0 };
+    clearTimeout(timeoutId);
+
+    if (!res || !res.ok) {
+      console.warn(`Semantic Scholar query returned HTTP ${res ? res.status : 'No response'} (handled gracefully)`);
+      return { results: [], hitCount: 0, error: `HTTP ${res ? res.status : 'Unavailable'}` };
+    }
+
+    const json = await res.json();
+    const data = json.data || [];
+    const parsed = data.map(item => ({
+      source: 's2',
+      sources: ['Semantic Scholar'],
+      id: item.paperId,
+      paperId: item.paperId,
+      pmid: item.externalIds?.PubMed || '',
+      doi: item.externalIds?.DOI || '',
+      pmcid: item.externalIds?.PubMedCentral || '',
+      title: cleanHtmlText(item.title) || 'Untitled Study',
+      authors: Array.isArray(item.authors) ? item.authors.map(a => a.name).join(', ') : 'Unknown Authors',
+      journal: cleanHtmlText(item.venue || item.publicationVenue?.name || item.journal?.name || 'Academic Journal'),
+      year: item.year || currentYear,
+      abstract: cleanHtmlText(item.abstract || ''),
+      citationCount: Number(item.citationCount || 0),
+      isOpenAccess: Boolean(item.openAccessPdf?.url),
+      openAccessPdfUrl: item.openAccessPdf?.url || '',
+      meshHeadings: [],
+      keywords: Array.isArray(item.fieldsOfStudy) ? item.fieldsOfStudy.filter(Boolean) : [],
+      pubType: Array.isArray(item.publicationTypes) ? item.publicationTypes : []
+    }));
+
+    return { results: parsed, hitCount: json.total || parsed.length };
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (signal?.aborted) throw err;
+    console.warn('Semantic Scholar query non-fatal error:', err.message);
+    return { results: [], hitCount: 0, error: err.message };
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -3145,6 +3161,18 @@ function updatePrismaAndCounters() {
   document.getElementById('cnt-exc').textContent = STATE.excludedPapers.length;
   document.getElementById('cnt-bor').textContent = STATE.borderlinePapers.length;
 
+  // Source notice if one database was rate-limited or unavailable
+  const noticeBox = document.getElementById('step3-source-notice');
+  if (noticeBox) {
+    if (STATE.partialNotice) {
+      noticeBox.classList.remove('hidden');
+      noticeBox.innerHTML = `<span>ℹ️ <strong>Search Notice:</strong> ${cleanHtmlText(STATE.partialNotice)}</span>`;
+    } else {
+      noticeBox.classList.add('hidden');
+      noticeBox.innerHTML = '';
+    }
+  }
+
   // Sync publication-quality PRISMA diagram generator
   if (typeof syncPrismaStateFromWorkflow === 'function') {
     syncPrismaStateFromWorkflow(false);
@@ -3882,42 +3910,78 @@ async function runPipeline() {
   currentAbortController = new AbortController();
   const signal = currentAbortController.signal;
 
+  // Reset error display and restore processing indicators
+  const errorBox = document.getElementById('step2-error-box');
+  if (errorBox) {
+    errorBox.classList.add('hidden');
+    errorBox.innerHTML = '';
+  }
+  const procAnim = document.getElementById('proc-anim');
+  if (procAnim) procAnim.style.display = 'block';
+  const procMsg = document.getElementById('proc-msg');
+  if (procMsg) procMsg.style.display = 'block';
+  const procSub = document.getElementById('proc-sub');
+  if (procSub) procSub.style.display = 'block';
+  const progBarBg = document.querySelector('.prog-bar-bg');
+  if (progBarBg) progBarBg.style.display = 'block';
+  const procCancel = document.getElementById('proc-cancel-wrapper');
+  if (procCancel) procCancel.style.display = 'block';
+
   showSection('step-2');
   setStep(2);
 
   try {
-    // Stage 1: Dual Retrieval
-    setProc('Querying Europe PMC and Semantic Scholar databases…', 'Executing concurrent multi-source electronic search', 15);
-    await abortableSleep(500, signal);
+    // Stage 1: Dual Concurrent Retrieval with Bounded Timeouts
+    setProc('Querying electronic literature databases…', 'Executing concurrent multi-source search (Europe PMC & Semantic Scholar)', 15);
+    await abortableSleep(350, signal);
 
-    let rawPapers = [];
-    let epmcCount = 0;
-    let s2Count = 0;
+    const targetSize = Math.max(20, Math.ceil(STATE.pageSize * 0.7));
 
-    if (STATE.searchSource === 'epmc' || STATE.searchSource === 'both') {
-      try {
-        const epmcRes = await fetchEuropePMC(topic, Math.max(20, Math.ceil(STATE.pageSize * 0.7)), STATE.yearRange, signal);
-        rawPapers.push(...epmcRes.results);
-        epmcCount = epmcRes.results.length;
-      } catch (err) {
-        if (STATE.searchSource === 'epmc') throw err;
-        console.warn('Europe PMC query error:', err);
-      }
+    const epmcPromise = (STATE.searchSource === 'epmc' || STATE.searchSource === 'both')
+      ? fetchEuropePMC(topic, targetSize, STATE.yearRange, signal).catch(err => {
+          console.warn('Europe PMC query error:', err);
+          return { results: [], hitCount: 0, error: err.message };
+        })
+      : Promise.resolve({ results: [], hitCount: 0 });
+
+    const s2Promise = (STATE.searchSource === 's2' || STATE.searchSource === 'both')
+      ? fetchSemanticScholar(topic, targetSize, STATE.yearRange, signal).catch(err => {
+          console.warn('Semantic Scholar query error:', err);
+          return { results: [], hitCount: 0, error: err.message };
+        })
+      : Promise.resolve({ results: [], hitCount: 0 });
+
+    const [epmcRes, s2Res] = await Promise.all([epmcPromise, s2Promise]);
+
+    const rawPapers = [];
+    const epmcCount = epmcRes.results ? epmcRes.results.length : 0;
+    const s2Count = s2Res.results ? s2Res.results.length : 0;
+
+    if (epmcRes.results && epmcRes.results.length > 0) {
+      rawPapers.push(...epmcRes.results);
     }
-
-    if (STATE.searchSource === 's2' || STATE.searchSource === 'both') {
-      try {
-        const s2Res = await fetchSemanticScholar(topic, Math.max(20, Math.ceil(STATE.pageSize * 0.7)), STATE.yearRange, signal);
-        rawPapers.push(...s2Res.results);
-        s2Count = s2Res.results.length;
-      } catch (err) {
-        if (STATE.searchSource === 's2') throw err;
-        console.warn('Semantic Scholar query error:', err);
-      }
+    if (s2Res.results && s2Res.results.length > 0) {
+      rawPapers.push(...s2Res.results);
     }
 
     if (rawPapers.length === 0) {
-      throw new Error('Zero candidate records retrieved from the selected databases. Broaden your search terms or expand the publication year range.');
+      let specificReason = 'Zero candidate records retrieved from the selected databases.';
+      if (s2Res.error && epmcRes.error) {
+        specificReason = `Both Europe PMC (${epmcRes.error}) and Semantic Scholar (${s2Res.error}) were unreachable.`;
+      } else if (s2Res.error && STATE.searchSource === 's2') {
+        specificReason = `Semantic Scholar: ${s2Res.error}. Consider selecting "Europe PMC" or "Dual Database".`;
+      }
+      throw new Error(`${specificReason} Please broaden your search terms, expand publication year range, or retry.`);
+    }
+
+    // Set informative partial-results notice if one source was rate-limited or unavailable
+    STATE.partialNotice = null;
+    if (STATE.searchSource === 'both') {
+      if (epmcCount > 0 && s2Count === 0) {
+        STATE.partialNotice = `Europe PMC retrieved ${epmcCount} records (Semantic Scholar was temporarily busy/rate-limited).`;
+      } else if (s2Count > 0 && epmcCount === 0) {
+        STATE.partialNotice = `Semantic Scholar retrieved ${s2Count} records (Europe PMC was temporarily unavailable).`;
+      }
     }
 
     STATE.rawCandidateCount = rawPapers.length;
@@ -3925,7 +3989,7 @@ async function runPipeline() {
 
     // Stage 2: Deduplication
     setProc('Resolving duplicates across databases…', `Analyzing PMIDs, DOIs, and alphanumeric title fingerprints`, 40);
-    await abortableSleep(400, signal);
+    await abortableSleep(350, signal);
 
     const { unique, duplicates } = deduplicatePapers(rawPapers);
     STATE.duplicatesRemoved = duplicates;
@@ -3933,7 +3997,7 @@ async function runPipeline() {
 
     // Stage 3: Algorithmic Eligibility Screening & RoB
     setProc('Screening records against PICOS eligibility criteria…', 'Evaluating title/abstract, methodology, and risk of bias', 70);
-    await abortableSleep(600, signal);
+    await abortableSleep(500, signal);
 
     STATE.papers.forEach((p, idx) => {
       p._globalIndex = idx;
@@ -3941,7 +4005,7 @@ async function runPipeline() {
     });
 
     setProc('Finalizing systematic review screening metrics…', 'Compiling interactive PRISMA 2020 flow architecture', 95);
-    await abortableSleep(400, signal);
+    await abortableSleep(350, signal);
 
     updatePrismaAndCounters();
     renderPaperCards();
@@ -3952,14 +4016,29 @@ async function runPipeline() {
   } catch (err) {
     if (err.name === 'AbortError') return;
     console.error('Pipeline error:', err);
-    document.getElementById('step2-error-box').classList.remove('hidden');
-    document.getElementById('step2-error-box').innerHTML = `
-      <div class="alert-title"><span>⚠️ Retrieval Error</span></div>
-      <div class="alert-reason">${err.message || 'An unexpected error occurred while communicating with literature APIs.'}</div>
-      <div class="alert-actions">
-        <button type="button" class="mini-btn" onclick="cancelPipeline()">↩ Return to Step 1</button>
-      </div>
-    `;
+
+    const procAnim = document.getElementById('proc-anim');
+    if (procAnim) procAnim.style.display = 'none';
+    const procMsg = document.getElementById('proc-msg');
+    if (procMsg) procMsg.style.display = 'none';
+    const procSub = document.getElementById('proc-sub');
+    if (procSub) procSub.style.display = 'none';
+    const progBarBg = document.querySelector('.prog-bar-bg');
+    if (progBarBg) progBarBg.style.display = 'none';
+    const procCancel = document.getElementById('proc-cancel-wrapper');
+    if (procCancel) procCancel.style.display = 'none';
+
+    if (errorBox) {
+      errorBox.classList.remove('hidden');
+      errorBox.innerHTML = `
+        <div class="alert-title"><span style="font-size:1.2rem;">⚠️</span> <strong style="font-size:1.05rem;">Literature Retrieval Notice</strong></div>
+        <div class="alert-reason" style="margin:8px 0 14px;line-height:1.5;">${cleanHtmlText(err.message || 'An unexpected error occurred while communicating with literature APIs.')}</div>
+        <div class="alert-actions" style="display:flex;gap:10px;flex-wrap:wrap;">
+          <button type="button" class="primary" onclick="runPipeline()" style="padding:7px 16px;font-size:0.85rem;">🔄 Retry Search</button>
+          <button type="button" class="secondary" onclick="cancelPipeline()" style="padding:7px 14px;font-size:0.85rem;">↩ Return to Step 1 &amp; Adjust Query</button>
+        </div>
+      `;
+    }
   }
 }
 
