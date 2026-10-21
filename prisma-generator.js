@@ -292,25 +292,20 @@ function syncPrismaStateFromWorkflow(force = false) {
   PRISMA_DIAGRAM_STATE.reports_not_retrieved = 0;
 
   // Eligibility
+  const ftExclusions = borderlinePapers.length;
   PRISMA_DIAGRAM_STATE.reports_assessed = Math.max(0, sought);
-  PRISMA_DIAGRAM_STATE.reports_excluded = 0;
+  PRISMA_DIAGRAM_STATE.reports_excluded = ftExclusions;
 
-  // Build exclusion reasons from actual screening data
-  const reasonsMap = {};
-  excludedPapers.forEach(p => {
-    const r = p.screening?.violatedExclusions?.[0] || p.screening?.primaryReason || 'Ineligible study design or PICOS domain';
-    reasonsMap[r] = (reasonsMap[r] || 0) + 1;
-  });
-
-  const parsedReasons = Object.entries(reasonsMap).map(([reason, count]) => ({ reason, count }));
-  if (parsedReasons.length > 0) {
-    PRISMA_DIAGRAM_STATE.exclusion_reasons = parsedReasons;
+  // Build full-text exclusion reasons matching reports_excluded
+  if (ftExclusions > 0) {
+    PRISMA_DIAGRAM_STATE.exclusion_reasons = [
+      { reason: 'Unverified / Borderline eligibility criteria', count: ftExclusions }
+    ];
   } else {
     PRISMA_DIAGRAM_STATE.exclusion_reasons = [
-      { reason: 'Ineligible study design (non-empirical / review)', count: 0 },
-      { reason: 'Off-target clinical intervention / comparator', count: 0 },
-      { reason: 'Pre-clinical animal or in-vitro experimental model', count: 0 },
-      { reason: 'Irrelevant clinical endpoints or missing data', count: 0 }
+      { reason: 'Ineligible study design / non-empirical', count: 0 },
+      { reason: 'Off-target clinical intervention or comparator', count: 0 },
+      { reason: 'Pre-clinical animal or in-vitro model', count: 0 }
     ];
   }
 
@@ -1277,4 +1272,27 @@ function renderStep4Prisma() {
       </div>
     </div>
   `;
+}
+
+if (typeof window !== 'undefined') {
+  window.PRISMA_DIAGRAM_STATE = PRISMA_DIAGRAM_STATE;
+  window.syncPrismaStateFromWorkflow = syncPrismaStateFromWorkflow;
+  window.validatePrismaDiagramCounts = validatePrismaDiagramCounts;
+  window.renderPrismaSVG = renderPrismaSVG;
+  window.openPrismaDiagramEditor = openPrismaDiagramEditor;
+  window.closePrismaDiagramEditor = closePrismaDiagramEditor;
+  window.setPrismaTemplate = setPrismaTemplate;
+  window.setPrismaOrientation = setPrismaOrientation;
+  window.renderStep4Prisma = renderStep4Prisma;
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    PRISMA_DIAGRAM_STATE,
+    syncPrismaStateFromWorkflow,
+    validatePrismaDiagramCounts,
+    renderPrismaSVG,
+    setPrismaTemplate,
+    setPrismaOrientation
+  };
 }

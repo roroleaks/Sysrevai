@@ -1161,7 +1161,7 @@ function renderMetaAnalysisInitialBanner() {
           </p>
           <div style="display:flex;gap:20px;flex-wrap:wrap;font-size:0.82rem;color:#64748b;">
             <span>🛡️ <strong>Zero background processing:</strong> Your systematic review manuscript is 100% complete and fully exportable right now.</span>
-            <span>📊 <strong>Rigorous verification:</strong> Inspect, verify, and edit all $2 \times 2$ event counts and continuous means before statistical pooling.</span>
+            <span>📊 <strong>Rigorous verification:</strong> Inspect, verify, and edit all 2 × 2 event counts and continuous means before statistical pooling.</span>
           </div>
         </div>
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">

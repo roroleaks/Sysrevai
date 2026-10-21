@@ -3078,9 +3078,9 @@ class SystematicReviewGenerator {
     
     const results = `Across the ${n} included investigations, synthesized findings demonstrate consistent clinical efficacy for primary endpoints (${this.pico.o || 'clinical outcomes'}). Risk of bias was predominantly evaluated as Low Risk or Some Concerns across randomized cohorts, with robust biological concordance reported.`;
     
-    const conclusions = `Synthesized evidence provides strong, peer-reviewed support for ${this.pico.i || this.topic}. Standardized clinical integration and longitudinal monitoring are recommended.`;
+    const conclusions = `Synthesized evidence provides peer-reviewed clinical data regarding ${this.pico.i || this.topic}. Standardized clinical integration and longitudinal monitoring are recommended.`;
     
-    const registration = `Review Protocol: Conforms to PRISMA 2020 27-item checklist; pre-registered in biomedical review index.`;
+    const registration = `Review Protocol: Structured under PRISMA 2020 standards and pre-specified within the SysRev AI evidence synthesis workspace.`;
 
     return { background, objectives, methods, results, conclusions, registration };
   }
@@ -3092,7 +3092,7 @@ class SystematicReviewGenerator {
 
   generateIntroduction() {
     const t = this.topic;
-    const p1 = `1.1 Rationale & Clinical Equipoise\n\n${cap(t)} represents an essential therapeutic and investigative domain within modern clinical medicine. While targeted clinical trials have demonstrated promising biological and symptomatic outcomes ${this.cite(0, 1)}, persistent variations in trial methodologies, patient risk stratification, and reported effect estimates have prevented unambiguous consensus. A rigorous, PRISMA 2020-compliant systematic review is essential to synthesize disparate findings and establish definitive clinical clarity.`;
+    const p1 = `1.1 Rationale & Clinical Equipoise\n\n${cap(t)} represents an essential therapeutic and investigative domain within modern clinical medicine. While targeted clinical trials have demonstrated promising biological and symptomatic outcomes ${this.cite(0, 1)}, persistent variations in trial methodologies, patient risk stratification, and reported effect estimates have prevented unambiguous consensus. A rigorous, PRISMA 2020-compliant systematic review is essential to synthesize disparate findings and provide an evidence-based clinical synthesis.`;
 
     const p2 = `1.2 Objectives & Formal PICOS Question\n\nThe structured objective of this systematic review was formulated under the PICOS framework:\n` +
       `• Population (P): ${this.pico.p || 'Target clinical population'}\n` +
@@ -3350,7 +3350,7 @@ function updatePrismaAndCounters() {
   document.getElementById('prisma-n-screened').textContent = screened;
   document.getElementById('prisma-n-excluded-screening').textContent = STATE.excludedPapers.length;
   document.getElementById('prisma-n-eligibility').textContent = STATE.includedPapers.length + STATE.borderlinePapers.length;
-  document.getElementById('prisma-n-excluded-fulltext').textContent = STATE.borderlinePapers.length > 0 ? 0 : 0;
+  document.getElementById('prisma-n-excluded-fulltext').textContent = STATE.borderlinePapers.length;
   document.getElementById('prisma-n-included').textContent = STATE.includedPapers.length;
   document.getElementById('prisma-included-sub').textContent = `${STATE.includedPapers.length} studies synthesized in review`;
 
