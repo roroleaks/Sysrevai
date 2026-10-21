@@ -1248,9 +1248,14 @@ function renderMetaAnalysisActiveWorkspace() {
               Inspect and verify extracted values. Uncheck any study to exclude it from the quantitative synthesis pool.
             </span>
           </div>
-          <button type="button" class="mini-btn" onclick="addCustomMetaStudyRow()" style="font-size:0.8rem;padding:5px 12px;background:#0f6b6b;color:#fff;border-radius:6px;border:none;cursor:pointer;font-weight:600;">
-            + Add Custom Study
-          </button>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <button type="button" class="mini-btn" onclick="openImportStudyModal()" style="font-size:0.82rem;padding:6px 14px;background:#0f6b6b;color:#fff;border-radius:6px;border:none;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;gap:6px;box-shadow:0 1px 2px rgba(0,0,0,0.08);" title="Upload a PDF, DOC, or TXT empirical study from your PC">
+              📁 Import Study from PC (PDF / DOC)
+            </button>
+            <button type="button" class="mini-btn" onclick="openManualStudyModal()" style="font-size:0.80rem;padding:5px 10px;background:#f8fafc;color:#475569;border-radius:6px;border:1px solid #cbd5e1;cursor:pointer;font-weight:600;" title="Enter study values manually">
+              + Manual Entry
+            </button>
+          </div>
         </div>
 
         <div style="overflow-x:auto;border:1px solid #cbd5e1;border-radius:8px;">
@@ -1421,6 +1426,7 @@ function renderMetaStudyTableRow(s, idx, state) {
       </td>
       <td style="padding:8px 10px;">
         <input type="text" value="${escapeXml(s.studyId)}" onchange="updateMetaStudyField(${idx}, 'studyId', this.value)" style="width:100%;border:none;background:transparent;font-weight:600;font-size:0.82rem;color:#0f172a;padding:2px 0;"/>
+        ${s.fileName ? `<div style="font-size:0.70rem;color:#0f6b6b;display:flex;align-items:center;gap:3px;margin-top:2px;" title="Imported from PC"><span style="font-size:0.75rem">📄</span> ${escapeXml(s.fileName)}</div>` : ''}
       </td>
       <td style="padding:8px 10px;">
         <span style="display:inline-block;padding:2px 6px;border-radius:4px;background:#e2e8f0;font-size:0.74rem;color:#334155;">${escapeXml(s.design || 'Study')}</span>
@@ -1523,24 +1529,419 @@ function toggleMetaStudyInclusion(idx) {
   refreshMetaAnalysisWorkspace();
 }
 
-function addCustomMetaStudyRow() {
-  const newIdx = META_ANALYSIS_STATE.studies.length + 1;
-  META_ANALYSIS_STATE.studies.push({
-    id: `custom-${Date.now()}`,
-    studyId: `Custom Study ${newIdx} (2024)`,
-    design: 'RCT',
-    e1: 15,
-    n1: 100,
-    e2: 30,
-    n2: 100,
-    m1: 10.0,
-    s1: 2.5,
-    m2: 14.0,
-    s2: 2.8,
-    verified: true,
-    includedInPool: true
+// ═══════════════════════════════════════════════════════════════
+// IMPORT STUDY DOCUMENT (PDF / DOC) WORKSPACE
+// ═══════════════════════════════════════════════════════════════
+
+let currentImportedStudyFile = null;
+
+function renderImportDataFields(state, prefilled = {}) {
+  const container = document.getElementById('meta-import-data-container');
+  if (!container) return;
+
+  const isBinary = state.outcomeType === 'binary';
+  if (isBinary) {
+    container.innerHTML = `
+      <div style="font-weight:700;color:#1e293b;font-size:0.86rem;margin-bottom:8px;">
+        Binary Outcome Counts: <span style="color:#0f6b6b;">${escapeXml(state.outcomeName)}</span> [${escapeXml(state.effectMeasure)}]
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div style="background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:10px;">
+          <div style="font-weight:600;font-size:0.80rem;color:#0f6b6b;margin-bottom:6px;">
+            Intervention: ${escapeXml(state.interventionLabel)}
+          </div>
+          <div style="display:flex;gap:8px;">
+            <div style="flex:1;">
+              <label style="display:block;font-size:0.75rem;color:#64748b;margin-bottom:2px;">Events (e1)</label>
+              <input type="number" id="meta-import-e1" min="0" value="${prefilled.e1 != null ? prefilled.e1 : 0}" style="width:100%;padding:6px;border:1px solid #cbd5e1;border-radius:4px;font-size:0.85rem;box-sizing:border-box;">
+            </div>
+            <div style="flex:1;">
+              <label style="display:block;font-size:0.75rem;color:#64748b;margin-bottom:2px;">Total N (n1) *</label>
+              <input type="number" id="meta-import-n1" min="1" value="${prefilled.n1 || 100}" style="width:100%;padding:6px;border:1px solid #cbd5e1;border-radius:4px;font-size:0.85rem;box-sizing:border-box;">
+            </div>
+          </div>
+        </div>
+        <div style="background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:10px;">
+          <div style="font-weight:600;font-size:0.80rem;color:#334155;margin-bottom:6px;">
+            Control: ${escapeXml(state.controlLabel)}
+          </div>
+          <div style="display:flex;gap:8px;">
+            <div style="flex:1;">
+              <label style="display:block;font-size:0.75rem;color:#64748b;margin-bottom:2px;">Events (e2)</label>
+              <input type="number" id="meta-import-e2" min="0" value="${prefilled.e2 != null ? prefilled.e2 : 0}" style="width:100%;padding:6px;border:1px solid #cbd5e1;border-radius:4px;font-size:0.85rem;box-sizing:border-box;">
+            </div>
+            <div style="flex:1;">
+              <label style="display:block;font-size:0.75rem;color:#64748b;margin-bottom:2px;">Total N (n2) *</label>
+              <input type="number" id="meta-import-n2" min="1" value="${prefilled.n2 || 100}" style="width:100%;padding:6px;border:1px solid #cbd5e1;border-radius:4px;font-size:0.85rem;box-sizing:border-box;">
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  } else {
+    container.innerHTML = `
+      <div style="font-weight:700;color:#1e293b;font-size:0.86rem;margin-bottom:8px;">
+        Continuous Outcome Values: <span style="color:#0f6b6b;">${escapeXml(state.outcomeName)}</span> [${escapeXml(state.effectMeasure)}]
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div style="background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:10px;">
+          <div style="font-weight:600;font-size:0.80rem;color:#0f6b6b;margin-bottom:6px;">
+            Intervention: ${escapeXml(state.interventionLabel)}
+          </div>
+          <div style="display:flex;gap:6px;">
+            <div style="flex:1;">
+              <label style="display:block;font-size:0.75rem;color:#64748b;margin-bottom:2px;">Mean (m1)</label>
+              <input type="number" step="0.1" id="meta-import-m1" value="${prefilled.m1 != null ? prefilled.m1 : 10.0}" style="width:100%;padding:5px;border:1px solid #cbd5e1;border-radius:4px;font-size:0.82rem;box-sizing:border-box;">
+            </div>
+            <div style="flex:1;">
+              <label style="display:block;font-size:0.75rem;color:#64748b;margin-bottom:2px;">SD (s1)</label>
+              <input type="number" step="0.1" min="0.01" id="meta-import-s1" value="${prefilled.s1 != null ? prefilled.s1 : 2.5}" style="width:100%;padding:5px;border:1px solid #cbd5e1;border-radius:4px;font-size:0.82rem;box-sizing:border-box;">
+            </div>
+            <div style="flex:1;">
+              <label style="display:block;font-size:0.75rem;color:#64748b;margin-bottom:2px;">N (n1) *</label>
+              <input type="number" min="2" id="meta-import-n1" value="${prefilled.n1 || 50}" style="width:100%;padding:5px;border:1px solid #cbd5e1;border-radius:4px;font-size:0.82rem;box-sizing:border-box;">
+            </div>
+          </div>
+        </div>
+        <div style="background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:10px;">
+          <div style="font-weight:600;font-size:0.80rem;color:#334155;margin-bottom:6px;">
+            Control: ${escapeXml(state.controlLabel)}
+          </div>
+          <div style="display:flex;gap:6px;">
+            <div style="flex:1;">
+              <label style="display:block;font-size:0.75rem;color:#64748b;margin-bottom:2px;">Mean (m2)</label>
+              <input type="number" step="0.1" id="meta-import-m2" value="${prefilled.m2 != null ? prefilled.m2 : 12.0}" style="width:100%;padding:5px;border:1px solid #cbd5e1;border-radius:4px;font-size:0.82rem;box-sizing:border-box;">
+            </div>
+            <div style="flex:1;">
+              <label style="display:block;font-size:0.75rem;color:#64748b;margin-bottom:2px;">SD (s2)</label>
+              <input type="number" step="0.1" min="0.01" id="meta-import-s2" value="${prefilled.s2 != null ? prefilled.s2 : 2.8}" style="width:100%;padding:5px;border:1px solid #cbd5e1;border-radius:4px;font-size:0.82rem;box-sizing:border-box;">
+            </div>
+            <div style="flex:1;">
+              <label style="display:block;font-size:0.75rem;color:#64748b;margin-bottom:2px;">N (n2) *</label>
+              <input type="number" min="2" id="meta-import-n2" value="${prefilled.n2 || 50}" style="width:100%;padding:5px;border:1px solid #cbd5e1;border-radius:4px;font-size:0.82rem;box-sizing:border-box;">
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+}
+
+function openImportStudyModal(prefilledData = null) {
+  const modal = document.getElementById('meta-import-study-modal');
+  if (!modal) return;
+
+  currentImportedStudyFile = null;
+  const msg = document.getElementById('meta-import-msg');
+  if (msg) msg.style.display = 'none';
+
+  const fileInput = document.getElementById('meta-study-file-input');
+  if (fileInput) fileInput.value = '';
+
+  const dropzoneContent = document.getElementById('meta-dropzone-content');
+  if (dropzoneContent) {
+    dropzoneContent.innerHTML = `
+      <div style="font-size:2.2rem;margin-bottom:6px">📄</div>
+      <div style="font-weight:700;color:#0f6b6b;font-size:0.95rem">Click to browse your PC for PDF or Word DOC</div>
+      <div style="font-size:0.78rem;color:#64748b;margin-top:3px">Supports .pdf, .docx, .doc, and .txt empirical studies</div>
+    `;
+  }
+
+  const studyIdInput = document.getElementById('meta-import-study-id');
+  if (studyIdInput) studyIdInput.value = prefilledData ? prefilledData.studyId : '';
+
+  renderImportDataFields(META_ANALYSIS_STATE, prefilledData || {});
+  setupDropzoneEvents();
+
+  modal.classList.remove('hidden');
+
+  // If no prefilled data, automatically trigger the native file picker
+  if (!prefilledData && fileInput) {
+    setTimeout(() => {
+      fileInput.click();
+    }, 150);
+  }
+}
+
+function openManualStudyModal() {
+  const modal = document.getElementById('meta-import-study-modal');
+  if (!modal) return;
+
+  currentImportedStudyFile = null;
+  const msg = document.getElementById('meta-import-msg');
+  if (msg) msg.style.display = 'none';
+
+  const dropzoneContent = document.getElementById('meta-dropzone-content');
+  if (dropzoneContent) {
+    dropzoneContent.innerHTML = `
+      <div style="font-size:2.2rem;margin-bottom:6px">✍️</div>
+      <div style="font-weight:700;color:#0f6b6b;font-size:0.95rem">Manual Study Entry (Or click to attach document)</div>
+      <div style="font-size:0.78rem;color:#64748b;margin-top:3px">Enter the study citation and numerical outcome data below</div>
+    `;
+  }
+
+  const studyIdInput = document.getElementById('meta-import-study-id');
+  if (studyIdInput) {
+    const nextIdx = META_ANALYSIS_STATE.studies.length + 1;
+    studyIdInput.value = `Study ${nextIdx} (2024)`;
+  }
+
+  renderImportDataFields(META_ANALYSIS_STATE, {});
+  setupDropzoneEvents();
+  modal.classList.remove('hidden');
+}
+
+function closeImportStudyModal() {
+  const modal = document.getElementById('meta-import-study-modal');
+  if (modal) modal.classList.add('hidden');
+  currentImportedStudyFile = null;
+}
+
+function triggerImportStudyFilePicker() {
+  const fileInput = document.getElementById('meta-study-file-input');
+  if (fileInput) {
+    fileInput.value = '';
+    fileInput.click();
+  }
+}
+
+let dropzoneInitialized = false;
+function setupDropzoneEvents() {
+  const dropzone = document.getElementById('meta-file-dropzone');
+  if (!dropzone || dropzoneInitialized) return;
+  dropzoneInitialized = true;
+
+  ['dragenter', 'dragover'].forEach(eventName => {
+    dropzone.addEventListener(eventName, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropzone.style.background = '#ccfbf1';
+      dropzone.style.borderColor = '#0d9488';
+    }, false);
   });
+  ['dragleave', 'drop'].forEach(eventName => {
+    dropzone.addEventListener(eventName, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropzone.style.background = '#f0fdfa';
+      dropzone.style.borderColor = '#0f6b6b';
+    }, false);
+  });
+  dropzone.addEventListener('drop', (e) => {
+    const dt = e.dataTransfer;
+    const files = dt.files;
+    if (files && files.length > 0) {
+      processSelectedStudyFile(files[0]);
+    }
+  }, false);
+}
+
+async function handleMetaStudyFileSelected(event) {
+  const file = event.target.files && event.target.files[0];
+  if (file) {
+    await processSelectedStudyFile(file);
+  }
+}
+
+async function processSelectedStudyFile(file) {
+  currentImportedStudyFile = file;
+
+  const dropzoneContent = document.getElementById('meta-dropzone-content');
+  if (dropzoneContent) {
+    dropzoneContent.innerHTML = `
+      <div style="font-size:2rem;margin-bottom:4px">📄</div>
+      <div style="font-weight:700;color:#0f6b6b;font-size:0.95rem">${escapeXml(file.name)}</div>
+      <div style="font-size:0.78rem;color:#15803d;margin-top:2px;font-weight:600">✔ Document Loaded from PC (${(file.size / 1024).toFixed(1)} KB) · Click to change</div>
+    `;
+  }
+
+  // Parse filename for Citation ID: e.g. "Smith_et_al_2023_Trial.pdf" -> "Smith et al. (2023)"
+  let base = file.name.replace(/\.(pdf|docx?|txt)$/i, '');
+  base = base.replace(/[_\-+]+/g, ' ').trim();
+  const yearM = base.match(/\b(19\d{2}|20\d{2})\b/);
+  const yr = yearM ? yearM[1] : '';
+  let authorPart = base.replace(/\b(19\d{2}|20\d{2})\b.*/, '').trim();
+  if (!authorPart) authorPart = base;
+  authorPart = authorPart.replace(/\b[a-z]/g, c => c.toUpperCase());
+  let citation = yr ? `${authorPart} (${yr})` : `${authorPart} (2024)`;
+  if (citation.length > 36) citation = citation.slice(0, 34);
+
+  const studyIdInput = document.getElementById('meta-import-study-id');
+  if (studyIdInput) studyIdInput.value = citation;
+
+  showImportMessage(`Reading "${file.name}"...`, 'info');
+
+  let extractedText = '';
+  try {
+    if (file.name.toLowerCase().endsWith('.pdf') && window.pdfjsLib) {
+      if (pdfjsLib.GlobalWorkerOptions && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      }
+      const ab = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(ab) }).promise;
+      const maxPages = Math.min(pdf.numPages, 4);
+      for (let p = 1; p <= maxPages; p++) {
+        const page = await pdf.getPage(p);
+        const tc = await page.getTextContent();
+        extractedText += tc.items.map(it => it.str).join(' ') + '\n';
+      }
+    } else if (file.name.toLowerCase().match(/\.docx?$/) && window.mammoth) {
+      const ab = await file.arrayBuffer();
+      const result = await mammoth.extractRawText({ arrayBuffer: ab });
+      extractedText = result.value || '';
+    } else if (file.name.toLowerCase().endsWith('.txt')) {
+      extractedText = await file.text();
+    }
+  } catch (err) {
+    console.warn('Document text extraction notice:', err);
+  }
+
+  scanStudyDocumentText(extractedText, file.name);
+}
+
+function scanStudyDocumentText(text, filename) {
+  if (!text || text.length < 20) {
+    showImportMessage(`✔ Loaded "${filename}" from PC. Please review and enter numerical counts below.`, 'success');
+    return;
+  }
+
+  // 1. Check study design
+  const designSelect = document.getElementById('meta-import-design');
+  if (designSelect) {
+    if (/\b(randomized|randomised|rct|double-blind|placebo-controlled)\b/i.test(text) && !/\bnon-randomized/i.test(text)) {
+      designSelect.value = 'Randomized controlled trials (RCTs)';
+    } else if (/\b(non-randomized|non-randomised|quasi-experimental|controlled trial)\b/i.test(text)) {
+      designSelect.value = 'Non-randomized controlled trials';
+    } else if (/\b(cohort|prospective|retrospective)\b/i.test(text)) {
+      designSelect.value = 'Cohort studies (prospective or retrospective)';
+    } else if (/\b(case-control)\b/i.test(text)) {
+      designSelect.value = 'Case-control studies';
+    }
+  }
+
+  // 2. Scan for sample sizes and numbers
+  let detectedN1 = null, detectedN2 = null, detectedE1 = null, detectedE2 = null;
+  const nMatches = [...text.matchAll(/\b(?:n|N)\s*=\s*(\d{2,5})\b/g)];
+  if (nMatches.length >= 2) {
+    detectedN1 = parseInt(nMatches[0][1], 10);
+    detectedN2 = parseInt(nMatches[1][1], 10);
+  }
+
+  const fracMatches = [...text.matchAll(/\b(\d{1,4})\s*\/\s*(\d{2,5})\b/g)];
+  if (fracMatches.length >= 2) {
+    detectedE1 = parseInt(fracMatches[0][1], 10);
+    detectedN1 = parseInt(fracMatches[0][2], 10);
+    detectedE2 = parseInt(fracMatches[1][1], 10);
+    detectedN2 = parseInt(fracMatches[1][2], 10);
+  }
+
+  if (detectedN1 && document.getElementById('meta-import-n1')) document.getElementById('meta-import-n1').value = detectedN1;
+  if (detectedN2 && document.getElementById('meta-import-n2')) document.getElementById('meta-import-n2').value = detectedN2;
+  if (detectedE1 != null && document.getElementById('meta-import-e1')) document.getElementById('meta-import-e1').value = detectedE1;
+  if (detectedE2 != null && document.getElementById('meta-import-e2')) document.getElementById('meta-import-e2').value = detectedE2;
+
+  showImportMessage(`✔ Extracted study data from "${filename}". Please verify the extracted counts below.`, 'success');
+}
+
+function showImportMessage(text, type) {
+  const msg = document.getElementById('meta-import-msg');
+  if (!msg) return;
+  msg.style.display = 'block';
+  if (type === 'error') {
+    msg.style.background = '#fef2f2';
+    msg.style.color = '#991b1b';
+    msg.style.border = '1px solid #fecaca';
+  } else if (type === 'success') {
+    msg.style.background = '#f0fdf4';
+    msg.style.color = '#166534';
+    msg.style.border = '1px solid #bbf7d0';
+  } else {
+    msg.style.background = '#f0fdfa';
+    msg.style.color = '#0f6b6b';
+    msg.style.border = '1px solid #99f6e4';
+  }
+  msg.textContent = text;
+}
+
+function confirmImportMetaStudy() {
+  const studyIdInput = document.getElementById('meta-import-study-id');
+  const studyId = (studyIdInput ? studyIdInput.value.trim() : '') || (currentImportedStudyFile ? currentImportedStudyFile.name.replace(/\.[^/.]+$/, '') : 'Imported Study');
+  const designSelect = document.getElementById('meta-import-design');
+  const design = designSelect ? designSelect.value : 'Randomized controlled trials (RCTs)';
+
+  const isBinary = META_ANALYSIS_STATE.outcomeType === 'binary';
+  let e1 = 0, n1 = 0, e2 = 0, n2 = 0;
+  let m1 = 0, s1 = 0, m2 = 0, s2 = 0;
+
+  if (isBinary) {
+    const e1El = document.getElementById('meta-import-e1');
+    const n1El = document.getElementById('meta-import-n1');
+    const e2El = document.getElementById('meta-import-e2');
+    const n2El = document.getElementById('meta-import-n2');
+
+    e1 = Number(e1El ? e1El.value : 0);
+    n1 = Number(n1El ? n1El.value : 0);
+    e2 = Number(e2El ? e2El.value : 0);
+    n2 = Number(n2El ? n2El.value : 0);
+
+    if (n1 <= 0 || n2 <= 0) {
+      showImportMessage('Total sample size (n1 and n2) must be greater than 0.', 'error');
+      return;
+    }
+    if (e1 < 0 || e2 < 0 || e1 > n1 || e2 > n2) {
+      showImportMessage('Event counts must be between 0 and total sample size.', 'error');
+      return;
+    }
+  } else {
+    const m1El = document.getElementById('meta-import-m1');
+    const s1El = document.getElementById('meta-import-s1');
+    const n1El = document.getElementById('meta-import-n1');
+    const m2El = document.getElementById('meta-import-m2');
+    const s2El = document.getElementById('meta-import-s2');
+    const n2El = document.getElementById('meta-import-n2');
+
+    m1 = Number(m1El ? m1El.value : 0);
+    s1 = Number(s1El ? s1El.value : 0);
+    n1 = Number(n1El ? n1El.value : 0);
+    m2 = Number(m2El ? m2El.value : 0);
+    s2 = Number(s2El ? s2El.value : 0);
+    n2 = Number(n2El ? n2El.value : 0);
+
+    if (n1 <= 1 || n2 <= 1) {
+      showImportMessage('Sample sizes for continuous outcomes must be > 1 per arm.', 'error');
+      return;
+    }
+    if (s1 <= 0 || s2 <= 0) {
+      showImportMessage('Standard deviations (s1 and s2) must be > 0.', 'error');
+      return;
+    }
+  }
+
+  // Add verified study to state
+  META_ANALYSIS_STATE.studies.push({
+    id: `custom-pc-${Date.now()}`,
+    studyId: studyId,
+    design: design,
+    e1: e1,
+    n1: n1,
+    e2: e2,
+    n2: n2,
+    m1: m1,
+    s1: s1,
+    m2: m2,
+    s2: s2,
+    fileName: currentImportedStudyFile ? currentImportedStudyFile.name : null,
+    verified: true,
+    includedInPool: true,
+    isCustom: true
+  });
+
+  closeImportStudyModal();
   refreshMetaAnalysisWorkspace();
+}
+
+function addCustomMetaStudyRow() {
+  openImportStudyModal();
 }
 
 function removeMetaStudyRow(idx) {
@@ -1803,6 +2204,12 @@ window.updateMetaModel = updateMetaModel;
 window.updateMetaGroupLabel = updateMetaGroupLabel;
 window.updateMetaStudyField = updateMetaStudyField;
 window.toggleMetaStudyInclusion = toggleMetaStudyInclusion;
+window.openImportStudyModal = openImportStudyModal;
+window.openManualStudyModal = openManualStudyModal;
+window.closeImportStudyModal = closeImportStudyModal;
+window.triggerImportStudyFilePicker = triggerImportStudyFilePicker;
+window.handleMetaStudyFileSelected = handleMetaStudyFileSelected;
+window.confirmImportMetaStudy = confirmImportMetaStudy;
 window.addCustomMetaStudyRow = addCustomMetaStudyRow;
 window.removeMetaStudyRow = removeMetaStudyRow;
 window.downloadCurrentGraphicPNG = downloadCurrentGraphicPNG;
