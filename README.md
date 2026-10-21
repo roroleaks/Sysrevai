@@ -44,6 +44,7 @@ Most AI literature tools produce superficial narrative summaries or commentary r
 | **In-Text Citations** | Hallucinated / missing | Bracketed baseline `[1]` | **Superscript "Upper Case" Vancouver ($^{[1]}$)** |
 | **Parity Guarantee** | Frequent mismatch | Automated parity audit | **100% In-Text to Bibliography Parity** |
 | **Export Deliverables** | Plain text | Basic Draft + Refs PDF | **Triple Publication-Grade Academic PDFs** |
+| **Quantitative Synthesis** | Unsupported | None | **Automated Meta-Analysis Engine (RR, OR, RD, MD, SMD)** |
 
 ---
 
@@ -73,7 +74,13 @@ flowchart TD
         D1 --> D2["Triple Academic PDF Exports<br/>1. Complete Systematic Review Manuscript PDF<br/>2. PRISMA 2020 Flow & RoB Audit PDF<br/>3. ICMJE Vancouver References PDF"]
     end
 
+    subgraph Step5["Optional Post-Review: Automated Meta-Analysis"]
+        E1["User-Initiated Extension (⚡)<br/>• 2x2 Binary (RR, OR, RD)<br/>• Continuous (MD, SMD Hedges' g)<br/>• Fixed & Random Effects (DerSimonian-Laird)"]
+        E1 --> E2["Publication-Grade Forest Plots<br/>• Vector SVG & 300 DPI PNG Exports<br/>• Cochran Q, Higgins I², Tau² Heterogeneity<br/>• Standalone Meta-Analysis PDF & CSV"]
+    end
+
     Step1 --> Step2 --> Step3 --> Step4
+    Step4 -. "Explicit User Initiation" .-> Step5
 ```
 
 ---
@@ -182,6 +189,33 @@ Powered by client-side vector document generation ([jsPDF](https://cdnjs.com/lib
 1. **Full Systematic Review Manuscript PDF**: Complete IMRaD manuscript with structured abstract, running headers, pagination, and references.
 2. **PRISMA 2020 Flow & Risk of Bias Report PDF**: Dedicated audit report displaying the flow funnel and the full Cochrane RoB matrix.
 3. **ICMJE Vancouver References PDF**: Clean bibliographic report with active PubMed and DOI resolution links.
+
+### 9. 📈 Quantitative Synthesis: Automated Meta-Analysis (Optional Post-Review Stage)
+Sysrevai incorporates a publication-grade, mathematically verified **Automated Meta-Analysis Engine** engineered as an independent, user-initiated extension of the completed systematic review:
+- **Strict User Initiation**:
+  - Appears after systematic review manuscript generation.
+  - Activated only when the reviewer explicitly clicks **“Start Meta-Analysis”**.
+  - Zero background calculations or AI extractions until opted in.
+  - Completely preserves the existing systematic review manuscript, references, and PDFs without modification or invalidation.
+- **Statistical Models & Effect Measures**:
+  - **Binary Outcomes ($2 \times 2$)**: Risk Ratio (RR), Odds Ratio (OR), and Risk Difference (RD) with automatic continuity corrections for sparse cells.
+  - **Continuous Outcomes**: Mean Difference (MD) and Standardized Mean Difference (SMD - Hedges' $g$).
+  - **Pooling Models**: Fixed-Effect (Inverse Variance) and Random-Effects (DerSimonian-Laird).
+- **Heterogeneity & Inconsistency Metrics**:
+  - Cochran's $Q$ ($\chi^2$), degrees of freedom ($\text{df}$), and precise $P$-value.
+  - Higgins $I^2$ inconsistency index with clinical risk grading (Low $<25\%$, Moderate $25\text{--}75\%$, High $>75\%$).
+  - Between-study variance ($\tau^2$ and $\tau$).
+  - Test of overall effect ($Z$-score and two-tailed $P$-value).
+- **Study-by-Study Verification & Compatibility**:
+  - Interactive tabular grid allowing reviewers to inspect, edit, or adjust event counts ($e_1, n_1, e_2, n_2$) and continuous metrics ($m_1, s_1, n_1, m_2, s_2, n_2$).
+  - Individual study weight ($w_i\%$) and point estimate [95% CI] previewed in real-time.
+  - Dynamic study pool toggling (exclude/include specific studies) and custom study addition.
+- **Publication-Quality Forest Plots & Exports**:
+  - 🌲 **Pure Vector SVG**: Rendered to Cochrane / BMJ standards with study weight-proportional boxes, confidence intervals, reference line, and summary diamond.
+  - 🖼️ **High-Resolution PNG (300 DPI)**: 3× canvas super-sampling for medical journal submissions.
+  - 📋 **Copy SVG to Clipboard**: Instant paste into vector editors and presentations.
+  - 📄 **Standalone Meta-Analysis PDF**: Complete quantitative summary report.
+  - 📊 **CSV Data Export**: Full study parameters, weights, and heterogeneity statistics.
 
 ---
 

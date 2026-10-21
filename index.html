@@ -44,6 +44,7 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="prisma-generator.js"></script>
+  <script src="meta-analysis-engine.js"></script>
   <style>
 /* ═══════════════════════════════════════════════════
    ROOT & TOKENS  (Matching AIMed / SciDraft Design System)
@@ -1197,6 +1198,7 @@ sup.cite-num:hover, .cite-num:hover {
       <button class="tab-btn" id="tab-btn-chars" onclick="switchTab('chars',this)">📋 Characteristics of Included Studies</button>
       <button class="tab-btn" id="tab-btn-references" onclick="switchTab('references',this)">📚 Vancouver References</button>
       <button class="tab-btn" id="tab-btn-audit" onclick="switchTab('audit',this)">🔍 PRISMA Checklist &amp; Audit</button>
+      <button class="tab-btn" id="tab-btn-meta" onclick="switchTab('meta',this)" style="font-weight:700;color:var(--accent)">📈 Meta-Analysis (Optional)</button>
     </div>
 
     <!-- Tab 1: Full Systematic Review Manuscript -->
@@ -1239,6 +1241,16 @@ sup.cite-num:hover, .cite-num:hover {
     <div id="tab-audit" class="hidden">
       <div id="audit-report-container"></div>
     </div>
+
+    <!-- Tab 7: Quantitative Synthesis (Meta-Analysis) Tab -->
+    <div id="tab-meta" class="hidden">
+      <div id="tab-meta-placeholder" style="padding:10px 0;"></div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════
+         OPTIONAL POST-REVIEW STAGE: QUANTITATIVE SYNTHESIS (META-ANALYSIS)
+    ══════════════════════════════════════════════════════════ -->
+    <div id="meta-analysis-stage"></div>
 
     <!-- Sticky Action Bar for Step 4 -->
     <div class="sticky-bottom-bar" id="step4-actions">
@@ -1873,6 +1885,11 @@ function resetApp() {
   STATE.excludedPapers = [];
   STATE.borderlinePapers = [];
   STATE.review = null;
+  if (window.META_ANALYSIS_STATE) {
+    window.META_ANALYSIS_STATE.initiated = false;
+    window.META_ANALYSIS_STATE.studies = [];
+    window.META_ANALYSIS_STATE.results = null;
+  }
   showSection('step-1');
   setStep(1);
 }
@@ -2907,10 +2924,20 @@ function goToStep4() {
   renderCharsTable(included);
   renderReferencesList(STATE.review.references);
   renderAuditReport(STATE.review, included);
+
+  // Quantitative Synthesis: Automated Meta-Analysis (Optional User-Initiated Post-Review Stage)
+  // Zero automatic extraction or calculation runs before the user explicitly opts in.
+  if (typeof renderMetaAnalysisInitialBanner === 'function') {
+    if (window.META_ANALYSIS_STATE && window.META_ANALYSIS_STATE.initiated) {
+      renderMetaAnalysisActiveWorkspace();
+    } else {
+      renderMetaAnalysisInitialBanner();
+    }
+  }
 }
 
 function switchTab(tabId, btn) {
-  ['paper', 'prisma', 'rob', 'chars', 'references', 'audit'].forEach(t => {
+  ['paper', 'prisma', 'rob', 'chars', 'references', 'audit', 'meta'].forEach(t => {
     const el = document.getElementById(`tab-${t}`);
     if (el) el.classList.add('hidden');
   });
@@ -2919,6 +2946,13 @@ function switchTab(tabId, btn) {
   const target = document.getElementById(`tab-${tabId}`);
   if (target) target.classList.remove('hidden');
   if (btn) btn.classList.add('active');
+
+  if (tabId === 'meta') {
+    const stageEl = document.getElementById('meta-analysis-stage');
+    if (stageEl) {
+      stageEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }
 }
 
 let CITATION_STYLE = 'superscript'; // 'superscript' [¹] | 'superscript_nobrackets' ¹ | 'bracket' [1]
