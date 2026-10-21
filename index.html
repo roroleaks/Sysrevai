@@ -1220,9 +1220,8 @@ sup.cite-num:hover, .cite-num:hover, .cite-apa:hover, .cite-harvard:hover {
     <input type="hidden" id="page-size" value="35"/>
 
     <!-- Search engine sources -->
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-top:18px">
+    <div style="margin-top:18px">
       <h2 class="sec-h" style="margin:0">🌐 Literature Search Databases</h2>
-      <button type="button" class="mini-btn" onclick="openS2KeyModal()">🔑 Semantic Scholar API Settings</button>
     </div>
     <p class="hint">Simultaneous multi-database harvesting meets PRISMA 2020 Item 6 requirements:</p>
     <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px" id="engine-options">
@@ -1582,18 +1581,7 @@ sup.cite-num:hover, .cite-num:hover, .cite-apa:hover, .cite-harvard:hover {
 
 </main>
 
-<!-- S2 API Key Modal -->
-<div id="s2-modal" class="modal-overlay hidden">
-  <div class="modal-card">
-    <h3 style="font-size:1.1rem;font-weight:700;margin-bottom:8px;color:var(--accent)">Semantic Scholar API Key Configuration</h3>
-    <p class="hint">Sysrevai is pre-configured with a dedicated Semantic Scholar API key from the AIMed ecosystem. You can optionally supply your own custom key here:</p>
-    <input type="text" id="custom-s2-key-input" placeholder="e.g. s2k-..." style="margin:10px 0"/>
-    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
-      <button type="button" class="secondary" onclick="closeS2KeyModal()">Close</button>
-      <button type="button" class="primary" onclick="saveS2KeyModal()">Save Key</button>
-    </div>
-  </div>
-</div>
+
 
 <!-- ══════════════════════════════════════════════════════════
      IMPORT STUDY DOCUMENT (PDF / DOC) MODAL
@@ -2189,18 +2177,9 @@ function selectSearchEngine(el, mode) {
   STATE.searchSource = mode;
 }
 
-function openS2KeyModal() {
-  document.getElementById('custom-s2-key-input').value = S2_USER_KEY || S2_DEFAULT_EMBEDDED_KEY;
-  document.getElementById('s2-modal').classList.remove('hidden');
-}
-function closeS2KeyModal() {
-  document.getElementById('s2-modal').classList.add('hidden');
-}
-function saveS2KeyModal() {
-  const k = document.getElementById('custom-s2-key-input').value.trim();
-  S2_USER_KEY = k;
-  closeS2KeyModal();
-}
+function openS2KeyModal() {}
+function closeS2KeyModal() {}
+function saveS2KeyModal() {}
 
 function clearStep1Alert() {
   const el = document.getElementById('step1-alert');
