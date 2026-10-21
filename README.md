@@ -113,15 +113,43 @@ Rather than relying on uninterpretable LLM judgements, Sysrevai executes a **two
 - **Traceable Rationales**: Every excluded record is permanently tagged with its exact reason for exclusion.
 - **Investigator Overrides**: Reviewers can re-classify any paper with one click (`[✔ Include]` / `[✖ Exclude]`), dynamically updating the PRISMA diagram in real-time.
 
-### 3. 📊 Interactive PRISMA 2020 Flow Diagram
-A dynamic, real-time implementation of the official **PRISMA 2020 Statement**:
-$$\text{Records Screened} = \text{Included Studies} + \sum \text{Excluded Records by Reason}$$
-- **Phase 1: Identification**: Total records harvested across Europe PMC and Semantic Scholar, with cross-database duplicate resolution.
-- **Phase 2: Screening**: Title and abstract screening with breakdown of exclusions.
-- **Phase 3: Eligibility**: Full-text appraisal and borderline record management.
-- **Phase 4: Included**: Final synthesis pool of peer-reviewed studies.
+### 4. 📊 Publication-Quality PRISMA 2020 Flow Diagram Generator
+Sysrevai features a standalone, interactive, publication-quality **PRISMA 2020 Flow Diagram Generator** adhering strictly to the official PRISMA 2020 Statement (*Page MJ et al., BMJ 2021;372:n71*):
 
-### 4. 🛡️ Cochrane Risk of Bias (RoB 2 / ROBINS-I) Appraisal Matrix
+- **4 Official PRISMA 2020 Templates Supported**:
+  1. **Template A**: *New systematic review using databases and registers only* (Classic primary flow).
+  2. **Template B**: *New systematic review using databases, registers, and other methods* (Dual parallel pathway: Websites, Organizations, Citation searching).
+  3. **Template C**: *Updated systematic review using databases and registers only* (Incorporating previous study & report counts).
+  4. **Template D**: *Updated systematic review using databases, registers, and other methods* (Complete multi-pathway architecture).
+
+- **Strict Study vs. Report Distinction**:
+  - Differentiates unique clinical investigations ($n\text{ studies}$) from multiple published articles or sub-analyses ($n\text{ reports}$).
+  - Explicitly reports: *"New studies included in review ($n$)"* and *"Reports of new included studies ($n$)"*.
+
+- **Real-Time Mathematical Validation Engine**:
+  - Automatically verifies scientific accounting balance across all stages:
+    $$\text{Screened} = \text{Total Identified} - \text{Removed before screening}$$
+    $$\text{Reports Sought} = \text{Records Screened} - \text{Records Excluded}$$
+    $$\text{Reports Assessed} = \text{Reports Sought} - \text{Reports Not Retrieved}$$
+    $$\text{Reports Included} = \text{Reports Assessed} - \sum \text{Exclusion Reasons}$$
+  - Reconciles multi-source evidence without double-counting.
+  - Non-destructive validation: Flags mathematical discrepancies with actionable warnings rather than silently inventing or modifying scientific numbers.
+  - Accommodates incomplete or in-progress reviews gracefully.
+
+- **Interactive Diagram Editor Workspace**:
+  - Click **“Open PRISMA 2020 Diagram Editor”** (or header shortcut) to launch the full-screen visual workbench.
+  - Live preview with smooth interactive pan, zoom controls (50% to 200%), and "Fit to Screen".
+  - Dynamic exclusion-reason manager: Add, edit, or remove categories (e.g. *Wrong population*, *Ineligible design*, *Insufficient data*) with automatic layout reflow.
+  - Support for external systematic reviews: Enter study counts manually for reviews screened outside Sysrevai.
+  - One-click **"Reset to Review Data"** button to restore live screening counts instantly.
+
+- **High-Resolution Vector & Raster Exports**:
+  - 🖼️ **High-Resolution PNG**: 300 DPI equivalent (3× canvas super-sampling) on a crisp white background, ready for journal figure submission.
+  - 📐 **Pure Vector SVG**: Clean, standards-compliant, standalone vector SVG XML file.
+  - 📋 **Copy SVG to Clipboard**: Instant paste into vector editors (Illustrator, Inkscape, Figma) or slide decks.
+  - 📄 **Standalone PRISMA Diagram PDF**: Direct vector PDF export centered with official reference metadata.
+
+### 5. 🛡️ Cochrane Risk of Bias (RoB 2 / ROBINS-I) Appraisal Matrix
 Sysrevai assesses each included study against 5 critical methodological bias domains:
 - **D1 (Randomization Process)**: Evaluates random sequence generation and baseline imbalances.
 - **D2 (Deviations from Intended Interventions)**: Evaluates blinding and allocation concealment.
@@ -130,7 +158,7 @@ Sysrevai assesses each included study against 5 critical methodological bias dom
 - **D5 (Selection of Reported Results)**: Evaluates pre-registered protocols and selective reporting.
 - Produces a visual **Traffic-Light Appraisal Matrix**: 🟢 **Low Risk**, 🟡 **Some Concerns**, or 🔴 **High Risk**.
 
-### 5. 🔤 Upper Case / Superscript Vancouver Citations (ICMJE Standard)
+### 6. 🔤 Upper Case / Superscript Vancouver Citations (ICMJE Standard)
 In-text citations adhere to international biomedical journal standards (*The Lancet*, *JAMA*, *NEJM*):
 - Dynamic mapping of references in exact order of appearance.
 - Rendered in **upper case superscript numerals**:
@@ -140,7 +168,7 @@ In-text citations adhere to international biomedical journal standards (*The Lan
   - `Upper Case Superscript ¹ (No Brackets)`
   - `Baseline [1]`
 
-### 6. 📋 Table of Characteristics of Included Studies (Table 1)
+### 7. 📋 Table of Characteristics of Included Studies (Table 1)
 Automatically extracts and formats:
 - **Study ID**: Primary author and publication year (`Author et al., 2024`)
 - **Study Design**: Categorized into RCT, Prospective Cohort, Meta-Analysis, etc.
@@ -149,7 +177,7 @@ Automatically extracts and formats:
 - **Reported Quantitative Findings**: Hazard Ratios (HR), Relative Risks (RR), $p$-values, and primary effect estimates
 - **Methodological RoB Score**: Overall quality appraisal
 
-### 7. 📄 Triple Publication-Grade PDF Exports
+### 8. 📄 Triple Publication-Grade PDF Exports
 Powered by client-side vector document generation ([jsPDF](https://cdnjs.com/libraries/jspdf)):
 1. **Full Systematic Review Manuscript PDF**: Complete IMRaD manuscript with structured abstract, running headers, pagination, and references.
 2. **PRISMA 2020 Flow & Risk of Bias Report PDF**: Dedicated audit report displaying the flow funnel and the full Cochrane RoB matrix.

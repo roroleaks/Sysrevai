@@ -43,6 +43,7 @@
   <meta name="twitter:image" content="https://sysrevai.vercel.app/icon.jpg"/>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="prisma-generator.js"></script>
   <style>
 /* ═══════════════════════════════════════════════════
    ROOT & TOKENS  (Matching AIMed / SciDraft Design System)
@@ -593,6 +594,95 @@ sup.cite-num:hover, .cite-num:hover {
   padding: 22px; box-shadow: 0 10px 30px rgba(0,0,0,.2);
 }
 
+/* ═══════════════════════════════════════════════════
+   PRISMA 2020 FLOW DIAGRAM GENERATOR & WORKSPACE
+═══════════════════════════════════════════════════ */
+.prisma-editor-overlay {
+  position: fixed; inset: 0; background: rgba(15, 23, 42, 0.78);
+  backdrop-filter: blur(5px); z-index: 2000;
+  display: flex; flex-direction: column; padding: 12px;
+}
+.prisma-editor-window {
+  background: #ffffff; border-radius: 12px;
+  display: flex; flex-direction: column; flex: 1; height: 100%;
+  overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
+  border: 1px solid #cbd5e1;
+}
+.prisma-editor-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 18px; background: #f8fafc; border-bottom: 1px solid #e2e8f0;
+  gap: 12px; flex-wrap: wrap; flex-shrink: 0;
+}
+.prisma-editor-title {
+  display: flex; align-items: center; gap: 10px; font-size: 1.05rem;
+  font-weight: 700; color: #0f172a;
+}
+.prisma-tmpl-group {
+  display: inline-flex; background: #e2e8f0; padding: 3px; border-radius: 8px; gap: 2px;
+}
+.prisma-tmpl-btn {
+  border: none; background: transparent; padding: 5px 11px; font-size: .78rem;
+  font-weight: 600; border-radius: 6px; cursor: pointer; color: #475569;
+  transition: all .15s ease;
+}
+.prisma-tmpl-btn:hover { color: #0f172a; }
+.prisma-tmpl-btn.active {
+  background: #ffffff; color: #0f6b6b; font-weight: 700;
+  box-shadow: 0 1px 3px rgba(0,0,0,.1);
+}
+.prisma-editor-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 18px; background: #ffffff; border-bottom: 1px solid #e2e8f0;
+  gap: 10px; flex-wrap: wrap; flex-shrink: 0;
+}
+.prisma-editor-main {
+  display: flex; flex: 1; overflow: hidden;
+}
+.prisma-editor-sidebar {
+  width: 440px; border-right: 1px solid #e2e8f0; background: #ffffff;
+  overflow-y: auto; padding: 18px; flex-shrink: 0;
+}
+.prisma-sidebar-section {
+  margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1px solid #f1f5f9;
+}
+.prisma-sidebar-section:last-child {
+  border-bottom: none; margin-bottom: 0;
+}
+.prisma-sidebar-title {
+  font-size: .88rem; font-weight: 700; color: #0f172a; margin-bottom: 8px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.prisma-field-row {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 8px; gap: 10px; font-size: .82rem; color: #334155;
+}
+.prisma-field-row label { flex: 1; margin: 0; font-weight: 500; font-size: .80rem; }
+.prisma-edit-input {
+  border: 1px solid #cbd5e1; border-radius: 6px; padding: 5px 8px;
+  font-size: .82rem; font-family: inherit; color: #0f172a;
+  background: #ffffff; width: 85px; text-align: right;
+}
+.prisma-edit-input:focus {
+  border-color: #0f6b6b; outline: none; box-shadow: 0 0 0 2px rgba(15,107,107,.15);
+}
+.prisma-text-input {
+  width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px 10px;
+  font-size: .82rem; font-family: inherit; color: #0f172a; margin-top: 4px;
+}
+.prisma-text-input:focus {
+  border-color: #0f6b6b; outline: none; box-shadow: 0 0 0 2px rgba(15,107,107,.15);
+}
+.prisma-canvas-viewport {
+  flex: 1; background: #f1f5f9; overflow: auto; padding: 24px;
+  display: flex; justify-content: center; align-items: flex-start;
+  position: relative;
+}
+.prisma-canvas-wrapper {
+  background: #ffffff; padding: 18px; border-radius: 6px;
+  box-shadow: 0 4px 20px rgba(0,0,0,.08); border: 1px solid #cbd5e1;
+  transform-origin: top center; transition: transform .1s ease;
+}
+
 .hidden { display: none !important; }
 
 /* ═══════════════════════════════════════════════════
@@ -645,12 +735,15 @@ sup.cite-num:hover, .cite-num:hover {
       <h1>PRISMA 2020 AI-Assisted Systematic Review Platform</h1>
       <p>From Structured Clinical Question (PICOS) to Publication-Grade Evidence Synthesis</p>
     </div>
-    <!-- Right: Author -->
+    <!-- Right: Author & Quick Tools -->
     <div class="hdr-right">
       <span class="author-name">
         <img src="dr-raouf.jpg" alt="Dr Raouf Roshdy" class="author-photo" onerror="this.style.display='none'"/>
         Dr Raouf Roshdy
       </span>
+      <button type="button" class="mini-btn mini-btn-good" onclick="openPrismaDiagramEditor()" style="margin-left:10px;font-weight:700">
+        📊 PRISMA 2020 Editor
+      </button>
     </div>
   </div>
 </header>
@@ -922,9 +1015,14 @@ sup.cite-num:hover, .cite-num:hover {
           <span>📊 PRISMA 2020 Flow Diagram</span>
           <span class="pill pill-good" style="margin:0">Live Funnel</span>
         </div>
-        <button type="button" class="mini-btn" onclick="togglePrismaDetails()" id="btn-toggle-prisma">
-          ▼ Show Flow Architecture
-        </button>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button type="button" class="mini-btn mini-btn-good" onclick="openPrismaDiagramEditor()" style="font-weight:700">
+            🎛️ Open PRISMA 2020 Diagram Editor
+          </button>
+          <button type="button" class="mini-btn" onclick="togglePrismaDetails()" id="btn-toggle-prisma">
+            ▼ Show Flow Architecture
+          </button>
+        </div>
       </div>
 
       <div class="prisma-diagram" id="prisma-diagram-body">
@@ -1070,6 +1168,7 @@ sup.cite-num:hover, .cite-num:hover {
         <p class="hint" style="margin:4px 0 0">PRISMA 2020 Compliant · Vancouver (ICMJE) Citations · Cochrane Risk of Bias Matrix</p>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="secondary" onclick="openPrismaDiagramEditor()" style="font-weight:700">🎛️ PRISMA 2020 Flow Generator</button>
         <button class="primary" onclick="exportSystematicReviewPDF()">⬇ Download Systematic Review PDF</button>
         <button class="secondary" onclick="exportPRISMAReportPDF()">⬇ PRISMA &amp; RoB PDF</button>
         <button class="secondary" onclick="resetApp()">↩ New Review</button>
@@ -1161,6 +1260,283 @@ sup.cite-num:hover, .cite-num:hover {
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
       <button type="button" class="secondary" onclick="closeS2KeyModal()">Close</button>
       <button type="button" class="primary" onclick="saveS2KeyModal()">Save Key</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     PRISMA 2020 FLOW DIAGRAM WORKSPACE & EDITOR MODAL
+══════════════════════════════════════════════════════════ -->
+<div id="prisma-editor-modal" class="prisma-editor-overlay hidden">
+  <div class="prisma-editor-window">
+    <!-- Header -->
+    <div class="prisma-editor-header">
+      <div class="prisma-editor-title">
+        <span>📊 PRISMA 2020 Flow Diagram Generator</span>
+        <span id="prisma-sync-status-badge" class="pill pill-good">🔗 Synced with Active Review Workflow</span>
+      </div>
+
+      <!-- Template Selectors -->
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-size:.78rem;font-weight:700;color:var(--muted)">Template:</span>
+        <div class="prisma-tmpl-group">
+          <button type="button" class="prisma-tmpl-btn active" id="btn-prisma-tmpl-A" onclick="setPrismaTemplate('A')" title="Template A: Databases and registers only (Standard new review)">
+            [A] Databases &amp; Registers
+          </button>
+          <button type="button" class="prisma-tmpl-btn" id="btn-prisma-tmpl-B" onclick="setPrismaTemplate('B')" title="Template B: Databases, registers, and other methods (websites, organisations)">
+            [B] + Other Methods
+          </button>
+          <button type="button" class="prisma-tmpl-btn" id="btn-prisma-tmpl-C" onclick="setPrismaTemplate('C')" title="Template C: Updated systematic review using databases and registers">
+            [C] Updated Review
+          </button>
+          <button type="button" class="prisma-tmpl-btn" id="btn-prisma-tmpl-D" onclick="setPrismaTemplate('D')" title="Template D: Updated review with other methods">
+            [D] Updated + Other
+          </button>
+        </div>
+
+        <!-- Orientation -->
+        <div class="prisma-tmpl-group" style="margin-left:6px">
+          <button type="button" class="prisma-tmpl-btn active" id="btn-prisma-orient-portrait" onclick="setPrismaOrientation('portrait')">
+            Portrait
+          </button>
+          <button type="button" class="prisma-tmpl-btn" id="btn-prisma-orient-landscape" onclick="setPrismaOrientation('landscape')">
+            Landscape
+          </button>
+        </div>
+
+        <button type="button" class="mini-btn mini-btn-danger" onclick="closePrismaDiagramEditor()" style="padding:6px 12px;font-size:.9rem" title="Close Editor">✖</button>
+      </div>
+    </div>
+
+    <!-- Action Toolbar -->
+    <div class="prisma-editor-toolbar">
+      <!-- Export buttons -->
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <button type="button" class="primary" onclick="downloadPrismaPNG(3)" style="font-weight:700">
+          📥 Download PRISMA Diagram — PNG
+        </button>
+        <button type="button" class="secondary" onclick="downloadPrismaSVG()" style="font-weight:700">
+          📐 Download PRISMA Diagram — SVG
+        </button>
+        <button type="button" class="secondary" onclick="downloadPrismaPDF()">
+          📄 Standalone PRISMA PDF
+        </button>
+        <button type="button" class="mini-btn" onclick="copyPrismaSVGToClipboard()" title="Copy clean SVG XML to clipboard">
+          📋 Copy SVG
+        </button>
+      </div>
+
+      <!-- Controls & Reset -->
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <button type="button" class="mini-btn" onclick="resetPrismaDiagramToWorkflow()" title="Reset to review data">
+          🔄 Reset to Review Data
+        </button>
+
+        <div style="display:flex;align-items:center;gap:4px;background:#f1f5f9;padding:2px 8px;border-radius:6px;border:1px solid #cbd5e1">
+          <button type="button" class="mini-btn" onclick="zoomPrismaDiagram(-0.15)" title="Zoom Out" style="padding:2px 6px">🔍−</button>
+          <span id="prisma-zoom-label" style="font-weight:700;font-size:.78rem;min-width:40px;text-align:center">100%</span>
+          <button type="button" class="mini-btn" onclick="zoomPrismaDiagram(0.15)" title="Zoom In" style="padding:2px 6px">🔍+</button>
+          <button type="button" class="mini-btn" onclick="zoomPrismaDiagram(0)" title="Reset Zoom" style="padding:2px 6px">100%</button>
+          <button type="button" class="mini-btn" onclick="fitPrismaDiagramToScreen()" title="Fit Diagram to Viewport" style="padding:2px 6px">↔ Fit</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Workspace -->
+    <div class="prisma-editor-main">
+      <!-- Left Sidebar: Controls & Validation -->
+      <div class="prisma-editor-sidebar" id="prisma-editor-sidebar">
+        <!-- Live Validation Alert Box -->
+        <div id="prisma-validation-box" class="alert-box alert-good" style="margin-bottom:14px"></div>
+
+        <!-- Review Title Field -->
+        <div class="prisma-sidebar-section">
+          <label style="font-size:.82rem;font-weight:700;color:#0f172a">Scientific Review Topic / Title:</label>
+          <input type="text" id="prisma-input-title" class="prisma-text-input" placeholder="Title of systematic review..." oninput="updatePrismaTextField('reviewTitle', this.value)"/>
+        </div>
+
+        <!-- Phase 1: Identification -->
+        <div class="prisma-sidebar-section">
+          <div class="prisma-sidebar-title">
+            <span>1. Identification Phase</span>
+            <span style="font-size:.72rem;color:var(--muted)">Databases &amp; Registers</span>
+          </div>
+
+          <div class="prisma-field-row">
+            <label>Europe PMC Database ($n$):</label>
+            <input type="number" id="prisma-input-epmc" class="prisma-edit-input" min="0" oninput="updatePrismaCountField('db_epmc', this.value)"/>
+          </div>
+          <div class="prisma-field-row">
+            <label>Semantic Scholar Database ($n$):</label>
+            <input type="number" id="prisma-input-s2" class="prisma-edit-input" min="0" oninput="updatePrismaCountField('db_s2', this.value)"/>
+          </div>
+          <div class="prisma-field-row">
+            <input type="text" id="prisma-input-other-name" style="width:140px;font-size:.78rem;padding:3px 6px;border:1px solid #cbd5e1;border-radius:4px" placeholder="Other Database..." oninput="updatePrismaTextField('db_other_name', this.value)"/>
+            <input type="number" id="prisma-input-other-count" class="prisma-edit-input" min="0" placeholder="0" oninput="updatePrismaCountField('db_other_count', this.value)"/>
+          </div>
+          <div class="prisma-field-row">
+            <label>Trial Registers ($n$) (e.g. ClinicalTrials.gov):</label>
+            <input type="number" id="prisma-input-registers" class="prisma-edit-input" min="0" oninput="updatePrismaCountField('registers_count', this.value)"/>
+          </div>
+
+          <div style="font-weight:700;font-size:.78rem;margin:10px 0 6px;color:#475569">Records Removed Before Screening:</div>
+          <div class="prisma-field-row">
+            <label>Duplicate Records Removed ($n$):</label>
+            <input type="number" id="prisma-input-duplicates" class="prisma-edit-input" min="0" oninput="updatePrismaCountField('duplicates_removed', this.value)"/>
+          </div>
+          <div class="prisma-field-row">
+            <label>Marked Ineligible by Automation ($n$):</label>
+            <input type="number" id="prisma-input-auto-ineligible" class="prisma-edit-input" min="0" oninput="updatePrismaCountField('automation_ineligible', this.value)"/>
+          </div>
+          <div class="prisma-field-row">
+            <label>Removed for Other Reasons ($n$):</label>
+            <input type="number" id="prisma-input-other-removed" class="prisma-edit-input" min="0" oninput="updatePrismaCountField('other_removed_before_screening', this.value)"/>
+          </div>
+        </div>
+
+        <!-- Phase 2: Screening -->
+        <div class="prisma-sidebar-section">
+          <div class="prisma-sidebar-title">
+            <span>2. Screening Phase</span>
+            <span style="font-size:.72rem;color:var(--muted)">Title &amp; Abstract</span>
+          </div>
+
+          <div class="prisma-field-row">
+            <label>Records Screened ($n$):</label>
+            <input type="number" id="prisma-input-screened" class="prisma-edit-input" min="0" oninput="updatePrismaCountField('records_screened', this.value)"/>
+          </div>
+          <div class="prisma-field-row">
+            <label>Records Excluded ($n$):</label>
+            <input type="number" id="prisma-input-excluded-screening" class="prisma-edit-input" min="0" oninput="updatePrismaCountField('records_excluded_screening', this.value)"/>
+          </div>
+          <div class="prisma-field-row" style="padding-left:10px;font-size:.76rem;color:#64748b">
+            <label>• Human Screener Exclusions ($n$):</label>
+            <input type="number" id="prisma-input-excluded-human" class="prisma-edit-input" min="0" style="width:70px;font-size:.76rem" oninput="updatePrismaCountField('records_excluded_human', this.value)"/>
+          </div>
+          <div class="prisma-field-row" style="padding-left:10px;font-size:.76rem;color:#64748b">
+            <label>• Automation Tool Exclusions ($n$):</label>
+            <input type="number" id="prisma-input-excluded-auto" class="prisma-edit-input" min="0" style="width:70px;font-size:.76rem" oninput="updatePrismaCountField('records_excluded_automation', this.value)"/>
+          </div>
+        </div>
+
+        <!-- Phase 3: Retrieval -->
+        <div class="prisma-sidebar-section">
+          <div class="prisma-sidebar-title">
+            <span>3. Retrieval Phase</span>
+            <span style="font-size:.72rem;color:var(--muted)">Full-Text Seeking</span>
+          </div>
+
+          <div class="prisma-field-row">
+            <label>Reports Sought for Retrieval ($n$):</label>
+            <input type="number" id="prisma-input-sought" class="prisma-edit-input" min="0" oninput="updatePrismaCountField('reports_sought', this.value)"/>
+          </div>
+          <div class="prisma-field-row">
+            <label>Reports Not Retrieved ($n$):</label>
+            <input type="number" id="prisma-input-not-retrieved" class="prisma-edit-input" min="0" oninput="updatePrismaCountField('reports_not_retrieved', this.value)"/>
+          </div>
+        </div>
+
+        <!-- Phase 4: Eligibility & Detailed Reasons -->
+        <div class="prisma-sidebar-section">
+          <div class="prisma-sidebar-title">
+            <span>4. Eligibility Phase &amp; Exclusions</span>
+            <span style="font-size:.72rem;color:var(--muted)">Full-Text Assessment</span>
+          </div>
+
+          <div class="prisma-field-row">
+            <label>Reports Assessed for Eligibility ($n$):</label>
+            <input type="number" id="prisma-input-assessed" class="prisma-edit-input" min="0" oninput="updatePrismaCountField('reports_assessed', this.value)"/>
+          </div>
+          <div class="prisma-field-row">
+            <label>Total Reports Excluded ($n$):</label>
+            <input type="number" id="prisma-input-excluded-fulltext" class="prisma-edit-input" min="0" oninput="updatePrismaCountField('reports_excluded', this.value)"/>
+          </div>
+
+          <!-- Detailed Reasons List -->
+          <div style="font-weight:700;font-size:.80rem;margin:12px 0 6px;color:#0f172a">Detailed Exclusion Categories (Box 8):</div>
+          <div id="prisma-reasons-list-container"></div>
+
+          <!-- Add new reason -->
+          <div style="display:flex;gap:6px;margin-top:8px;align-items:center">
+            <input type="text" id="new-prisma-reason-text" placeholder="Add custom exclusion reason..." style="flex:1;font-size:.80rem;padding:4px 8px;border:1px solid #cbd5e1;border-radius:4px"/>
+            <input type="number" id="new-prisma-reason-count" value="1" min="1" style="width:60px;font-size:.80rem;padding:4px 6px;border:1px solid #cbd5e1;border-radius:4px"/>
+            <button type="button" class="mini-btn mini-btn-good" onclick="addPrismaExclusionReason()" style="padding:4px 10px">+ Add</button>
+          </div>
+
+          <!-- Quick reason presets -->
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:8px">
+            <button type="button" class="chip" onclick="addPrismaExclusionReason('Ineligible study design (non-empirical / review)', 1)">+ Ineligible Design</button>
+            <button type="button" class="chip" onclick="addPrismaExclusionReason('Off-target clinical intervention or comparator', 1)">+ Wrong Intervention</button>
+            <button type="button" class="chip" onclick="addPrismaExclusionReason('Pre-clinical animal or in-vitro experimental model', 1)">+ Animal / In-Vitro</button>
+            <button type="button" class="chip" onclick="addPrismaExclusionReason('Missing or unextractable primary clinical outcomes', 1)">+ Missing Outcomes</button>
+          </div>
+        </div>
+
+        <!-- Phase 5: Included Studies & Reports -->
+        <div class="prisma-sidebar-section">
+          <div class="prisma-sidebar-title">
+            <span>5. Included Phase</span>
+            <span style="font-size:.72rem;color:var(--good);font-weight:700">Synthesized Evidence</span>
+          </div>
+
+          <div class="prisma-field-row">
+            <label><strong>New Studies Included in Review ($n$):</strong></label>
+            <input type="number" id="prisma-input-studies-included" class="prisma-edit-input" min="0" style="font-weight:700;color:var(--good)" oninput="updatePrismaCountField('new_studies_included', this.value)"/>
+          </div>
+          <div class="prisma-field-row">
+            <label><strong>Reports of New Included Studies ($n$):</strong></label>
+            <input type="number" id="prisma-input-reports-included" class="prisma-edit-input" min="0" style="font-weight:700;color:var(--accent)" oninput="updatePrismaCountField('new_reports_included', this.value)"/>
+          </div>
+          <div class="hint" style="margin:4px 0 0;font-size:.75rem">
+            <em>PRISMA 2020 Distinction:</em> One clinical trial study can generate multiple publications/reports (e.g. primary trial + secondary sub-analyses).
+          </div>
+        </div>
+
+        <!-- Other Methods Pathway (Templates B & D) -->
+        <div class="prisma-sidebar-section hidden" id="prisma-panel-other-methods">
+          <div class="prisma-sidebar-title">
+            <span>Other Methods Pathway</span>
+            <span style="font-size:.72rem;color:#0369a1">Websites, Orgs &amp; Citations</span>
+          </div>
+          <div class="prisma-field-row"><label>Websites ($n$):</label><input type="number" id="prisma-input-other-websites" class="prisma-edit-input" min="0" oninput="updatePrismaOtherSourceField('websites', this.value)"/></div>
+          <div class="prisma-field-row"><label>Organisations ($n$):</label><input type="number" id="prisma-input-other-orgs" class="prisma-edit-input" min="0" oninput="updatePrismaOtherSourceField('organisations', this.value)"/></div>
+          <div class="prisma-field-row"><label>Citation Searching ($n$):</label><input type="number" id="prisma-input-other-citations" class="prisma-edit-input" min="0" oninput="updatePrismaOtherSourceField('citation_searching', this.value)"/></div>
+          <div class="prisma-field-row"><label>Other Sources ($n$):</label><input type="number" id="prisma-input-other-misc" class="prisma-edit-input" min="0" oninput="updatePrismaOtherSourceField('other', this.value)"/></div>
+          <div class="prisma-field-row"><label>Reports Sought ($n$):</label><input type="number" id="prisma-input-other-sought" class="prisma-edit-input" min="0" oninput="updatePrismaOtherSourceField('reports_sought', this.value)"/></div>
+          <div class="prisma-field-row"><label>Reports Not Retrieved ($n$):</label><input type="number" id="prisma-input-other-not-retrieved" class="prisma-edit-input" min="0" oninput="updatePrismaOtherSourceField('reports_not_retrieved', this.value)"/></div>
+          <div class="prisma-field-row"><label>Reports Assessed ($n$):</label><input type="number" id="prisma-input-other-assessed" class="prisma-edit-input" min="0" oninput="updatePrismaOtherSourceField('reports_assessed', this.value)"/></div>
+          <div class="prisma-field-row"><label>Reports Excluded ($n$):</label><input type="number" id="prisma-input-other-excluded" class="prisma-edit-input" min="0" oninput="updatePrismaOtherSourceField('reports_excluded', this.value)"/></div>
+          <div class="prisma-field-row"><label>Studies Included ($n$):</label><input type="number" id="prisma-input-other-studies" class="prisma-edit-input" min="0" oninput="updatePrismaOtherSourceField('studies_included', this.value)"/></div>
+          <div class="prisma-field-row"><label>Reports Included ($n$):</label><input type="number" id="prisma-input-other-reports" class="prisma-edit-input" min="0" oninput="updatePrismaOtherSourceField('reports_included', this.value)"/></div>
+        </div>
+
+        <!-- Previous Studies Pathway (Templates C & D) -->
+        <div class="prisma-sidebar-section hidden" id="prisma-panel-previous-studies">
+          <div class="prisma-sidebar-title">
+            <span>Previous Review Version</span>
+            <span style="font-size:.72rem;color:#6b21a8">Updated Review Pathway</span>
+          </div>
+          <div class="prisma-field-row"><label>Previous Studies Included ($n$):</label><input type="number" id="prisma-input-prev-studies" class="prisma-edit-input" min="0" oninput="updatePrismaPrevField('studies_included', this.value)"/></div>
+          <div class="prisma-field-row"><label>Reports of Previous Studies ($n$):</label><input type="number" id="prisma-input-prev-reports" class="prisma-edit-input" min="0" oninput="updatePrismaPrevField('reports_included', this.value)"/></div>
+        </div>
+
+        <!-- Total Reconciled Counts (Templates B, C, D) -->
+        <div class="prisma-sidebar-section hidden" id="prisma-panel-totals">
+          <div class="prisma-sidebar-title">
+            <span>Total Reconciled Review Evidence</span>
+            <span style="font-size:.72rem;color:var(--accent)">Combined Pathways</span>
+          </div>
+          <div class="prisma-field-row"><label><strong>Total Studies Included ($n$):</strong></label><input type="number" id="prisma-input-tot-studies" class="prisma-edit-input" min="0" style="font-weight:700" oninput="updatePrismaCountField('total_studies_included', this.value)"/></div>
+          <div class="prisma-field-row"><label><strong>Total Reports Included ($n$):</strong></label><input type="number" id="prisma-input-tot-reports" class="prisma-edit-input" min="0" style="font-weight:700" oninput="updatePrismaCountField('total_reports_included', this.value)"/></div>
+        </div>
+      </div>
+
+      <!-- Right: Live Publication Canvas Viewport -->
+      <div class="prisma-canvas-viewport" id="prisma-canvas-viewport">
+        <div class="prisma-canvas-wrapper" id="prisma-svg-canvas-wrapper">
+          <!-- Live SVG rendered dynamically -->
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -2414,6 +2790,11 @@ function updatePrismaAndCounters() {
   document.getElementById('cnt-inc').textContent = STATE.includedPapers.length;
   document.getElementById('cnt-exc').textContent = STATE.excludedPapers.length;
   document.getElementById('cnt-bor').textContent = STATE.borderlinePapers.length;
+
+  // Sync publication-quality PRISMA diagram generator
+  if (typeof syncPrismaStateFromWorkflow === 'function') {
+    syncPrismaStateFromWorkflow(false);
+  }
 }
 
 function setScreenFilter(filter, btn) {
@@ -2623,19 +3004,7 @@ function renderPaperPreview(review) {
   `;
 }
 
-function renderStep4Prisma() {
-  const container = document.getElementById('step4-prisma-view');
-  const clone = document.getElementById('prisma-diagram-body').cloneNode(true);
-  clone.id = 'step4-prisma-clone';
-  clone.classList.remove('hidden');
-  container.innerHTML = `
-    <div class="prisma-container">
-      <h3 class="sec-h" style="margin-top:0">PRISMA 2020 Identification &amp; Screening Flow</h3>
-      <p class="hint">Full transparency breakdown for included and excluded studies in the systematic review:</p>
-    </div>
-  `;
-  container.querySelector('.prisma-container').appendChild(clone);
-}
+// renderStep4Prisma is implemented in prisma-generator.js with publication-grade vector SVG and interactive download controls.
 
 function renderRoBTable(papers) {
   const container = document.getElementById('rob-matrix-table-container');
