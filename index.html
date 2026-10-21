@@ -954,6 +954,7 @@ sup.cite-num:hover, .cite-num:hover, .cite-apa:hover, .cite-harvard:hover {
 ══════════════════════════════════════════════════════════ -->
 <div id="sysrev-disclaimer-overlay" class="disclaimer-backdrop" role="dialog" aria-modal="true" aria-labelledby="disclaimer-dialog-title">
   <div class="disclaimer-modal">
+    <button type="button" id="btn-close-disclaimer" style="position:absolute;top:14px;right:16px;background:none;border:none;font-size:1.3rem;color:#64748b;cursor:pointer;line-height:1;padding:4px;" title="Close" aria-label="Close">✕</button>
     <!-- Header -->
     <div class="disclaimer-header">
       <div>
@@ -1904,7 +1905,7 @@ sup.cite-num:hover, .cite-num:hover, .cite-apa:hover, .cite-harvard:hover {
      FOOTER
 ══════════════════════════════════ -->
 <footer>
-  Sysrevai v1.0 — AI-Assisted Systematic Review Platform (PRISMA 2020 Compliant) · Powered by <a href="https://europepmc.org/About" target="_blank" rel="noopener noreferrer">Europe PMC</a> &amp; <a href="https://www.semanticscholar.org" target="_blank" rel="noopener noreferrer">Semantic Scholar</a>. Dedicated to Prof. Dr. Abdel Hamid Attia. Copyrights &copy; Dr. Raouf Roshdy 2026.
+  Sysrevai v1.0 — AI-Assisted Systematic Review Platform (PRISMA 2020 Compliant) · Powered by <a href="https://europepmc.org/About" target="_blank" rel="noopener noreferrer">Europe PMC</a> &amp; <a href="https://www.semanticscholar.org" target="_blank" rel="noopener noreferrer">Semantic Scholar</a> · <a href="javascript:void(0)" onclick="window.showSysRevDisclaimer &amp;&amp; window.showSysRevDisclaimer()">⚖️ AI Advisory</a>. Dedicated to Prof. Dr. Abdel Hamid Attia. Copyrights &copy; Dr. Raouf Roshdy 2026.
 </footer>
 
 </div><!-- .wrap -->
@@ -4348,6 +4349,7 @@ function initSysRevDisclaimer() {
   const DISCLAIMER_STORAGE_KEY = 'sysrev_disclaimer_accepted_v1';
   const overlay = document.getElementById('sysrev-disclaimer-overlay');
   const agreeBtn = document.getElementById('btn-agree-disclaimer');
+  const closeBtn = document.getElementById('btn-close-disclaimer');
 
   if (!overlay || !agreeBtn) return;
 
@@ -4361,26 +4363,42 @@ function initSysRevDisclaimer() {
     document.body.style.overflow = '';
     try {
       localStorage.setItem(DISCLAIMER_STORAGE_KEY, 'true');
-    } catch (e) {
-      console.warn('LocalStorage error saving disclaimer consent:', e);
-    }
+    } catch (e) {}
+    try {
+      document.cookie = 'sysrev_disclaimer_accepted=true; path=/; max-age=31536000; SameSite=Lax';
+    } catch (e) {}
   }
 
-  let hasAccepted = false;
-  try {
-    hasAccepted = localStorage.getItem(DISCLAIMER_STORAGE_KEY) === 'true';
-  } catch (e) {
-    hasAccepted = false;
+  function hasUserAccepted() {
+    try {
+      if (localStorage.getItem(DISCLAIMER_STORAGE_KEY) === 'true') return true;
+    } catch (e) {}
+    try {
+      if (document.cookie.split(';').some(c => c.trim().startsWith('sysrev_disclaimer_accepted=true'))) return true;
+    } catch (e) {}
+    return false;
   }
 
-  if (!hasAccepted) {
-    setTimeout(showDisclaimer, 180);
+  if (!hasUserAccepted()) {
+    setTimeout(showDisclaimer, 250);
   }
 
   agreeBtn.addEventListener('click', hideDisclaimer);
+  if (closeBtn) closeBtn.addEventListener('click', hideDisclaimer);
+
+  // Dismiss when clicking overlay background outside modal card
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) hideDisclaimer();
+  });
+
+  // Dismiss on Escape key
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && overlay.classList.contains('active')) hideDisclaimer();
+  });
 
   // Expose global method to re-open advisory modal on demand
   window.showSysRevDisclaimer = showDisclaimer;
+  window.hideSysRevDisclaimer = hideDisclaimer;
 }
 
 // ═══════════════════════════════════════════════════════════════
