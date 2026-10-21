@@ -1945,6 +1945,9 @@ let STATE = {
   sourceCounts: { epmc: 0, s2: 0, merged: 0 }
 };
 
+// Bind to window for cross-module integration (Meta-Analysis & PRISMA Editor)
+window.STATE = STATE;
+
 let currentAbortController = null;
 
 // ═══════════════════════════════════════════════════════════════
@@ -3236,6 +3239,9 @@ function goToStep4() {
     alert('You have 0 studies included in the systematic review. Please include at least 1 study.');
     return;
   }
+
+  STATE.includedPapers = included;
+  window.STATE = STATE;
 
   showSection('step-4');
   setStep(4);

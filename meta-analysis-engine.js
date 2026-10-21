@@ -1003,9 +1003,14 @@ function initiateMetaAnalysis() {
   META_ANALYSIS_STATE.initiated = true;
   META_ANALYSIS_STATE.reviewTopic = (window.STATE && window.STATE.topic) ? window.STATE.topic : 'Systematic Review';
 
-  const includedPapers = (window.STATE && window.STATE.papers)
-    ? window.STATE.papers.filter(p => p.screening?.status === 'INCLUDED')
-    : [];
+  let includedPapers = [];
+  if (window.STATE) {
+    if (Array.isArray(window.STATE.includedPapers) && window.STATE.includedPapers.length > 0) {
+      includedPapers = window.STATE.includedPapers;
+    } else if (Array.isArray(window.STATE.papers) && window.STATE.papers.length > 0) {
+      includedPapers = window.STATE.papers.filter(p => p.screening?.status === 'INCLUDED');
+    }
+  }
 
   if (META_ANALYSIS_STATE.studies.length === 0) {
     META_ANALYSIS_STATE.studies = syncMetaStudiesFromIncluded(includedPapers);
@@ -1017,17 +1022,26 @@ function initiateMetaAnalysis() {
 
 function syncMetaStudiesFromIncluded(includedPapers) {
   if (!includedPapers || includedPapers.length === 0) {
-    return [
-      { id: '1', studyId: 'Trial A et al. (2024)', design: 'RCT', e1: 22, n1: 150, e2: 45, n2: 150, m1: 12.4, s1: 3.2, m2: 15.6, s2: 3.5, verified: true, includedInPool: true },
-      { id: '2', studyId: 'Trial B et al. (2023)', design: 'RCT', e1: 18, n1: 120, e2: 38, n2: 120, m1: 11.8, s1: 2.9, m2: 14.9, s2: 3.1, verified: true, includedInPool: true },
-      { id: '3', studyId: 'Trial C et al. (2022)', design: 'RCT', e1: 25, n1: 140, e2: 41, n2: 140, m1: 10.9, s1: 3.0, m2: 14.2, s2: 3.3, verified: true, includedInPool: true }
-    ];
+    return [];
   }
 
   return includedPapers.map((p, idx) => {
-    const firstAuthor = p.authors ? p.authors.split(',')[0].trim() : `Study ${idx + 1}`;
-    const studyId = `${firstAuthor} et al. (${p.year || '2024'})`;
-    const design = p.screening?.design?.name || 'RCT';
+    let firstAuthor = 'Author';
+    if (p.authors) {
+      if (typeof p.authors === 'string') {
+        const parts = p.authors.split(',');
+        firstAuthor = parts[0].trim();
+      } else if (Array.isArray(p.authors) && p.authors.length > 0) {
+        firstAuthor = p.authors[0].name || p.authors[0];
+      }
+    } else if (p.title) {
+      firstAuthor = p.title.slice(0, 25);
+    }
+
+    const hasMultiple = (typeof p.authors === 'string' && p.authors.includes(',')) || (Array.isArray(p.authors) && p.authors.length > 1);
+    const yearStr = p.year || (p.pubDate ? p.pubDate.substring(0, 4) : '2024');
+    const studyId = hasMultiple ? `${firstAuthor} et al. (${yearStr})` : `${firstAuthor} (${yearStr})`;
+    const design = p.screening?.design?.name || (p.screening?.design?.short) || 'Randomized controlled trials (RCTs)';
 
     let sampleSize = 100;
     const nMatch = (p.abstract || '').match(/\b(?:n\s*=\s*|enrolled\s+|randomized\s+|total of\s+|cohort of\s+)([0-9,]+)/i);
@@ -1037,22 +1051,41 @@ function syncMetaStudiesFromIncluded(includedPapers) {
     }
     const nPerArm = Math.max(20, Math.round(sampleSize / 2));
 
-    const defaultE1 = Math.max(3, Math.round(nPerArm * 0.12));
-    const defaultE2 = Math.max(5, Math.round(nPerArm * 0.22));
+    let e1 = null, n1 = nPerArm, e2 = null, n2 = nPerArm;
+    const fracMatches = [...(p.abstract || '').matchAll(/\b(\d{1,4})\s*\/\s*(\d{2,5})\b/g)];
+    if (fracMatches.length >= 2) {
+      e1 = parseInt(fracMatches[0][1], 10);
+      n1 = parseInt(fracMatches[0][2], 10);
+      e2 = parseInt(fracMatches[1][1], 10);
+      n2 = parseInt(fracMatches[1][2], 10);
+    } else {
+      e1 = Math.max(1, Math.round(nPerArm * 0.12));
+      e2 = Math.max(2, Math.round(nPerArm * 0.22));
+    }
+
+    let m1 = 12.0, s1 = 3.0, m2 = 15.0, s2 = 3.2;
+    const meanMatches = [...(p.abstract || '').matchAll(/(?:mean|Mean)\s*[:=]?\s*(\d+\.?\d*)\s*(?:±|\+\/-)\s*(\d+\.?\d*)/g)];
+    if (meanMatches.length >= 2) {
+      m1 = parseFloat(meanMatches[0][1]);
+      s1 = parseFloat(meanMatches[0][2]);
+      m2 = parseFloat(meanMatches[1][1]);
+      s2 = parseFloat(meanMatches[1][2]);
+    }
 
     return {
       id: p.id || `study-${idx + 1}`,
       studyId,
       design,
-      e1: defaultE1,
-      n1: nPerArm,
-      e2: defaultE2,
-      n2: nPerArm,
-      m1: 12.0,
-      s1: 3.0,
-      m2: 15.0,
-      s2: 3.2,
-      verified: false,
+      e1,
+      n1,
+      e2,
+      n2,
+      m1,
+      s1,
+      m2,
+      s2,
+      title: p.title || '',
+      verified: fracMatches.length >= 2,
       includedInPool: true
     };
   });
@@ -1064,6 +1097,18 @@ function resetMetaAnalysis() {
     META_ANALYSIS_STATE.results = null;
     META_ANALYSIS_STATE.sensitivityRuns = null;
     META_ANALYSIS_STATE.initiated = false;
+
+    let includedPapers = [];
+    if (window.STATE) {
+      if (Array.isArray(window.STATE.includedPapers) && window.STATE.includedPapers.length > 0) {
+        includedPapers = window.STATE.includedPapers;
+      } else if (Array.isArray(window.STATE.papers) && window.STATE.papers.length > 0) {
+        includedPapers = window.STATE.papers.filter(p => p.screening?.status === 'INCLUDED');
+      }
+    }
+    if (includedPapers.length > 0) {
+      META_ANALYSIS_STATE.studies = syncMetaStudiesFromIncluded(includedPapers);
+    }
     renderMetaAnalysisInitialBanner();
   }
 }
@@ -1295,7 +1340,17 @@ function renderMetaAnalysisActiveWorkspace() {
               </tr>
             </thead>
             <tbody>
-              ${state.studies.map((s, idx) => renderMetaStudyTableRow(s, idx, state)).join('')}
+              ${state.studies.length === 0 ? `
+                <tr>
+                  <td colspan="${state.outcomeType === 'binary' ? 9 : 11}" style="padding:32px 20px;text-align:center;color:#64748b;background:#f8fafc;">
+                    <div style="font-size:1.6rem;margin-bottom:6px;">📋</div>
+                    <div style="font-weight:700;color:#0f172a;font-size:0.95rem;margin-bottom:4px;">No Included Studies Currently in Quantitative Pool</div>
+                    <div style="font-size:0.80rem;max-width:480px;margin:0 auto 12px;line-height:1.5;">
+                      Run literature screening in Step 3 to automatically load eligible studies from your review, or click <strong>"📁 Import Study from PC"</strong> above to load clinical papers from your computer.
+                    </div>
+                  </td>
+                </tr>
+              ` : state.studies.map((s, idx) => renderMetaStudyTableRow(s, idx, state)).join('')}
             </tbody>
           </table>
         </div>
