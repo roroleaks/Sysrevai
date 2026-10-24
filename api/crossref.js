@@ -12,7 +12,8 @@ function cleanAbstract(raw) {
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
     .replace(/\s+/g, ' ')
-    .trim();
+    .trim()
+    .replace(/^(?:Abstract|Summary)\s*[:.-]?\s*/i, '');
 }
 
 function extractYear(item) {
@@ -85,7 +86,7 @@ function queryCrossref(query, pageSize = 30, startYear = null) {
               || 'Academic Journal';
 
             const pubYear = extractYear(item);
-            const doi = item.DOI || '';
+            const doi = item.DOI ? item.DOI.replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, '').trim() : '';
             const abstract = cleanAbstract(item.abstract);
             const citations = Number(item['is-referenced-by-count'] || 0);
 

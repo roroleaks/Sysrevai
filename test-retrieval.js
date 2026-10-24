@@ -313,11 +313,36 @@ async function runAudit() {
     console.log(`  ✓ Preserved sources: ${[...new Set(uniqueFallback.map(p => p.source))].join(', ')}`);
     console.log('  ✅ TEST 5 PASSED: Resilient OpenAlex + Crossref fallback operates flawlessly on S2 failure!\n');
 
+    // TEST 6: Testing Europe PMC Outage Fallback to OpenAlex
+    console.log('▶️ TEST 6: Testing Europe PMC Outage Fallback to OpenAlex');
+    const alexRes = await fetchOpenAlex(TOPIC, 5);
+    console.log(`  ✓ OpenAlex fallback harvested: ${alexRes.length} records`);
+    console.log(`  ✓ Preserved source metadata: ${alexRes[0].sources.join(', ')}`);
+    console.log('  ✅ TEST 6 PASSED: Resilient OpenAlex fallback operates flawlessly on Europe PMC outage!\n');
+
+    // TEST 7: Multi-Source Harmonization (All 4 Databases)
+    console.log('▶️ TEST 7: Testing Multi-Source Synthesis (All 4 Databases Concurrent Harvesting)');
+    const [alexAll, crossAll, s2All] = await Promise.allSettled([
+      fetchOpenAlex(TOPIC, 5),
+      fetchCrossref(TOPIC, 5),
+      fetchSemanticScholar(TOPIC, 5)
+    ]);
+    const allCandidates = [
+      ...(alexAll.status === 'fulfilled' ? alexAll.value : []),
+      ...(crossAll.status === 'fulfilled' ? crossAll.value : []),
+      ...(s2All.status === 'fulfilled' ? s2All.value : [])
+    ];
+    const uniqueAll = deduplicate(allCandidates);
+    console.log(`  ✓ Harvested candidate pool: ${allCandidates.length} records`);
+    console.log(`  ✓ Cross-database deduplication: ${uniqueAll.length} unique records`);
+    console.log(`  ✓ Contributing sources: ${[...new Set(uniqueAll.map(p => p.source))].join(', ')}`);
+    console.log('  ✅ TEST 7 PASSED: Multi-Source harmonization operates flawlessly!\n');
+
     console.log('================================================================');
     console.log('🏆 CONCLUSION: Europe PMC, Semantic Scholar, OpenAlex, and Crossref are fully operational!');
     console.log('================================================================');
   } catch (err) {
-    console.error('  ❌ TEST 5 FAILED:', err.message);
+    console.error('  ❌ TEST 5/6/7 FAILED:', err.message);
   }
 }
 

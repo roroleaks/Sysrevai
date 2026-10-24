@@ -52,10 +52,11 @@ function queryOpenAlex(query, pageSize = 30, startYear = null, endYear = new Dat
           const json = JSON.parse(data);
           const results = (json.results || []).map(p => {
             const rawAuthors = (p.authorships || []).map(a => a.author?.display_name).filter(Boolean);
-            const doi = p.doi ? p.doi.replace(/^https:\/\/doi\.org\//i, '') : '';
-            const pmid = p.ids?.pmid ? p.ids.pmid.replace(/^https:\/\/pubmed\.ncbi\.nlm\.nih\.gov\//i, '').replace(/\/$/, '') : '';
-            const pmcid = p.ids?.pmcid ? p.ids.pmcid.replace(/^https:\/\/www\.ncbi\.nlm\.nih\.gov\/pmc\/articles\//i, '').replace(/\/$/, '') : '';
+            const doi = p.doi ? p.doi.replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, '').trim() : '';
+            const pmid = p.ids?.pmid ? String(p.ids.pmid).replace(/^https?:\/\/pubmed\.ncbi\.nlm\.nih\.gov\//i, '').replace(/^pmid:\s*/i, '').replace(/\/$/, '') : '';
+            const pmcid = p.ids?.pmcid ? String(p.ids.pmcid).replace(/^https?:\/\/www\.ncbi\.nlm\.nih\.gov\/pmc\/articles\//i, '').replace(/\/$/, '') : '';
             const abstract = reconstructAbstract(p.abstract_inverted_index);
+            const meshHeadings = Array.isArray(p.mesh) ? p.mesh.map(m => m.descriptor_name).filter(Boolean) : [];
 
             return {
               id: p.id || doi || pmid,
@@ -78,7 +79,7 @@ function queryOpenAlex(query, pageSize = 30, startYear = null, endYear = new Dat
               source_url: p.id || (doi ? `https://doi.org/${doi}` : ''),
               openAccessPdfUrl: p.open_access?.oa_url || (doi ? `https://doi.org/${doi}` : ''),
               isOpenAccess: Boolean(p.open_access?.is_oa),
-              meshHeadings: [],
+              meshHeadings: meshHeadings,
               keywords: (p.concepts || []).map(c => c.display_name).filter(Boolean),
               pubType: [p.type || 'journal-article']
             };

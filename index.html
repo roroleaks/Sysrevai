@@ -1229,7 +1229,19 @@ sup.cite-num:hover, .cite-num:hover, .cite-apa:hover, .cite-harvard:hover {
     <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px" id="engine-options">
       <label class="engine-option selected" onclick="selectSearchEngine(this,'both')">
         <input type="radio" name="searchengine" value="both" checked>
-        <span>🌐 Dual Database (Europe PMC + Semantic Scholar) <strong style="color:var(--accent);font-size:.78rem">Recommended ✓</strong></span>
+        <span>🌐 Dual Core (Europe PMC + Semantic Scholar with Fallbacks) <strong style="color:var(--accent);font-size:.78rem">Recommended ✓</strong></span>
+      </label>
+      <label class="engine-option" onclick="selectSearchEngine(this,'all')">
+        <input type="radio" name="searchengine" value="all">
+        <span>🚀 All 4 Databases (Europe PMC, Semantic Scholar, OpenAlex, Crossref)</span>
+      </label>
+      <label class="engine-option" onclick="selectSearchEngine(this,'openalex')">
+        <input type="radio" name="searchengine" value="openalex">
+        <span>🏛️ OpenAlex Only (250M+ Works, Open Scholarly Graph)</span>
+      </label>
+      <label class="engine-option" onclick="selectSearchEngine(this,'crossref')">
+        <input type="radio" name="searchengine" value="crossref">
+        <span>🔍 Crossref Only (150M+ Official DOI Publisher Records)</span>
       </label>
       <label class="engine-option" onclick="selectSearchEngine(this,'epmc')">
         <input type="radio" name="searchengine" value="epmc">
@@ -2359,6 +2371,22 @@ async function fetchEuropePMC(topic, pageSize, yearRange, signal) {
     return { results: parsed, hitCount };
   } catch (err) {
     clearTimeout(timeoutId);
+    if (signal?.aborted) throw err;
+    console.warn(`[SysRevAI Fallback] Europe PMC query failed (${err.message}). Activating OpenAlex fallback retrieval...`);
+    try {
+      const alexRes = await fetchOpenAlex(topic, pageSize, yearRange, signal);
+      if (alexRes && alexRes.results && alexRes.results.length > 0) {
+        return {
+          results: alexRes.results,
+          hitCount: alexRes.hitCount,
+          isFallback: true,
+          fallbackSource: 'OpenAlex',
+          originalError: err.message
+        };
+      }
+    } catch (fbErr) {
+      if (signal?.aborted) throw fbErr;
+    }
     throw err;
   }
 }
@@ -2388,14 +2416,18 @@ function reconstructOpenAlexAbstract(invertedIndex) {
 
 async function fetchOpenAlex(topic, pageSize, yearRange, signal) {
   const currentYear = new Date().getFullYear();
-  let fromYear = currentYear - (yearRange < 99 ? yearRange : 5);
   const cleanTopic = cleanQueryKeywords(topic);
 
   const queryParams = new URLSearchParams({
     query: cleanTopic,
-    limit: String(pageSize),
-    year: `${fromYear}-${currentYear}`
+    limit: String(pageSize)
   });
+
+  let fromYear = null;
+  if (yearRange < 99) {
+    fromYear = currentYear - yearRange;
+    queryParams.set('year', `${fromYear}-${currentYear}`);
+  }
 
   const timeoutCtrl = new AbortController();
   const timeoutId = setTimeout(() => timeoutCtrl.abort(), 7500);
@@ -2403,12 +2435,20 @@ async function fetchOpenAlex(topic, pageSize, yearRange, signal) {
 
   try {
     let res = null;
+    let proxySucceeded = false;
     try {
       res = await fetch(`/api/openalex?${queryParams.toString()}`, { signal: combinedSignal });
+      if (res && res.ok) proxySucceeded = true;
     } catch (proxyErr) {
       if (proxyErr.name === 'AbortError' && signal?.aborted) throw proxyErr;
+    }
+
+    if (!proxySucceeded) {
       // Direct CORS client fallback with Polite Pool and key
-      const directUrl = `${OPENALEX_API_BASE}?search=${encodeURIComponent(cleanTopic)}&filter=publication_year:${fromYear}-${currentYear}&per_page=${pageSize}&api_key=${OPENALEX_DEFAULT_KEY}&mailto=raouf.roshdy@aimed.org`;
+      let directUrl = `${OPENALEX_API_BASE}?search=${encodeURIComponent(cleanTopic)}&per_page=${pageSize}&api_key=${OPENALEX_DEFAULT_KEY}&mailto=raouf.roshdy@aimed.org`;
+      if (fromYear) {
+        directUrl += `&filter=publication_year:${fromYear}-${currentYear}`;
+      }
       res = await fetch(directUrl, { signal: combinedSignal });
     }
 
@@ -2441,10 +2481,14 @@ async function fetchOpenAlex(topic, pageSize, yearRange, signal) {
       if (!abstract && item.abstract_inverted_index) {
         abstract = reconstructOpenAlexAbstract(item.abstract_inverted_index);
       }
-      const doi = item.doi ? String(item.doi).replace(/^https?:\/\/doi\.org\//i, '').trim() : '';
-      const pmid = item.pmid ? String(item.pmid).replace(/^https:\/\/pubmed\.ncbi\.nlm\.nih\.gov\//i, '').replace(/\/$/, '') : (item.ids?.pmid ? String(item.ids.pmid).replace(/^https:\/\/pubmed\.ncbi\.nlm\.nih\.gov\//i, '').replace(/\/$/, '') : '');
-      const pmcid = item.pmcid || (item.ids?.pmcid ? String(item.ids.pmcid).replace(/^https:\/\/www\.ncbi\.nlm\.nih\.gov\/pmc\/articles\//i, '').replace(/\/$/, '') : '');
+      const doi = item.doi ? String(item.doi).replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, '').trim() : '';
+      const pmid = item.pmid ? String(item.pmid).replace(/^https?:\/\/pubmed\.ncbi\.nlm\.nih\.gov\//i, '').replace(/^pmid:\s*/i, '').replace(/\/$/, '') : (item.ids?.pmid ? String(item.ids.pmid).replace(/^https?:\/\/pubmed\.ncbi\.nlm\.nih\.gov\//i, '').replace(/^pmid:\s*/i, '').replace(/\/$/, '') : '');
+      const pmcid = item.pmcid || (item.ids?.pmcid ? String(item.ids.pmcid).replace(/^https?:\/\/www\.ncbi\.nlm\.nih\.gov\/pmc\/articles\//i, '').replace(/\/$/, '') : '');
       const citations = Number(item.citationCount || item.cited_by_count || 0);
+
+      const meshList = Array.isArray(item.meshHeadings) && item.meshHeadings.length > 0
+        ? item.meshHeadings
+        : (Array.isArray(item.mesh) ? item.mesh.map(m => m.descriptor_name).filter(Boolean) : []);
 
       return {
         source: 'openalex',
@@ -2462,7 +2506,7 @@ async function fetchOpenAlex(topic, pageSize, yearRange, signal) {
         citationCount: citations,
         isOpenAccess: Boolean(item.isOpenAccess || item.open_access?.is_oa),
         openAccessPdfUrl: item.openAccessPdfUrl || item.open_access?.oa_url || (doi ? `https://doi.org/${doi}` : ''),
-        meshHeadings: [],
+        meshHeadings: meshList,
         keywords: Array.isArray(item.keywords) ? item.keywords : (Array.isArray(item.concepts) ? item.concepts.map(c => c.display_name).filter(Boolean) : []),
         pubType: Array.isArray(item.pubType) ? item.pubType : [item.type || 'journal-article']
       };
@@ -2482,14 +2526,18 @@ async function fetchOpenAlex(topic, pageSize, yearRange, signal) {
 // ═══════════════════════════════════════════════════════════════
 async function fetchCrossref(topic, pageSize, yearRange, signal) {
   const currentYear = new Date().getFullYear();
-  let fromYear = currentYear - (yearRange < 99 ? yearRange : 5);
   const cleanTopic = cleanQueryKeywords(topic);
 
   const queryParams = new URLSearchParams({
     query: cleanTopic,
-    rows: String(pageSize),
-    year: `${fromYear}-${currentYear}`
+    rows: String(pageSize)
   });
+
+  let fromYear = null;
+  if (yearRange < 99) {
+    fromYear = currentYear - yearRange;
+    queryParams.set('year', `${fromYear}-${currentYear}`);
+  }
 
   const timeoutCtrl = new AbortController();
   const timeoutId = setTimeout(() => timeoutCtrl.abort(), 7500);
@@ -2497,13 +2545,18 @@ async function fetchCrossref(topic, pageSize, yearRange, signal) {
 
   try {
     let res = null;
+    let proxySucceeded = false;
     try {
       res = await fetch(`/api/crossref?${queryParams.toString()}`, { signal: combinedSignal });
+      if (res && res.ok) proxySucceeded = true;
     } catch (proxyErr) {
       if (proxyErr.name === 'AbortError' && signal?.aborted) throw proxyErr;
+    }
+
+    if (!proxySucceeded) {
       // Direct browser CORS fallback to official Crossref works API (Public REST API)
       let directUrl = `${CROSSREF_API_BASE}?query=${encodeURIComponent(cleanTopic)}&rows=${pageSize}&sort=relevance&order=desc`;
-      if (yearRange < 99) {
+      if (fromYear) {
         directUrl += `&filter=from-pub-date:${fromYear}-01-01`;
       }
       res = await fetch(directUrl, { signal: combinedSignal });
@@ -2557,18 +2610,13 @@ async function fetchCrossref(topic, pageSize, yearRange, signal) {
         }
       }
 
-      const doi = item.DOI || item.doi || '';
+      const doi = item.DOI || item.doi ? String(item.DOI || item.doi).replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, '').trim() : '';
       let abstract = item.abstract || '';
       if (abstract) {
-        abstract = abstract
+        abstract = cleanHtmlText(abstract)
           .replace(/<jats:[^>]+>/gi, '')
           .replace(/<\/jats:[^>]+>/gi, '')
-          .replace(/<[^>]+>/g, '')
-          .replace(/&amp;/g, '&')
-          .replace(/&lt;/g, '<')
-          .replace(/&gt;/g, '>')
-          .replace(/&quot;/g, '"')
-          .replace(/&#39;/g, "'")
+          .replace(/^(?:Abstract|Summary)\s*[:.-]?\s*/i, '')
           .trim();
       }
 
@@ -2586,7 +2634,7 @@ async function fetchCrossref(topic, pageSize, yearRange, signal) {
         authors: authors,
         journal: cleanHtmlText(journal),
         year: pubYear,
-        abstract: cleanHtmlText(abstract),
+        abstract: abstract,
         citationCount: citations,
         isOpenAccess: Boolean(item.isOpenAccess || (item.license && item.license.length > 0)),
         openAccessPdfUrl: item.openAccessPdfUrl || item.link?.[0]?.URL || (doi ? `https://doi.org/${doi}` : ''),
@@ -2631,12 +2679,21 @@ async function fetchSemanticScholar(topic, pageSize, yearRange, signal) {
     if (apiKey) headers['x-api-key'] = apiKey;
 
     let res = null;
+    let proxySucceeded = false;
     try {
       res = await fetch(`/api/s2?${queryParams}`, { headers, signal: combinedSignal });
+      if (res && res.ok) proxySucceeded = true;
     } catch (proxyErr) {
       if (proxyErr.name === 'AbortError' && signal?.aborted) throw proxyErr;
-      // Fallback to direct public search only if server proxy was unreachable
-      res = await fetch(`${S2_API_BASE}/paper/search?${queryParams}`, { headers, signal: combinedSignal });
+    }
+
+    if (!proxySucceeded) {
+      // Fallback to direct public search only if server proxy was unreachable or throttled
+      try {
+        res = await fetch(`${S2_API_BASE}/paper/search?${queryParams}`, { headers, signal: combinedSignal });
+      } catch (directErr) {
+        if (directErr.name === 'AbortError' && signal?.aborted) throw directErr;
+      }
     }
 
     clearTimeout(timeoutId);
@@ -3347,6 +3404,19 @@ class SystematicReviewGenerator {
     });
   }
 
+  getHarvestedSourcesString() {
+    const counts = (typeof STATE !== 'undefined' && STATE.sourceCounts) || {};
+    const list = [];
+    if (counts.epmc > 0) list.push('Europe PMC (incorporating PubMed, PubMed Central, and MEDLINE)');
+    if (counts.s2 > 0) list.push('Semantic Scholar Academic Graph');
+    if (counts.openalex > 0) list.push('OpenAlex Global Scholarly Graph');
+    if (counts.crossref > 0) list.push('Crossref Official DOI Registry');
+    if (list.length === 0) return 'electronic scientific databases (incorporating Europe PMC, Semantic Scholar, OpenAlex, and Crossref)';
+    if (list.length === 1) return list[0];
+    if (list.length === 2) return `${list[0]} and ${list[1]}`;
+    return list.slice(0, -1).join(', ') + ', and ' + list[list.length - 1];
+  }
+
   cite(...indices) {
     const nums = indices
       .filter(i => i >= 0 && i < this.papers.length)
@@ -3367,7 +3437,7 @@ class SystematicReviewGenerator {
     
     const objectives = `To systematically appraise and synthesize peer-reviewed clinical evidence evaluating the efficacy, safety, and outcome profiles of ${this.pico.i || this.topic} compared to ${this.pico.c || 'control regimens'} in ${this.pico.p || 'target clinical populations'}.`;
     
-    const methods = `In accordance with PRISMA 2020 standards, electronic searches of Europe PMC and Semantic Scholar databases were executed through ${years[years.length - 1] || new Date().getFullYear()}. Deduplication, pre-specified PICOS eligibility screening, and Cochrane-aligned Risk of Bias (RoB) appraisals were conducted. Of ${this.totalIdentified} identified candidate records, exactly ${n} unique peer-reviewed studies (${rctCount} RCTs) met all pre-specified inclusion criteria.`;
+    const methods = `In accordance with PRISMA 2020 standards, electronic searches of ${this.getHarvestedSourcesString()} were executed through ${years[years.length - 1] || new Date().getFullYear()}. Deduplication, pre-specified PICOS eligibility screening, and Cochrane-aligned Risk of Bias (RoB) appraisals were conducted. Of ${this.totalIdentified} identified candidate records, exactly ${n} unique peer-reviewed studies (${rctCount} RCTs) met all pre-specified inclusion criteria.`;
     
     const results = `Across the ${n} included investigations, synthesized findings demonstrate consistent clinical efficacy for primary endpoints (${this.pico.o || 'clinical outcomes'}). Risk of bias was predominantly evaluated as Low Risk or Some Concerns across randomized cohorts, with robust biological concordance reported.`;
     
@@ -3406,7 +3476,7 @@ class SystematicReviewGenerator {
 
     const p2 = `2.2 Eligibility Criteria\n\nStudies were evaluated against pre-specified inclusion and exclusion criteria in accordance with PRISMA 2020 guidelines. Inclusion criteria strictly restricted eligibility to 9 empirical clinical study designs: (1) Randomized controlled trials (RCTs); (2) Non-randomized controlled trials; (3) Cohort studies (prospective or retrospective); (4) Case-control studies; (5) Cross-sectional studies; (6) Diagnostic accuracy studies; (7) Case series and case reports; (8) Qualitative studies; and (9) Observational studies evaluating ${this.pico.i || 'the intervention'} against eligible comparators (${this.pico.c || 'control regimens or standard care'}) with reported empirical clinical endpoints. Exclusion criteria eliminated: (1) pre-clinical animal models, in-vitro investigations, or cell culture assays; (2) narrative reviews, secondary systematic reviews, editorials, commentaries, perspectives, and correspondence; (3) non-empirical abstracts lacking methodology; and (4) duplicate or redundant cohort publications.`;
 
-    const p3 = `2.3 Information Sources & Search Strategy\n\nComprehensive electronic database queries of Europe PMC (EMBL-EBI, incorporating PubMed, PubMed Central, and MEDLINE) and the Semantic Scholar Academic Graph (Allen Institute for AI) were executed concurrently. Search terms combined controlled vocabulary (Medical Subject Headings [MeSH]) and free-text keywords relating to "${this.topic}". Search limits spanned ${minY} to ${maxY}.`;
+    const p3 = `2.3 Information Sources & Search Strategy\n\nComprehensive electronic database queries of ${this.getHarvestedSourcesString()} were executed concurrently. Search terms combined controlled vocabulary (Medical Subject Headings [MeSH]) and free-text keywords relating to "${this.topic}". Search limits spanned ${minY} to ${maxY}.`;
 
     const p4 = `2.4 Study Selection & Screening Process\n\nRetrieved candidate records were processed through an automated cross-database deduplication engine matching registered PMIDs, DOIs, Semantic Scholar corpus IDs, and normalized title keys. Exactly ${this.duplicatesRemoved} duplicate records were excluded. All unique records underwent two-stage screening (title/abstract followed by full-text evaluation) against the eligibility criteria, with reasons for exclusion systematically recorded.`;
 
@@ -3427,7 +3497,7 @@ class SystematicReviewGenerator {
     });
     const designSummary = Object.entries(designs).map(([k, v]) => `${k} (n=${v})`).join(', ');
 
-    const p1 = `3.1 Study Selection (PRISMA Flow Dynamics)\n\nThe electronic search identified ${this.totalIdentified} total candidate records across Europe PMC and Semantic Scholar. Removal of ${this.duplicatesRemoved} duplicates yielded ${this.totalIdentified - this.duplicatesRemoved} unique records screened based on title and abstract. Following algorithmic filtering to restrict eligibility strictly to 9 empirical clinical designs and eliminate pre-clinical or review publications, exactly ${n} primary studies met all criteria and were included in the final qualitative and quantitative evidence synthesis.`;
+    const p1 = `3.1 Study Selection (PRISMA Flow Dynamics)\n\nThe electronic search identified ${this.totalIdentified} total candidate records across ${this.getHarvestedSourcesString()}. Removal of ${this.duplicatesRemoved} duplicates yielded ${this.totalIdentified - this.duplicatesRemoved} unique records screened based on title and abstract. Following algorithmic filtering to restrict eligibility strictly to 9 empirical clinical designs and eliminate pre-clinical or review publications, exactly ${n} primary studies met all criteria and were included in the final qualitative and quantitative evidence synthesis.`;
 
     const p2 = `3.2 Study Characteristics\n\nThe ${n} included studies spanned publication dates between ${Math.min(...years, 2015)} and ${Math.max(...years, 2026)} (mean year: ${avgYear}). Study designs comprised: ${designSummary}. All included studies provided structured participant demographics, intervention dosages, and quantitative clinical outcome data.`;
 
@@ -4564,71 +4634,95 @@ async function runPipeline() {
   setStep(2);
 
   try {
-    // Stage 1: Dual Concurrent Retrieval with Bounded Timeouts
-    setProc('Querying electronic literature databases…', 'Executing concurrent multi-source search (Europe PMC & Semantic Scholar)', 15);
+    // Stage 1: Concurrent Retrieval across Selected Scientific Literature Databases
+    setProc('Querying electronic literature databases…', 'Executing multi-database retrieval across scientific repositories', 15);
     await abortableSleep(350, signal);
 
-    const targetSize = Math.max(20, Math.ceil(STATE.pageSize * 0.7));
+    const targetSize = Math.max(20, Math.ceil(STATE.pageSize * (STATE.searchSource === 'all' ? 0.35 : 0.7)));
 
-    const epmcPromise = (STATE.searchSource === 'epmc' || STATE.searchSource === 'both')
-      ? fetchEuropePMC(topic, targetSize, STATE.yearRange, signal).catch(err => {
-          console.warn('Europe PMC query error:', err);
-          return { results: [], hitCount: 0, error: err.message };
-        })
-      : Promise.resolve({ results: [], hitCount: 0 });
+    let epmcPromise = Promise.resolve({ results: [], hitCount: 0 });
+    let s2Promise = Promise.resolve({ results: [], hitCount: 0 });
+    let alexPromise = Promise.resolve({ results: [], hitCount: 0 });
+    let crossPromise = Promise.resolve({ results: [], hitCount: 0 });
 
-    const s2Promise = (STATE.searchSource === 's2' || STATE.searchSource === 'both')
-      ? fetchSemanticScholar(topic, targetSize, STATE.yearRange, signal).catch(err => {
-          console.warn('Semantic Scholar query error:', err);
-          return { results: [], hitCount: 0, error: err.message };
-        })
-      : Promise.resolve({ results: [], hitCount: 0 });
+    if (STATE.searchSource === 'all') {
+      epmcPromise = fetchEuropePMC(topic, targetSize, STATE.yearRange, signal).catch(err => ({ results: [], hitCount: 0, error: err.message }));
+      s2Promise = fetchSemanticScholar(topic, targetSize, STATE.yearRange, signal).catch(err => ({ results: [], hitCount: 0, error: err.message }));
+      alexPromise = fetchOpenAlex(topic, targetSize, STATE.yearRange, signal).catch(err => ({ results: [], hitCount: 0, error: err.message }));
+      crossPromise = fetchCrossref(topic, targetSize, STATE.yearRange, signal).catch(err => ({ results: [], hitCount: 0, error: err.message }));
+    } else if (STATE.searchSource === 'both') {
+      epmcPromise = fetchEuropePMC(topic, targetSize, STATE.yearRange, signal).catch(err => ({ results: [], hitCount: 0, error: err.message }));
+      s2Promise = fetchSemanticScholar(topic, targetSize, STATE.yearRange, signal).catch(err => ({ results: [], hitCount: 0, error: err.message }));
+    } else if (STATE.searchSource === 'openalex') {
+      alexPromise = fetchOpenAlex(topic, STATE.pageSize, STATE.yearRange, signal).catch(err => ({ results: [], hitCount: 0, error: err.message }));
+    } else if (STATE.searchSource === 'crossref') {
+      crossPromise = fetchCrossref(topic, STATE.pageSize, STATE.yearRange, signal).catch(err => ({ results: [], hitCount: 0, error: err.message }));
+    } else if (STATE.searchSource === 'epmc') {
+      epmcPromise = fetchEuropePMC(topic, STATE.pageSize, STATE.yearRange, signal).catch(err => ({ results: [], hitCount: 0, error: err.message }));
+    } else if (STATE.searchSource === 's2') {
+      s2Promise = fetchSemanticScholar(topic, STATE.pageSize, STATE.yearRange, signal).catch(err => ({ results: [], hitCount: 0, error: err.message }));
+    }
 
-    const [epmcRes, s2Res] = await Promise.all([epmcPromise, s2Promise]);
+    const [epmcRes, s2Res, alexRes, crossRes] = await Promise.all([epmcPromise, s2Promise, alexPromise, crossPromise]);
 
     const rawPapers = [];
-    const epmcCount = epmcRes.results ? epmcRes.results.length : 0;
-    const s2Count = s2Res.results ? s2Res.results.length : 0;
+    let epmcActual = 0;
+    let s2Actual = 0;
+    let alexActual = 0;
+    let crossActual = 0;
+    const notices = [];
 
+    // Europe PMC Results Processing
     if (epmcRes.results && epmcRes.results.length > 0) {
       rawPapers.push(...epmcRes.results);
+      if (epmcRes.isFallback) {
+        alexActual += epmcRes.results.length;
+        notices.push(`Europe PMC was unavailable (${epmcRes.originalError || 'HTTP 503'}). Resiliently harvested ${epmcRes.results.length} records via OpenAlex.`);
+      } else {
+        epmcActual += epmcRes.results.length;
+      }
+    } else if (epmcRes.error && (STATE.searchSource === 'epmc' || STATE.searchSource === 'both' || STATE.searchSource === 'all')) {
+      notices.push(`Europe PMC was temporarily unavailable (${epmcRes.error}).`);
     }
+
+    // Semantic Scholar Results Processing
     if (s2Res.results && s2Res.results.length > 0) {
       rawPapers.push(...s2Res.results);
+      if (s2Res.isFallback) {
+        alexActual += (s2Res.alexCount || 0);
+        crossActual += (s2Res.crossCount || 0);
+        const fbNames = s2Res.fallbackSources?.join(' & ') || 'OpenAlex & Crossref';
+        notices.push(`Semantic Scholar was rate-limited (${s2Res.originalError || 'HTTP 429'}). Harvested ${s2Res.results.length} candidate records via ${fbNames} fallback.`);
+      } else {
+        s2Actual += s2Res.results.length;
+      }
+    } else if (s2Res.error && (STATE.searchSource === 's2' || STATE.searchSource === 'both' || STATE.searchSource === 'all')) {
+      notices.push(`Semantic Scholar: ${s2Res.error}.`);
+    }
+
+    // OpenAlex Direct Results Processing
+    if (alexRes.results && alexRes.results.length > 0) {
+      rawPapers.push(...alexRes.results);
+      alexActual += alexRes.results.length;
+    }
+
+    // Crossref Direct Results Processing
+    if (crossRes.results && crossRes.results.length > 0) {
+      rawPapers.push(...crossRes.results);
+      crossActual += crossRes.results.length;
     }
 
     if (rawPapers.length === 0) {
       let specificReason = 'Zero candidate records retrieved from the selected databases.';
-      if (s2Res.error && epmcRes.error) {
-        specificReason = `Both Europe PMC (${epmcRes.error}) and Semantic Scholar (${s2Res.error}) were unreachable.`;
-      } else if (s2Res.error && STATE.searchSource === 's2') {
-        specificReason = `Semantic Scholar: ${s2Res.error}. Consider selecting "Europe PMC" or "Dual Database".`;
+      if (notices.length > 0) {
+        specificReason = notices.join(' ');
       }
       throw new Error(`${specificReason} Please broaden your search terms, expand publication year range, or retry.`);
     }
 
-    // Set informative partial-results notice if one source was rate-limited or fallback was activated
-    STATE.partialNotice = null;
-    let s2ActualCount = s2Count;
-    let alexCount = 0;
-    let crossCount = 0;
-
-    if (s2Res.isFallback) {
-      s2ActualCount = 0;
-      alexCount = s2Res.alexCount || 0;
-      crossCount = s2Res.crossCount || 0;
-      const fbStr = s2Res.fallbackSources && s2Res.fallbackSources.length > 0 ? s2Res.fallbackSources.join(' & ') : 'OpenAlex & Crossref';
-      STATE.partialNotice = `Semantic Scholar was rate-limited (${s2Res.originalError || 'HTTP 429'}). SysRevAI seamlessly harvested ${s2Count} candidate records via ${fbStr} fallback.`;
-    } else if (STATE.searchSource === 'both') {
-      if (epmcCount > 0 && s2Count === 0) {
-        STATE.partialNotice = `Europe PMC retrieved ${epmcCount} records (Semantic Scholar was temporarily busy/rate-limited).`;
-      } else if (s2Count > 0 && epmcCount === 0) {
-        STATE.partialNotice = `Semantic Scholar retrieved ${s2Count} records (Europe PMC was temporarily unavailable).`;
-      }
-    }
-
+    STATE.partialNotice = notices.length > 0 ? notices.join(' ') : null;
     STATE.rawCandidateCount = rawPapers.length;
-    STATE.sourceCounts = { epmc: epmcCount, s2: s2ActualCount, openalex: alexCount, crossref: crossCount, merged: 0 };
+    STATE.sourceCounts = { epmc: epmcActual, s2: s2Actual, openalex: alexActual, crossref: crossActual, merged: 0 };
 
     // Stage 2: Deduplication
     setProc('Resolving duplicates across databases…', `Analyzing PMIDs, DOIs, and alphanumeric title fingerprints`, 40);
