@@ -2240,38 +2240,83 @@ function escapeXml(str) {
     .replace(/'/g, '&apos;');
 }
 
-// Attach to window for global access
-window.META_ANALYSIS_STATE = META_ANALYSIS_STATE;
-window.initiateMetaAnalysis = initiateMetaAnalysis;
-window.resetMetaAnalysis = resetMetaAnalysis;
-window.closeMetaAnalysisWorkspace = closeMetaAnalysisWorkspace;
-window.refreshMetaAnalysisWorkspace = refreshMetaAnalysisWorkspace;
-window.switchMetaGraphicTab = switchMetaGraphicTab;
-window.renderMetaAnalysisInitialBanner = renderMetaAnalysisInitialBanner;
-window.renderMetaAnalysisActiveWorkspace = renderMetaAnalysisActiveWorkspace;
-window.renderForestPlotSVG = renderForestPlotSVG;
-window.renderFunnelPlotSVG = renderFunnelPlotSVG;
-window.renderSensitivityPlotSVG = renderSensitivityPlotSVG;
-window.updateMetaOutcomeName = updateMetaOutcomeName;
-window.updateMetaOutcomeType = updateMetaOutcomeType;
-window.updateMetaMeasure = updateMetaMeasure;
-window.updateMetaModel = updateMetaModel;
-window.updateMetaGroupLabel = updateMetaGroupLabel;
-window.updateMetaStudyField = updateMetaStudyField;
-window.toggleMetaStudyInclusion = toggleMetaStudyInclusion;
-window.openImportStudyModal = openImportStudyModal;
-window.openManualStudyModal = openManualStudyModal;
-window.closeImportStudyModal = closeImportStudyModal;
-window.triggerImportStudyFilePicker = triggerImportStudyFilePicker;
-window.handleMetaStudyFileSelected = handleMetaStudyFileSelected;
-window.confirmImportMetaStudy = confirmImportMetaStudy;
-window.addCustomMetaStudyRow = addCustomMetaStudyRow;
-window.removeMetaStudyRow = removeMetaStudyRow;
-window.downloadCurrentGraphicPNG = downloadCurrentGraphicPNG;
-window.downloadCurrentGraphicSVG = downloadCurrentGraphicSVG;
-window.copyCurrentGraphicSVG = copyCurrentGraphicSVG;
-window.downloadForestPlotPNG = downloadForestPlotPNG;
-window.downloadForestPlotSVG = downloadForestPlotSVG;
-window.copyForestPlotSVGToClipboard = copyForestPlotSVGToClipboard;
-window.exportMetaAnalysisCSV = exportMetaAnalysisCSV;
-window.exportMetaAnalysisPDF = exportMetaAnalysisPDF;
+// Attach to window for browser global access
+if (typeof window !== 'undefined') {
+  window.META_ANALYSIS_STATE = META_ANALYSIS_STATE;
+  window.initiateMetaAnalysis = initiateMetaAnalysis;
+  window.resetMetaAnalysis = resetMetaAnalysis;
+  window.closeMetaAnalysisWorkspace = closeMetaAnalysisWorkspace;
+  window.refreshMetaAnalysisWorkspace = refreshMetaAnalysisWorkspace;
+  window.switchMetaGraphicTab = switchMetaGraphicTab;
+  window.renderMetaAnalysisInitialBanner = renderMetaAnalysisInitialBanner;
+  window.renderMetaAnalysisActiveWorkspace = renderMetaAnalysisActiveWorkspace;
+  window.renderForestPlotSVG = renderForestPlotSVG;
+  window.renderFunnelPlotSVG = renderFunnelPlotSVG;
+  window.renderSensitivityPlotSVG = renderSensitivityPlotSVG;
+  window.updateMetaOutcomeName = updateMetaOutcomeName;
+  window.updateMetaOutcomeType = updateMetaOutcomeType;
+  window.updateMetaMeasure = updateMetaMeasure;
+  window.updateMetaModel = updateMetaModel;
+  window.updateMetaGroupLabel = updateMetaGroupLabel;
+  window.updateMetaStudyField = updateMetaStudyField;
+  window.toggleMetaStudyInclusion = toggleMetaStudyInclusion;
+  window.openImportStudyModal = openImportStudyModal;
+  window.openManualStudyModal = openManualStudyModal;
+  window.closeImportStudyModal = closeImportStudyModal;
+  window.triggerImportStudyFilePicker = triggerImportStudyFilePicker;
+  window.handleMetaStudyFileSelected = handleMetaStudyFileSelected;
+  window.confirmImportMetaStudy = confirmImportMetaStudy;
+  window.addCustomMetaStudyRow = addCustomMetaStudyRow;
+  window.removeMetaStudyRow = removeMetaStudyRow;
+  window.downloadCurrentGraphicPNG = downloadCurrentGraphicPNG;
+  window.downloadCurrentGraphicSVG = downloadCurrentGraphicSVG;
+  window.copyCurrentGraphicSVG = copyCurrentGraphicSVG;
+  window.downloadForestPlotPNG = downloadForestPlotPNG;
+  window.downloadForestPlotSVG = downloadForestPlotSVG;
+  window.copyForestPlotSVGToClipboard = copyForestPlotSVGToClipboard;
+  window.exportMetaAnalysisCSV = exportMetaAnalysisCSV;
+  window.exportMetaAnalysisPDF = exportMetaAnalysisPDF;
+  window.syncMetaStudiesFromIncluded = syncMetaStudiesFromIncluded;
+  window.executeMetaAnalysis = executeMetaAnalysis;
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    META_ANALYSIS_STATE,
+    initiateMetaAnalysis,
+    resetMetaAnalysis,
+    closeMetaAnalysisWorkspace,
+    refreshMetaAnalysisWorkspace,
+    switchMetaGraphicTab,
+    renderMetaAnalysisInitialBanner,
+    renderMetaAnalysisActiveWorkspace,
+    renderForestPlotSVG,
+    renderFunnelPlotSVG,
+    renderSensitivityPlotSVG,
+    updateMetaOutcomeName,
+    updateMetaOutcomeType,
+    updateMetaMeasure,
+    updateMetaModel,
+    updateMetaGroupLabel,
+    updateMetaStudyField,
+    toggleMetaStudyInclusion,
+    openImportStudyModal,
+    openManualStudyModal,
+    closeImportStudyModal,
+    triggerImportStudyFilePicker,
+    handleMetaStudyFileSelected,
+    confirmImportMetaStudy,
+    addCustomMetaStudyRow,
+    removeMetaStudyRow,
+    downloadCurrentGraphicPNG,
+    downloadCurrentGraphicSVG,
+    copyCurrentGraphicSVG,
+    downloadForestPlotPNG,
+    downloadForestPlotSVG,
+    copyForestPlotSVGToClipboard,
+    exportMetaAnalysisCSV,
+    exportMetaAnalysisPDF,
+    syncMetaStudiesFromIncluded,
+    executeMetaAnalysis
+  };
+}

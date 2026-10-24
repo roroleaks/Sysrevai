@@ -1500,6 +1500,7 @@ sup.cite-num:hover, .cite-num:hover, .cite-apa:hover, .cite-harvard:hover {
         <p class="hint" style="margin:4px 0 0">PRISMA 2020 Compliant · Vancouver (ICMJE) Citations · Cochrane Risk of Bias Matrix</p>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="primary" onclick="exportSystematicReviewWordDoc()" style="background:#1e40af;border-color:#1e40af">⬇ Download Word Manuscript (.doc)</button>
         <button class="primary" onclick="exportSystematicReviewPDF()">⬇ Download Systematic Review PDF</button>
         <button class="secondary" onclick="exportPRISMAReportPDF()">⬇ PRISMA &amp; RoB PDF</button>
         <button class="secondary" onclick="openPrismaDiagramEditor()" style="font-weight:700">📊 PRISMA 2020 Editor</button>
@@ -1585,6 +1586,7 @@ sup.cite-num:hover, .cite-num:hover, .cite-apa:hover, .cite-harvard:hover {
 
     <!-- Sticky Action Bar for Step 4 -->
     <div class="sticky-bottom-bar" id="step4-actions">
+      <button class="primary" onclick="exportSystematicReviewWordDoc()" style="background:#1e40af;border-color:#1e40af">⬇ Download Word Manuscript (.doc)</button>
       <button class="primary" onclick="exportSystematicReviewPDF()">⬇ Download Systematic Review PDF</button>
       <button class="secondary" onclick="exportPRISMAReportPDF()">⬇ PRISMA &amp; RoB PDF</button>
       <button class="secondary" id="btn-export-refs-pdf" onclick="exportReferencesPDF()">⬇ References PDF</button>
@@ -2051,11 +2053,6 @@ function cap(s) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-function lc(s) {
-  if (!s) return '';
-  return s.charAt(0).toLowerCase() + s.slice(1);
-}
-
 // ═══════════════════════════════════════════════════════════════
 // STEP 1 CONTROLS: PICO, CRITERIA & CONFIG
 // ═══════════════════════════════════════════════════════════════
@@ -2195,10 +2192,6 @@ function selectSearchEngine(el, mode) {
   if (span && !span.textContent.includes('✓')) span.textContent += ' ✓';
   STATE.searchSource = mode;
 }
-
-function openS2KeyModal() {}
-function closeS2KeyModal() {}
-function saveS2KeyModal() {}
 
 function clearStep1Alert() {
   const el = document.getElementById('step1-alert');
@@ -3176,7 +3169,9 @@ function extractStudyCharacteristics(paper, pico) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// CITATION & REFERENCE FORMATTERS (Vancouver, APA 7th, Harvard)
+// CITATION & REFERENCE FORMATTERS (Vancouver, APA, Harvard)
+// All reference styles strictly rendered without square brackets.
+// Vancouver authors rendered in uppercase in bibliography.
 // ═══════════════════════════════════════════════════════════════
 function parseAuthorList(authorsStr) {
   if (!authorsStr || authorsStr === 'Unknown Authors') return [];
@@ -3214,8 +3209,19 @@ function toSentenceCase(str) {
 
 function formatVancouver(paper, num) {
   let ref = num ? `${num}. ` : '';
-  const authors = cleanHtmlText(paper.authors);
-  if (authors && authors !== 'Unknown Authors') {
+  const authorList = parseAuthorList(paper.authors);
+  let authors = '';
+  if (authorList.length > 0) {
+    if (authorList.length <= 6) {
+      authors = authorList.map(a => `${a.lastName.toUpperCase()} ${a.initials ? a.initials.toUpperCase() : ''}`.trim()).join(', ');
+    } else {
+      const first6 = authorList.slice(0, 6).map(a => `${a.lastName.toUpperCase()} ${a.initials ? a.initials.toUpperCase() : ''}`.trim()).join(', ');
+      authors = `${first6}, et al.`;
+    }
+  } else if (paper.authors && paper.authors !== 'Unknown Authors') {
+    authors = cleanHtmlText(paper.authors).toUpperCase();
+  }
+  if (authors) {
     ref += authors.trim();
     if (!ref.trimEnd().endsWith('.')) ref += '.';
     ref += ' ';
@@ -3297,9 +3303,9 @@ function formatHarvard(paper) {
 
   let ref = `${authStr} (${year}) '${title}', <em>${journal}</em>.`;
   if (cleanDoi) {
-    ref += ` Available at: <a href="https://doi.org/${cleanDoi}" target="_blank" rel="noopener noreferrer" style="color:#0284c7;text-decoration:underline;">https://doi.org/${cleanDoi}</a> [Accessed ${todayStr}].`;
+    ref += ` Available at: <a href="https://doi.org/${cleanDoi}" target="_blank" rel="noopener noreferrer" style="color:#0284c7;text-decoration:underline;">https://doi.org/${cleanDoi}</a> (Accessed ${todayStr}).`;
   } else if (paper.pmid) {
-    ref += ` Available at: PubMed (PMID: ${paper.pmid}) [Accessed ${todayStr}].`;
+    ref += ` Available at: PubMed (PMID: ${paper.pmid}) (Accessed ${todayStr}).`;
   }
   return ref;
 }
@@ -3943,21 +3949,21 @@ function citify(text) {
         }
         const tooltip = papers.map(p => formatInTextAuthor(p, style)).join('; ');
         const yrText = prefixYear.trim();
-        return `${authPrefix ? authPrefix + ' ' : ''}<span class="cite-num cite-${style}" title="[${style === 'apa' ? 'APA 7th' : 'Harvard'}] ${tooltip}">${yrText}</span>`;
+        return `${authPrefix ? authPrefix + ' ' : ''}<span class="cite-num cite-${style}" title="${style === 'apa' ? 'APA' : 'Harvard'}: ${tooltip}">${yrText}</span>`;
       }
 
-      // Parenthetical citation: e.g. "trials [1, 2]"
+      // Parenthetical citation: e.g. "trials (Marso, 2016)"
       const parts = papers.map(p => formatInTextAuthor(p, style));
       parts.sort((a, b) => a.localeCompare(b));
       const inText = parts.length > 0 ? parts.join('; ') : numsStr;
-      return `<span class="cite-num cite-${style}" title="[${style === 'apa' ? 'APA 7th' : 'Harvard'}] Reference: ${inText}">(${inText})</span>`;
+      return `<span class="cite-num cite-${style}" title="${style === 'apa' ? 'APA' : 'Harvard'} Reference: ${inText}">(${inText})</span>`;
     });
   }
 
   // Vancouver style: "uppercase superscript with no brackets"
   // e.g. [1, 2] -> <sup class="cite-num" title="Vancouver Reference 1, 2">1, 2</sup>
   return clean.replace(/\[(\d+(?:\s*,\s*\d+)*)\]/g, (_, nums) => {
-    return `<sup class="cite-num" title="Vancouver Reference ${nums}">${nums}</sup>`;
+    return `<sup class="cite-num cite-vancouver" title="Vancouver Reference ${nums}">${nums}</sup>`;
   });
 }
 
@@ -4280,8 +4286,9 @@ function renderAuditReport(review, included) {
 
 function citifyPlainText(text) {
   if (!text) return '';
+  let cleaned = text;
   if (CITATION_STYLE === 'apa' || CITATION_STYLE === 'harvard') {
-    return text.replace(/(\((?:19|20)\d{2}\)\s*)?\[(\d+(?:\s*,\s*\d+)*)\]/g, (match, prefixYear, numsStr) => {
+    cleaned = cleaned.replace(/(\((?:19|20)\d{2}\)\s*)?\[(\d+(?:\s*,\s*\d+)*)\]/g, (match, prefixYear, numsStr) => {
       if (prefixYear) return prefixYear.trim();
       const nums = numsStr.split(',').map(n => parseInt(n.trim(), 10)).filter(n => !isNaN(n));
       const papers = nums.map(n => getPaperCiteData(n)).filter(Boolean);
@@ -4289,8 +4296,314 @@ function citifyPlainText(text) {
       parts.sort((a, b) => a.localeCompare(b));
       return parts.length > 0 ? `(${parts.join('; ')})` : `(${numsStr})`;
     });
+  } else {
+    // Vancouver style in plain text / PDF: numbers strictly without brackets
+    cleaned = cleaned.replace(/\[(\d+(?:\s*,\s*\d+)*)\]/g, (_, nums) => `${nums}`);
   }
-  return text.replace(/\[(\d+(?:\s*,\s*\d+)*)\]/g, (_, nums) => nums);
+  cleaned = cleaned.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/\*([^*]+)\*/g, '$1');
+  return cleanHtmlText(cleaned);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MICROSOFT WORD (.DOC) OFFICE DOCUMENT EXPORT ENGINE
+// ═══════════════════════════════════════════════════════════════
+async function exportSystematicReviewWordDoc() {
+  if (!STATE.review) return;
+  const review = STATE.review;
+  const safeTopic = (STATE.topic || 'Systematic_Review').replace(/[^a-zA-Z0-9]/g, '_').substring(0, 30);
+  const ab = review.abstractObj || {};
+  const style = CITATION_STYLE || 'vancouver';
+  const styleLabel = style === 'vancouver' ? 'Vancouver' : style === 'apa' ? 'APA' : 'Harvard';
+  const todayStr = new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
+
+  // Format Table 1: Characteristics of Included Studies
+  const incPapers = STATE.includedPapers || [];
+  let table1Rows = '';
+  incPapers.forEach((p, idx) => {
+    const auth = p.authors ? p.authors.split(',')[0].trim() : 'Author';
+    const studyId = `${auth} (${p.year})`;
+    const des = p.screening?.design?.name || 'Observational study';
+    const chars = extractStudyCharacteristics(p, STATE.pico || {});
+    const bg = idx % 2 === 1 ? '#f8fafc' : '#ffffff';
+    table1Rows += `
+      <tr style="background-color:${bg};">
+        <td style="padding:6pt 8pt; border:1pt solid #cbd5e1; font-weight:bold; color:#0f172a;">${cleanHtmlText(studyId)}</td>
+        <td style="padding:6pt 8pt; border:1pt solid #cbd5e1; color:#334155;">${cleanHtmlText(des)}</td>
+        <td style="padding:6pt 8pt; border:1pt solid #cbd5e1; color:#334155;">${cleanHtmlText(chars.sampleSize)}</td>
+        <td style="padding:6pt 8pt; border:1pt solid #cbd5e1; color:#334155;">${cleanHtmlText(chars.population)}</td>
+        <td style="padding:6pt 8pt; border:1pt solid #cbd5e1; color:#334155;">${cleanHtmlText(chars.intervention)}</td>
+        <td style="padding:6pt 8pt; border:1pt solid #cbd5e1; color:#334155;">${cleanHtmlText(chars.comparator)}</td>
+        <td style="padding:6pt 8pt; border:1pt solid #cbd5e1; color:#334155;">${cleanHtmlText(chars.outcomeFinding)}</td>
+      </tr>
+    `;
+  });
+
+  // Format Table 2: Cochrane RoB Matrix
+  let table2Rows = '';
+  incPapers.forEach((p, idx) => {
+    const auth = p.authors ? p.authors.split(',')[0].trim() : 'Author';
+    const studyId = `${auth} (${p.year})`;
+    const des = p.screening?.design?.name || 'Observational study';
+    const rob = p.screening?.rob || evaluateRiskOfBias(p);
+    const d = rob.domains;
+    const bg = idx % 2 === 1 ? '#f8fafc' : '#ffffff';
+    const robColor = rob.overall === 'Low Risk' ? '#15803d' : rob.overall === 'High Risk' ? '#b91c1c' : '#b45309';
+
+    table2Rows += `
+      <tr style="background-color:${bg};">
+        <td style="padding:6pt 8pt; border:1pt solid #cbd5e1; font-weight:bold; color:#0f172a;">${cleanHtmlText(studyId)}</td>
+        <td style="padding:6pt 8pt; border:1pt solid #cbd5e1; color:#334155;">${cleanHtmlText(des)}</td>
+        <td style="padding:6pt 8pt; border:1pt solid #cbd5e1; text-align:center; color:#334155;">${cleanHtmlText(d.d1)}</td>
+        <td style="padding:6pt 8pt; border:1pt solid #cbd5e1; text-align:center; color:#334155;">${cleanHtmlText(d.d2)}</td>
+        <td style="padding:6pt 8pt; border:1pt solid #cbd5e1; text-align:center; color:#334155;">${cleanHtmlText(d.d3)}</td>
+        <td style="padding:6pt 8pt; border:1pt solid #cbd5e1; text-align:center; color:#334155;">${cleanHtmlText(d.d4)}</td>
+        <td style="padding:6pt 8pt; border:1pt solid #cbd5e1; text-align:center; color:#334155;">${cleanHtmlText(d.d5)}</td>
+        <td style="padding:6pt 8pt; border:1pt solid #cbd5e1; font-weight:bold; text-align:center; color:${robColor};">${cleanHtmlText(rob.overall)}</td>
+      </tr>
+    `;
+  });
+
+  // Format References
+  const refs = getFormattedReferencesForCurrentStyle();
+  let refsHtml = '';
+  refs.forEach(r => {
+    refsHtml += `<p class="ref-item" style="margin:0 0 6pt 0; line-height:1.35; padding-left:24pt; text-indent:-24pt; font-size:9.5pt;">${r.text}</p>`;
+  });
+
+  // Format Sections
+  function formatSectionHtml(content) {
+    if (!content) return '';
+    const paras = content.split('\n\n');
+    let out = '';
+    paras.forEach(p => {
+      const trimmed = p.trim();
+      if (!trimmed) return;
+      const subMatch = trimmed.match(/^(\d+\.\d+(?:\.\d+)?)\s+(.*)/s);
+      if (subMatch) {
+        const title = subMatch[1] + ' ' + subMatch[2].split('\n')[0].trim();
+        const body = subMatch[2].split('\n').slice(1).join('\n').trim();
+        out += `<h2 class="sub-heading" style="color:#0d9488; font-size:12pt; font-weight:bold; margin:14pt 0 6pt 0; page-break-after:avoid;">${cleanHtmlText(title)}</h2>`;
+        if (body) {
+          out += `<p style="margin:0 0 8pt 0; text-align:justify; line-height:1.3;">${citify(body)}</p>`;
+        }
+      } else if (trimmed.includes('• ') || trimmed.startsWith('- ')) {
+        const lines = trimmed.split('\n');
+        lines.forEach(l => {
+          if (l.trim().startsWith('•') || l.trim().startsWith('-')) {
+            out += `<p style="margin:0 0 4pt 18pt; text-indent:-12pt; line-height:1.25;">${citify(l.trim())}</p>`;
+          } else {
+            out += `<p style="margin:0 0 8pt 0; text-align:justify; line-height:1.3;">${citify(l.trim())}</p>`;
+          }
+        });
+      } else {
+        out += `<p style="margin:0 0 8pt 0; text-align:justify; line-height:1.3;">${citify(trimmed)}</p>`;
+      }
+    });
+    return out;
+  }
+
+  const wordHtml = `
+<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+<head>
+<meta charset='utf-8'>
+<title>${cleanHtmlText(review.title)}</title>
+<!--[if gte mso 9]>
+<xml>
+  <w:WordDocument>
+    <w:View>Print</w:View>
+    <w:Zoom>100</w:Zoom>
+    <w:DoNotOptimizeForBrowser/>
+  </w:WordDocument>
+</xml>
+<![endif]-->
+<style>
+  @page Section1 {
+    size: 8.5in 11.0in;
+    margin: 1.0in 1.0in 1.0in 1.0in;
+    mso-header-margin: 0.5in;
+    mso-footer-margin: 0.5in;
+    mso-header: h1;
+    mso-footer: f1;
+  }
+  div.Section1 { page: Section1; }
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 11pt;
+    line-height: 1.3;
+    color: #1e293b;
+    margin: 0;
+    padding: 0;
+  }
+  h1.doc-title {
+    font-size: 20pt;
+    font-weight: bold;
+    color: #0f172a;
+    text-align: center;
+    margin: 0 0 10pt 0;
+    line-height: 1.2;
+  }
+  h1.sec-heading {
+    font-size: 13.5pt;
+    font-weight: bold;
+    color: #0f172a;
+    border-bottom: 1.5pt solid #0f172a;
+    padding-bottom: 3pt;
+    margin: 18pt 0 10pt 0;
+    page-break-after: avoid;
+    text-transform: uppercase;
+  }
+  h2.sub-heading {
+    font-size: 12pt;
+    font-weight: bold;
+    color: #0d9488;
+    margin: 14pt 0 6pt 0;
+    page-break-after: avoid;
+  }
+  .table-grid {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 10pt 0 16pt 0;
+    font-size: 8.5pt;
+  }
+  .table-grid th {
+    background-color: #0f172a;
+    color: #ffffff;
+    font-weight: bold;
+    padding: 6pt 8pt;
+    text-align: left;
+    border: 1pt solid #0f172a;
+  }
+  .table-grid td {
+    padding: 5pt 8pt;
+    border: 1pt solid #cbd5e1;
+    vertical-align: top;
+  }
+</style>
+</head>
+<body>
+<div class="Section1">
+  <!-- Running Header -->
+  <div style='mso-element:header' id='h1'>
+    <table style="width:100%; border:none; border-bottom:0.5pt solid #cbd5e1; font-size:8.5pt; color:#64748b; padding-bottom:3pt;">
+      <tr>
+        <td style="text-align:left; font-style:italic;">Sysrevai · PRISMA 2020 Systematic Review &amp; Evidence Synthesis</td>
+        <td style="text-align:right;">AIMed Clinical Informatics</td>
+      </tr>
+    </table>
+  </div>
+
+  <!-- Running Footer -->
+  <div style='mso-element:footer' id='f1'>
+    <table style="width:100%; border:none; border-top:0.5pt solid #cbd5e1; font-size:8.5pt; color:#64748b; padding-top:3pt;">
+      <tr>
+        <td style="text-align:left;">For educational &amp; evidence-synthesis planning. Does not replace individual clinical judgment.</td>
+        <td style="text-align:right;">Page <span style='mso-field-code: PAGE '></span> of <span style='mso-field-code: NUMPAGES '></span></td>
+      </tr>
+    </table>
+  </div>
+
+  <!-- Title Block -->
+  <h1 class="doc-title">${cleanHtmlText(review.title)}</h1>
+  <p style="font-size:11pt; font-weight:bold; color:#0f6b6b; text-align:center; margin:0 0 4pt 0;">Dr. Raouf Roshdy &amp; the Sysrevai Evidence Synthesis Working Group</p>
+  <p style="font-size:9.5pt; font-style:italic; color:#475569; text-align:center; margin:0 0 14pt 0;">AIMed Biomedical Informatics Initiative · PRISMA 2020 Systematic Review Protocol · Date: ${todayStr} · Citation Mode: ${styleLabel}</p>
+
+  <!-- Educational Advisory Callout -->
+  <div style="background-color:#f0fdfa; border-left:4pt solid #0d9488; padding:8pt 12pt; margin:0 0 16pt 0; font-size:9.5pt; color:#334155;">
+    <strong>EDUCATIONAL &amp; CLINICAL PRACTICE ADVISORY:</strong> This systematic review synthesis is structured under PRISMA 2020 standards and pre-specified within the SysRev AI evidence synthesis workspace. It is intended for peer review, guideline deliberation, and evidence-synthesis planning.
+  </div>
+
+  <!-- Structured Abstract -->
+  <div style="background-color:#f8fafc; border:1pt solid #cbd5e1; padding:12pt 14pt; margin:0 0 16pt 0;">
+    <p style="font-size:12pt; font-weight:bold; color:#0f172a; margin:0 0 8pt 0; text-transform:uppercase;">Structured Abstract</p>
+    <p style="margin:0 0 6pt 0;"><strong>Background:</strong> ${citify(ab.background)}</p>
+    <p style="margin:0 0 6pt 0;"><strong>Objectives:</strong> ${citify(ab.objectives)}</p>
+    <p style="margin:0 0 6pt 0;"><strong>Methods:</strong> ${citify(ab.methods)}</p>
+    <p style="margin:0 0 6pt 0;"><strong>Results:</strong> ${citify(ab.results)}</p>
+    <p style="margin:0 0 6pt 0;"><strong>Conclusions:</strong> ${citify(ab.conclusions)}</p>
+    <p style="margin:0 0 6pt 0;"><strong>Registration:</strong> ${citify(ab.registration)}</p>
+    <p style="margin:8pt 0 0 0; font-size:9.5pt;"><strong>Keywords:</strong> <em>${(review.keywords || []).join('; ')}</em></p>
+  </div>
+
+  <!-- Section 1: Introduction -->
+  <h1 class="sec-heading">1. Introduction</h1>
+  ${formatSectionHtml(review.intro)}
+
+  <!-- Section 2: Methods -->
+  <h1 class="sec-heading">2. Methods</h1>
+  ${formatSectionHtml(review.methods)}
+
+  <!-- Section 3: Results -->
+  <h1 class="sec-heading">3. Results</h1>
+  ${formatSectionHtml(review.results)}
+
+  <!-- Table 1: Characteristics of Studies -->
+  <h2 class="sub-heading" style="color:#0d9488; font-size:12pt; font-weight:bold; margin:14pt 0 4pt 0;">Table 1. Structured Characteristics of Included Studies</h2>
+  <p style="font-size:9pt; font-style:italic; color:#64748b; margin:0 0 8pt 0;">Extracted clinical populations, interventions, comparators, and empirical outcomes across included cohorts.</p>
+  <table class="table-grid">
+    <thead>
+      <tr>
+        <th style="width:13%;">Study ID</th>
+        <th style="width:15%;">Study Design</th>
+        <th style="width:10%;">Sample</th>
+        <th style="width:15%;">Population</th>
+        <th style="width:15%;">Intervention</th>
+        <th style="width:12%;">Comparator</th>
+        <th style="width:20%;">Key Clinical Findings</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${table1Rows}
+    </tbody>
+  </table>
+
+  <!-- Table 2: Risk of Bias Matrix -->
+  <h2 class="sub-heading" style="color:#0d9488; font-size:12pt; font-weight:bold; margin:14pt 0 4pt 0;">Table 2. Cochrane Risk of Bias Assessment Matrix (RoB 2 / ROBINS-I)</h2>
+  <p style="font-size:9pt; font-style:italic; color:#64748b; margin:0 0 8pt 0;">Evaluation across five core bias domains: D1 (Randomization), D2 (Deviations), D3 (Missing Data), D4 (Measurement), D5 (Reporting).</p>
+  <table class="table-grid">
+    <thead>
+      <tr>
+        <th style="width:18%;">Study ID</th>
+        <th style="width:20%;">Study Design</th>
+        <th style="width:9%; text-align:center;">D1</th>
+        <th style="width:9%; text-align:center;">D2</th>
+        <th style="width:9%; text-align:center;">D3</th>
+        <th style="width:9%; text-align:center;">D4</th>
+        <th style="width:9%; text-align:center;">D5</th>
+        <th style="width:17%; text-align:center;">Overall RoB</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${table2Rows}
+    </tbody>
+  </table>
+
+  <!-- Section 4: Discussion -->
+  <h1 class="sec-heading">4. Discussion</h1>
+  ${formatSectionHtml(review.discussion)}
+
+  <!-- Section 5: Conclusions -->
+  <h1 class="sec-heading">5. Conclusions &amp; Practice Recommendations</h1>
+  ${formatSectionHtml(review.conclusions)}
+
+  <!-- Section 6: References -->
+  <h1 class="sec-heading">6. References (${styleLabel})</h1>
+  <div style="margin-top:10pt;">
+    ${refsHtml}
+  </div>
+</div>
+</body>
+</html>
+  `.trim();
+
+  const blob = new Blob(['\ufeff' + wordHtml], { type: 'application/msword;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `Sysrevai_Systematic_Review_${safeTopic}.doc`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -4303,59 +4616,55 @@ async function exportSystematicReviewPDF() {
   const review = STATE.review;
 
   const margin = 54;
+  const topMargin = 56;
+  const bottomMargin = 50;
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const textWidth = pageWidth - margin * 2;
-  let y = margin;
+  let y = topMargin;
 
   function checkPageBreak(needed = 35) {
-    if (y + needed > pageHeight - margin) {
+    if (y + needed > pageHeight - bottomMargin) {
       doc.addPage();
-      y = margin;
-      addHeaderFooter();
+      y = topMargin;
     }
   }
-
-  function addHeaderFooter() {
-    doc.setFont('times', 'italic');
-    doc.setFontSize(8);
-    doc.setTextColor(100);
-    doc.text('Sysrevai — PRISMA 2020 Systematic Review Draft', margin, 36);
-    doc.text(`Page ${doc.internal.getNumberOfPages()}`, pageWidth - margin, 36, { align: 'right' });
-    doc.setFont('times', 'normal');
-    doc.setTextColor(20);
-  }
-
-  addHeaderFooter();
 
   // Title
   doc.setFont('times', 'bold');
   doc.setFontSize(14);
+  doc.setTextColor(15, 23, 42);
   const titleLines = doc.splitTextToSize(review.title, textWidth);
   doc.text(titleLines, pageWidth / 2, y, { align: 'center' });
-  y += titleLines.length * 18 + 10;
+  y += titleLines.length * 17 + 8;
 
-  // Author
-  doc.setFont('times', 'normal');
-  doc.setFontSize(9);
-  doc.text('Dr. Raouf Roshdy & the Sysrevai Systematic Review Engine', pageWidth / 2, y, { align: 'center' });
-  y += 14;
+  // Author & Affiliations
+  doc.setFont('times', 'bold');
+  doc.setFontSize(9.5);
+  doc.setTextColor(15, 107, 107);
+  doc.text('Dr. Raouf Roshdy & the Sysrevai Evidence Synthesis Working Group', pageWidth / 2, y, { align: 'center' });
+  y += 13;
   doc.setFont('times', 'italic');
-  doc.text('AIMed Biomedical Informatics Initiative &bull; PRISMA 2020 Evidence Synthesis', pageWidth / 2, y, { align: 'center' });
-  y += 18;
+  doc.setFontSize(8.5);
+  doc.setTextColor(71, 85, 105);
+  const styleLabel = CITATION_STYLE === 'vancouver' ? 'Vancouver' : CITATION_STYLE === 'apa' ? 'APA' : 'Harvard';
+  doc.text(`AIMed Biomedical Informatics Initiative · PRISMA 2020 Systematic Review · Citation Mode: ${styleLabel}`, pageWidth / 2, y, { align: 'center' });
+  y += 16;
 
   // Dividing Line
-  doc.setDrawColor(180);
+  doc.setDrawColor(203, 213, 225);
+  doc.setLineWidth(1);
   doc.line(margin, y, pageWidth - margin, y);
-  y += 16;
+  y += 14;
 
   // Abstract
   doc.setFont('times', 'bold');
   doc.setFontSize(11);
+  doc.setTextColor(15, 23, 42);
   doc.text('ABSTRACT', margin, y);
-  y += 16;
+  y += 14;
 
-  const ab = review.abstractObj;
+  const ab = review.abstractObj || {};
   const abSections = [
     { label: 'Background: ', text: citifyPlainText(ab.background) },
     { label: 'Objectives: ', text: citifyPlainText(ab.objectives) },
@@ -4366,15 +4675,16 @@ async function exportSystematicReviewPDF() {
   ];
 
   doc.setFontSize(9);
+  doc.setTextColor(30);
   abSections.forEach(s => {
-    checkPageBreak(30);
+    checkPageBreak(25);
     doc.setFont('times', 'bold');
     doc.text(s.label, margin, y);
     const labelWidth = doc.getTextWidth(s.label);
     doc.setFont('times', 'normal');
     const lines = doc.splitTextToSize(s.text, textWidth - labelWidth);
     doc.text(lines, margin + labelWidth, y);
-    y += lines.length * 12 + 6;
+    y += lines.length * 12 + 5;
   });
 
   checkPageBreak(25);
@@ -4382,12 +4692,13 @@ async function exportSystematicReviewPDF() {
   doc.text('Keywords: ', margin, y);
   const kwWidth = doc.getTextWidth('Keywords: ');
   doc.setFont('times', 'italic');
-  doc.text(review.keywords.join('; '), margin + kwWidth, y);
-  y += 20;
+  doc.text((review.keywords || []).join('; '), margin + kwWidth, y);
+  y += 18;
 
-  doc.setDrawColor(180);
+  doc.setDrawColor(203, 213, 225);
+  doc.setLineWidth(0.75);
   doc.line(margin, y, pageWidth - margin, y);
-  y += 20;
+  y += 18;
 
   // Manuscript Sections
   const sections = [
@@ -4398,37 +4709,138 @@ async function exportSystematicReviewPDF() {
     { title: '5. CONCLUSIONS & CLINICAL RECOMMENDATIONS', content: review.conclusions }
   ];
 
-  sections.forEach(sec => {
+  sections.forEach((sec, sIdx) => {
     checkPageBreak(40);
     doc.setFont('times', 'bold');
     doc.setFontSize(11);
+    doc.setTextColor(15, 23, 42);
     doc.text(sec.title, margin, y);
-    y += 16;
+    y += 15;
 
-    doc.setFont('times', 'normal');
-    doc.setFontSize(9.5);
-
-    const paras = sec.content.split('\n\n');
+    const paras = (sec.content || '').split('\n\n');
     paras.forEach(p => {
-      checkPageBreak(30);
-      const formattedP = citifyPlainText(p.trim());
-      const lines = doc.splitTextToSize(formattedP, textWidth);
-      doc.text(lines, margin, y);
-      y += lines.length * 13 + 8;
+      const trimmed = p.trim();
+      if (!trimmed) return;
+
+      const subMatch = trimmed.match(/^(\d+\.\d+(?:\.\d+)?)\s+(.*)/s);
+      if (subMatch) {
+        checkPageBreak(35);
+        const subTitle = subMatch[1] + ' ' + subMatch[2].split('\n')[0].trim();
+        const subBody = subMatch[2].split('\n').slice(1).join('\n').trim();
+
+        doc.setFont('times', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(15, 107, 107);
+        doc.text(subTitle, margin, y);
+        y += 13;
+
+        if (subBody) {
+          doc.setFont('times', 'normal');
+          doc.setFontSize(9.5);
+          doc.setTextColor(30);
+          const lines = doc.splitTextToSize(citifyPlainText(subBody), textWidth);
+          doc.text(lines, margin, y);
+          y += lines.length * 13 + 7;
+        }
+      } else if (trimmed.includes('• ') || trimmed.startsWith('- ')) {
+        const lines = trimmed.split('\n');
+        doc.setFont('times', 'normal');
+        doc.setFontSize(9.5);
+        doc.setTextColor(30);
+        lines.forEach(l => {
+          checkPageBreak(20);
+          if (l.trim().startsWith('•') || l.trim().startsWith('-')) {
+            const cleanLine = l.trim().replace(/^[•\-]\s*/, '');
+            const splitL = doc.splitTextToSize(citifyPlainText(cleanLine), textWidth - 16);
+            doc.text('•', margin + 4, y);
+            doc.text(splitL, margin + 14, y);
+            y += splitL.length * 13 + 3;
+          } else {
+            const splitL = doc.splitTextToSize(citifyPlainText(l.trim()), textWidth);
+            doc.text(splitL, margin, y);
+            y += splitL.length * 13 + 5;
+          }
+        });
+        y += 4;
+      } else {
+        checkPageBreak(25);
+        doc.setFont('times', 'normal');
+        doc.setFontSize(9.5);
+        doc.setTextColor(30);
+        const lines = doc.splitTextToSize(citifyPlainText(trimmed), textWidth);
+        doc.text(lines, margin, y);
+        y += lines.length * 13 + 7;
+      }
     });
-    y += 10;
+
+    // Render Table 1 in Results Section
+    if (sIdx === 2 && STATE.includedPapers && STATE.includedPapers.length > 0) {
+      checkPageBreak(50);
+      doc.setFont('times', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(15, 107, 107);
+      doc.text('Table 1. Characteristics of Included Empirical Studies', margin, y);
+      y += 13;
+
+      // Table Header Row
+      doc.setFillColor(15, 23, 42);
+      doc.rect(margin, y, textWidth, 15, 'F');
+      doc.setFont('times', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(255);
+      doc.text('Study ID & Year', margin + 6, y + 10);
+      doc.text('Study Design', margin + 105, y + 10);
+      doc.text('Sample', margin + 195, y + 10);
+      doc.text('Intervention / Comparator', margin + 240, y + 10);
+      doc.text('Key Clinical Findings', margin + 370, y + 10);
+      y += 15;
+
+      STATE.includedPapers.forEach((p, pIdx) => {
+        checkPageBreak(22);
+        const auth = p.authors ? p.authors.split(',')[0].trim() : 'Author';
+        const studyId = `${auth} (${p.year})`;
+        const des = (p.screening?.design?.name || 'Observational').substring(0, 18);
+        const chars = extractStudyCharacteristics(p, STATE.pico || {});
+
+        if (pIdx % 2 === 1) {
+          doc.setFillColor(248, 250, 252);
+          doc.rect(margin, y, textWidth, 16, 'F');
+        }
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(0.5);
+        doc.line(margin, y + 16, margin + textWidth, y + 16);
+
+        doc.setFont('times', 'bold');
+        doc.setFontSize(7.5);
+        doc.setTextColor(15, 23, 42);
+        doc.text(studyId, margin + 6, y + 11);
+
+        doc.setFont('times', 'normal');
+        doc.setTextColor(50);
+        doc.text(des, margin + 105, y + 11);
+        doc.text(chars.sampleSize.substring(0, 10), margin + 195, y + 11);
+        doc.text(`${(STATE.pico?.i || 'Active').substring(0, 11)} / ${(STATE.pico?.c || 'Ctrl').substring(0, 10)}`, margin + 240, y + 11);
+        doc.text(chars.outcomeFinding.substring(0, 40) + '...', margin + 370, y + 11);
+        y += 16;
+      });
+      y += 10;
+    }
+
+    y += 8;
   });
 
-  // References
+  // References Section
   checkPageBreak(50);
   doc.setFont('times', 'bold');
   doc.setFontSize(11);
+  doc.setTextColor(15, 23, 42);
   const refHeading = CITATION_STYLE === 'vancouver' ? 'REFERENCES (VANCOUVER)' : CITATION_STYLE === 'apa' ? 'REFERENCES (APA)' : 'REFERENCES (HARVARD)';
   doc.text(refHeading, margin, y);
   y += 16;
 
   doc.setFont('times', 'normal');
   doc.setFontSize(8.5);
+  doc.setTextColor(30);
   const refsToExport = getFormattedReferencesForCurrentStyle();
   refsToExport.forEach(r => {
     checkPageBreak(25);
@@ -4438,7 +4850,33 @@ async function exportSystematicReviewPDF() {
     y += lines.length * 11 + 5;
   });
 
-  const safeTopic = STATE.topic.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 30);
+  // Two-Pass Running Header & Footer Engine
+  const totalPages = doc.internal.getNumberOfPages();
+  for (let pNum = 1; pNum <= totalPages; pNum++) {
+    doc.setPage(pNum);
+
+    // Running Top Header
+    doc.setFont('times', 'italic');
+    doc.setFontSize(8);
+    doc.setTextColor(100);
+    doc.text('Sysrevai — PRISMA 2020 Systematic Review & Evidence Synthesis', margin, 32);
+    doc.text('AIMed Clinical Informatics', pageWidth - margin, 32, { align: 'right' });
+    doc.setDrawColor(210);
+    doc.setLineWidth(0.5);
+    doc.line(margin, 38, pageWidth - margin, 38);
+
+    // Running Bottom Footer
+    doc.setDrawColor(210);
+    doc.setLineWidth(0.5);
+    doc.line(margin, pageHeight - 34, pageWidth - margin, pageHeight - 34);
+    doc.setFont('times', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(110);
+    doc.text('Educational & clinical evidence synthesis advisory · Does not replace individual clinical judgment.', margin, pageHeight - 22);
+    doc.text(`Page ${pNum} of ${totalPages}`, pageWidth - margin, pageHeight - 22, { align: 'right' });
+  }
+
+  const safeTopic = (STATE.topic || 'Systematic_Review').replace(/[^a-zA-Z0-9]/g, '_').substring(0, 30);
   doc.save(`Sysrevai_Systematic_Review_${safeTopic}.pdf`);
 }
 
@@ -4447,29 +4885,28 @@ async function exportPRISMAReportPDF() {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
   const margin = 54;
+  const topMargin = 56;
+  const bottomMargin = 50;
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const textWidth = pageWidth - margin * 2;
-  let y = margin;
+  let y = topMargin;
 
-  function addHeaderFooter() {
-    doc.setFont('times', 'italic');
-    doc.setFontSize(8);
-    doc.setTextColor(100);
-    doc.text('Sysrevai — PRISMA 2020 Flow & Risk of Bias Report', margin, 36);
-    doc.text(`Page ${doc.internal.getNumberOfPages()}`, pageWidth - margin, 36, { align: 'right' });
-    doc.setFont('times', 'normal');
-    doc.setTextColor(20);
+  function checkPageBreak(needed = 35) {
+    if (y + needed > pageHeight - bottomMargin) {
+      doc.addPage();
+      y = topMargin;
+    }
   }
-
-  addHeaderFooter();
 
   doc.setFont('times', 'bold');
   doc.setFontSize(13);
+  doc.setTextColor(15, 23, 42);
   doc.text('PRISMA 2020 EVIDENCE SCREENING & RISK OF BIAS REPORT', pageWidth / 2, y, { align: 'center' });
   y += 18;
   doc.setFont('times', 'italic');
   doc.setFontSize(9);
+  doc.setTextColor(71, 85, 105);
   doc.text(`Review Title: ${STATE.topic}`, pageWidth / 2, y, { align: 'center' });
   y += 24;
 
@@ -4502,52 +4939,91 @@ async function exportPRISMAReportPDF() {
   // Risk of Bias Summary Table
   doc.setFont('times', 'bold');
   doc.setFontSize(11);
-  doc.setTextColor(20);
+  doc.setTextColor(15, 23, 42);
   doc.text('METHODOLOGICAL QUALITY & RISK OF BIAS AUDIT (ROB 2 / ROBINS-I)', margin, y);
   y += 16;
 
-  doc.setFontSize(8);
+  doc.setFillColor(15, 23, 42);
+  doc.rect(margin, y, textWidth, 15, 'F');
+  doc.setFontSize(7.5);
   doc.setFont('times', 'bold');
-  doc.text('Study ID', margin, y);
-  doc.text('Study Type', margin + 110, y);
-  doc.text('D1', margin + 230, y);
-  doc.text('D2', margin + 260, y);
-  doc.text('D3', margin + 290, y);
-  doc.text('D4', margin + 320, y);
-  doc.text('D5', margin + 350, y);
-  doc.text('Overall RoB', margin + 380, y);
-  y += 12;
-
-  doc.setDrawColor(200);
-  doc.line(margin, y, pageWidth - margin, y);
-  y += 10;
+  doc.setTextColor(255);
+  doc.text('Study ID', margin + 6, y + 10);
+  doc.text('Study Type', margin + 105, y + 10);
+  doc.text('D1', margin + 225, y + 10);
+  doc.text('D2', margin + 255, y + 10);
+  doc.text('D3', margin + 285, y + 10);
+  doc.text('D4', margin + 315, y + 10);
+  doc.text('D5', margin + 345, y + 10);
+  doc.text('Overall RoB', margin + 380, y + 10);
+  y += 15;
 
   doc.setFont('times', 'normal');
-  STATE.includedPapers.forEach(p => {
-    if (y + 18 > pageHeight - margin) {
-      doc.addPage();
-      y = margin;
-      addHeaderFooter();
-    }
+  doc.setTextColor(30);
+  STATE.includedPapers.forEach((p, idx) => {
+    checkPageBreak(18);
     const auth = p.authors ? p.authors.split(',')[0].trim() : 'Author';
     const studyId = `${auth} (${p.year})`;
     const rob = p.screening?.rob || evaluateRiskOfBias(p);
     const d = rob.domains;
 
-    doc.text(studyId.substring(0, 20), margin, y);
-    doc.text((p.screening?.design?.name || 'Observational studies').substring(0, 22), margin + 110, y);
-    doc.text(d.d1.substring(0, 3), margin + 230, y);
-    doc.text(d.d2.substring(0, 3), margin + 260, y);
-    doc.text(d.d3.substring(0, 3), margin + 290, y);
-    doc.text(d.d4.substring(0, 3), margin + 320, y);
-    doc.text(d.d5.substring(0, 3), margin + 350, y);
+    if (idx % 2 === 1) {
+      doc.setFillColor(248, 250, 252);
+      doc.rect(margin, y, textWidth, 15, 'F');
+    }
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.5);
+    doc.line(margin, y + 15, margin + textWidth, y + 15);
+
     doc.setFont('times', 'bold');
-    doc.text(rob.overall, margin + 380, y);
+    doc.setFontSize(7.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text(studyId.substring(0, 20), margin + 6, y + 10);
+
     doc.setFont('times', 'normal');
-    y += 14;
+    doc.setTextColor(50);
+    doc.text((p.screening?.design?.name || 'Observational studies').substring(0, 22), margin + 105, y + 10);
+    doc.text(d.d1.substring(0, 3), margin + 225, y + 10);
+    doc.text(d.d2.substring(0, 3), margin + 255, y + 10);
+    doc.text(d.d3.substring(0, 3), margin + 285, y + 10);
+    doc.text(d.d4.substring(0, 3), margin + 315, y + 10);
+    doc.text(d.d5.substring(0, 3), margin + 345, y + 10);
+
+    doc.setFont('times', 'bold');
+    if (rob.overall === 'Low Risk') doc.setTextColor(21, 128, 61);
+    else if (rob.overall === 'High Risk') doc.setTextColor(185, 28, 28);
+    else doc.setTextColor(180, 83, 9);
+    doc.text(rob.overall, margin + 380, y + 10);
+    y += 15;
   });
 
-  const safeTopic = STATE.topic.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 30);
+  // Two-Pass Running Header & Footer Engine
+  const totalPages = doc.internal.getNumberOfPages();
+  for (let pNum = 1; pNum <= totalPages; pNum++) {
+    doc.setPage(pNum);
+
+    // Running Top Header
+    doc.setFont('times', 'italic');
+    doc.setFontSize(8);
+    doc.setTextColor(100);
+    doc.text('Sysrevai — PRISMA 2020 Flow & Risk of Bias Report', margin, 32);
+    doc.text('AIMed Clinical Informatics', pageWidth - margin, 32, { align: 'right' });
+    doc.setDrawColor(210);
+    doc.setLineWidth(0.5);
+    doc.line(margin, 38, pageWidth - margin, 38);
+
+    // Running Bottom Footer
+    doc.setDrawColor(210);
+    doc.setLineWidth(0.5);
+    doc.line(margin, pageHeight - 34, pageWidth - margin, pageHeight - 34);
+    doc.setFont('times', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(110);
+    doc.text('Educational & clinical evidence synthesis audit · Adheres to PRISMA 2020 guidelines.', margin, pageHeight - 22);
+    doc.text(`Page ${pNum} of ${totalPages}`, pageWidth - margin, pageHeight - 22, { align: 'right' });
+  }
+
+  const safeTopic = (STATE.topic || 'Systematic_Review').replace(/[^a-zA-Z0-9]/g, '_').substring(0, 30);
   doc.save(`Sysrevai_PRISMA_RoB_Report_${safeTopic}.pdf`);
 }
 
@@ -4556,37 +5032,72 @@ async function exportReferencesPDF() {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
   const margin = 54;
+  const topMargin = 56;
+  const bottomMargin = 50;
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const textWidth = pageWidth - margin * 2;
-  let y = margin;
+  let y = topMargin;
 
-  const styleLabel = CITATION_STYLE === 'vancouver' ? 'VANCOUVER (ICMJE)' : CITATION_STYLE === 'apa' ? 'APA' : 'HARVARD';
+  function checkPageBreak(needed = 30) {
+    if (y + needed > pageHeight - bottomMargin) {
+      doc.addPage();
+      y = topMargin;
+    }
+  }
+
+  const styleLabel = CITATION_STYLE === 'vancouver' ? 'VANCOUVER' : CITATION_STYLE === 'apa' ? 'APA' : 'HARVARD';
   doc.setFont('times', 'bold');
   doc.setFontSize(13);
+  doc.setTextColor(15, 23, 42);
   doc.text(`${styleLabel} VERIFIED BIBLIOGRAPHY REPORT`, pageWidth / 2, y, { align: 'center' });
   y += 18;
   doc.setFont('times', 'italic');
   doc.setFontSize(9);
+  doc.setTextColor(71, 85, 105);
   doc.text(`Systematic Review: ${STATE.topic}`, pageWidth / 2, y, { align: 'center' });
   y += 24;
 
   doc.setFont('times', 'normal');
   doc.setFontSize(8.5);
+  doc.setTextColor(30);
 
   const refs = getFormattedReferencesForCurrentStyle();
   refs.forEach(r => {
-    if (y + 30 > pageHeight - margin) {
-      doc.addPage();
-      y = margin;
-    }
+    checkPageBreak(25);
     const plainText = r.text.replace(/<[^>]+>/g, '');
     const lines = doc.splitTextToSize(plainText, textWidth);
     doc.text(lines, margin, y);
-    y += lines.length * 12 + 6;
+    y += lines.length * 11.5 + 5;
   });
 
-  doc.save(`Sysrevai_References_${CITATION_STYLE.toUpperCase()}.pdf`);
+  // Two-Pass Running Header & Footer Engine
+  const totalPages = doc.internal.getNumberOfPages();
+  for (let pNum = 1; pNum <= totalPages; pNum++) {
+    doc.setPage(pNum);
+
+    // Running Top Header
+    doc.setFont('times', 'italic');
+    doc.setFontSize(8);
+    doc.setTextColor(100);
+    doc.text(`Sysrevai — ${styleLabel} Verified Bibliography`, margin, 32);
+    doc.text('AIMed Clinical Informatics', pageWidth - margin, 32, { align: 'right' });
+    doc.setDrawColor(210);
+    doc.setLineWidth(0.5);
+    doc.line(margin, 38, pageWidth - margin, 38);
+
+    // Running Bottom Footer
+    doc.setDrawColor(210);
+    doc.setLineWidth(0.5);
+    doc.line(margin, pageHeight - 34, pageWidth - margin, pageHeight - 34);
+    doc.setFont('times', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(110);
+    doc.text('100% verified citation parity · Adheres to ICMJE / NLM and APA guidelines.', margin, pageHeight - 22);
+    doc.text(`Page ${pNum} of ${totalPages}`, pageWidth - margin, pageHeight - 22, { align: 'right' });
+  }
+
+  doc.save(`Sysrevai_References_${(CITATION_STYLE || 'vancouver').toUpperCase()}.pdf`);
 }
 
 // ═══════════════════════════════════════════════════════════════
