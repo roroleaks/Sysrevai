@@ -269,11 +269,14 @@ flowchart LR
 ### Step 2: Dual Retrieval & Entity Resolution
 * **Europe PMC Integration**: Harvests peer-reviewed biomedical literature across PubMed, PubMed Central, and open preprints via REST API.
 * **Semantic Scholar Graph Integration**: Ingests citation metadata, TLDR summaries, corpus IDs, and influence metrics from the Allen Institute for AI.
+* **OpenAlex & Crossref Resilient Fallbacks**:
+  - **OpenAlex Works Engine**: Triggered automatically when Semantic Scholar encounters rate limits (HTTP 429) or upstream downtime, reconstructing inverted-index abstracts with polite pool support.
+  - **Crossref Public REST Engine**: Provides standard public access to international DOI registry metadata (`https://api.crossref.org/works`) with no API key requirement, enabling comprehensive secondary fallback.
 * **Multi-Stage Entity Resolution**:
   - **PMID Matching**: Deduplicates records sharing identical PubMed identifiers.
   - **DOI Resolution**: Canonicalizes international DOIs to eliminate cross-publisher duplications.
   - **Title-Hash Fingerprinting**: Employs alphanumeric normalization (lowercased, stripped punctuation) to catch duplicate records lacking DOIs.
-* **Resilient Infrastructure**: Automatic backoff with jitter on HTTP 429 rate limits, partial failover, and local caching.
+* **Resilient Infrastructure**: Automatic backoff with jitter on HTTP 429 rate limits, seamless multi-provider fallback, partial failover, and local caching.
 
 ### Step 3: PRISMA Screening & Cochrane RoB 2
 * **Automated PICOS Screening Engine**: Evaluates title, abstract, keywords, and study design to classify each paper as **Included**, **Excluded** (with specific rationale), or **Borderline**.

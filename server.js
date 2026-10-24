@@ -20,6 +20,14 @@ function handler(req, res) {
     const s2Handler = require('./api/s2.js');
     return s2Handler(req, res);
   }
+  if (reqPath === '/api/openalex') {
+    const openalexHandler = require('./api/openalex.js');
+    return openalexHandler(req, res);
+  }
+  if (reqPath === '/api/crossref') {
+    const crossrefHandler = require('./api/crossref.js');
+    return crossrefHandler(req, res);
+  }
   if (reqPath === '/' || reqPath === '') reqPath = '/index.html';
   
   const filePath = path.join(__dirname, decodeURIComponent(reqPath));

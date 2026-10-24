@@ -267,7 +267,16 @@ function syncPrismaStateFromWorkflow(force = false) {
   // Databases & Registers
   PRISMA_DIAGRAM_STATE.db_epmc = Number(STATE.sourceCounts?.epmc || 0);
   PRISMA_DIAGRAM_STATE.db_s2 = Number(STATE.sourceCounts?.s2 || 0);
-  PRISMA_DIAGRAM_STATE.db_other_count = 0;
+  const otherCount = Number(STATE.sourceCounts?.openalex || 0) + Number(STATE.sourceCounts?.crossref || 0);
+  if (otherCount > 0) {
+    const names = [];
+    if (STATE.sourceCounts?.openalex > 0) names.push('OpenAlex');
+    if (STATE.sourceCounts?.crossref > 0) names.push('Crossref');
+    PRISMA_DIAGRAM_STATE.db_other_name = names.join(' & ');
+    PRISMA_DIAGRAM_STATE.db_other_count = otherCount;
+  } else {
+    PRISMA_DIAGRAM_STATE.db_other_count = 0;
+  }
   PRISMA_DIAGRAM_STATE.registers_count = 0;
 
   // Pre-screening
