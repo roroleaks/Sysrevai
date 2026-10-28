@@ -16,6 +16,16 @@
       "description": "Server-side Semantic Scholar Literature Search Proxy"
     },
     {
+      "path": "/api/openalex",
+      "type": "api",
+      "description": "Server-side OpenAlex Global Scholarly Graph Literature Proxy"
+    },
+    {
+      "path": "/api/crossref",
+      "type": "api",
+      "description": "Server-side Crossref Official DOI Registry Search Proxy"
+    },
+    {
       "path": "/manus-routes.json",
       "type": "manifest",
       "description": "Route manifest and deployment compliance specification"

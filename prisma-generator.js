@@ -378,10 +378,35 @@ function renderPrismaSVG(s) {
   if (tmpl === 'B' || tmpl === 'D') svgW = 1320;
   else if (isLandscape) svgW = 1120;
 
-  // Box heights and dynamic spacing
+  // Box heights and dynamic spacing with proportional text wrapping
   const reasons = Array.isArray(s.exclusion_reasons) ? s.exclusion_reasons : [];
-  const box8H = Math.max(90, 52 + reasons.length * 18);
-  const box9Y = 475 + box8H + 35;
+  
+  function wrapPrismaText(text, maxChars = 46) {
+    if (!text || text.length <= maxChars) return [text];
+    const words = text.split(/\s+/);
+    const lines = [];
+    let cur = '';
+    for (const w of words) {
+      if ((cur + ' ' + w).trim().length > maxChars) {
+        if (cur) lines.push(cur.trim());
+        cur = w;
+      } else {
+        cur = cur ? cur + ' ' + w : w;
+      }
+    }
+    if (cur) lines.push(cur.trim());
+    return lines;
+  }
+
+  let totalReasonLines = 0;
+  reasons.forEach(r => {
+    const wrapped = wrapPrismaText(`• ${r.reason} (n = ${r.count})`, 48);
+    totalReasonLines += wrapped.length;
+  });
+
+  const b7Y = 450, b7H = 70;
+  const box8H = Math.max(90, 48 + Math.max(reasons.length, totalReasonLines) * 16);
+  const box9Y = b7Y + box8H + 35;
   const totalSvgH = box9Y + (tmpl === 'B' || tmpl === 'C' || tmpl === 'D' ? 240 : 180);
 
   // Totals calculation
@@ -541,7 +566,6 @@ function renderPrismaSVG(s) {
   svg += `<path d="M ${b1X + b1W} ${b5Y + b5H / 2} L ${b2X} ${b5Y + b5H / 2}" class="p-arrow"/>`;
 
   // Connector Box 5 -> Box 7 (Vertical Arrow)
-  const b7Y = 450, b7H = 70;
   svg += `<path d="M ${col1MidX} ${b5Y + b5H} L ${col1MidX} ${b7Y}" class="p-arrow"/>`;
 
   // Box 7: Reports Assessed for Eligibility
@@ -555,9 +579,14 @@ function renderPrismaSVG(s) {
 
   // Box 8: Reports Excluded with Reasons
   let reasonsMarkup = '';
-  reasons.forEach((r, idx) => {
-    const ry = b7Y + 48 + idx * 18;
-    reasonsMarkup += `<text x="${b2X + 22}" y="${ry}" class="p-subtext">• ${escapeXml(r.reason)} (n = ${r.count})</text>`;
+  let lineOffset = 0;
+  reasons.forEach(r => {
+    const wrapped = wrapPrismaText(`• ${r.reason} (n = ${r.count})`, 48);
+    wrapped.forEach((line, lIdx) => {
+      const ry = b7Y + 54 + lineOffset * 16;
+      reasonsMarkup += `<text x="${b2X + (lIdx === 0 ? 16 : 26)}" y="${ry}" class="p-subtext">${escapeXml(line)}</text>`;
+      lineOffset++;
+    });
   });
 
   svg += `

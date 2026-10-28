@@ -30,22 +30,34 @@ function handler(req, res) {
   }
   if (reqPath === '/' || reqPath === '') reqPath = '/index.html';
   
-  const filePath = path.join(__dirname, decodeURIComponent(reqPath));
-  const ext = path.extname(filePath).toLowerCase();
+  const rootDir = path.resolve(__dirname);
+  const safePath = path.resolve(rootDir, '.' + decodeURIComponent(reqPath));
+
+  if (!safePath.startsWith(rootDir)) {
+    res.writeHead(403, { 'Content-Type': 'text/plain' });
+    return res.end('403 Forbidden');
+  }
+
+  const ext = path.extname(safePath).toLowerCase();
   const contentType = MIME_TYPES[ext] || 'application/octet-stream';
 
-  fs.readFile(filePath, (err, content) => {
+  fs.readFile(safePath, (err, content) => {
     if (err) {
       if (err.code === 'ENOENT') {
-        fs.readFile(path.join(__dirname, 'index.html'), (err2, indexContent) => {
-          if (err2) {
-            res.writeHead(404, { 'Content-Type': 'text/plain' });
-            res.end('404 Not Found');
-          } else {
-            res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-            res.end(indexContent);
-          }
-        });
+        if (ext === '' || ext === '.html') {
+          fs.readFile(path.join(rootDir, 'index.html'), (err2, indexContent) => {
+            if (err2) {
+              res.writeHead(404, { 'Content-Type': 'text/plain' });
+              res.end('404 Not Found');
+            } else {
+              res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+              res.end(indexContent);
+            }
+          });
+        } else {
+          res.writeHead(404, { 'Content-Type': 'text/plain' });
+          res.end('404 Not Found');
+        }
       } else {
         res.writeHead(500, { 'Content-Type': 'text/plain' });
         res.end('500 Server Error: ' + err.code);

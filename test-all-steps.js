@@ -217,14 +217,14 @@ const mockRawPapers = [
     meshHeadings: ['Rats', 'Animals'],
     pubType: ['in-vitro']
   },
-  // Duplicate record of Dapagliflozin from Crossref
+  // Duplicate record of Dapagliflozin from Crossref with URL prefix and different casing/title
   {
     source: 'crossref',
     sources: ['Crossref'],
-    id: '10.1056/nejmoa1911303',
+    id: 'https://doi.org/10.1056/NEJMoa1911303',
     pmid: '',
-    doi: '10.1056/nejmoa1911303',
-    title: 'Dapagliflozin in Patients with Heart Failure and Reduced Ejection Fraction',
+    doi: 'https://doi.org/10.1056/NEJMoa1911303',
+    title: 'Dapagliflozin in Patients with Heart Failure & Reduced Ejection Fraction: a randomized controlled trial',
     authors: 'McMurray JJV, Solomon SD',
     journal: 'New England Journal of Medicine',
     year: 2019,
@@ -237,14 +237,14 @@ const mockRawPapers = [
 ];
 
 const { unique, duplicates } = deduplicatePapers(mockRawPapers);
-assert(duplicates === 1, 'Deduplication identified exact duplicate record', `Duplicates found: ${duplicates}`);
+assert(duplicates === 1, 'Deduplication identified exact duplicate record with https://doi.org/ and & in title', `Duplicates found: ${duplicates}`);
 assert(unique.length === 5, 'Deduplication preserved 5 unique records', `Unique count: ${unique.length}`);
 
 // Merge sources check
-const mergedDapa = unique.find(p => p.doi === '10.1056/nejmoa1911303');
+const mergedDapa = unique.find(p => normalizeDOI(p.doi) === '10.1056/nejmoa1911303');
 assert(mergedDapa && mergedDapa.sources.includes('Europe PMC') && mergedDapa.sources.includes('Crossref'), 'Merged paper retained cross-database sources', JSON.stringify(mergedDapa?.sources));
 
-// Test study design screening
+// Test study design screening and preclinical / review escape prevention
 const screenedPapers = unique.map((p, idx) => {
   p._globalIndex = idx;
   p.screening = screenPaperAgainstCriteria(p, topic, pico, [], []);
@@ -255,6 +255,40 @@ const included = screenedPapers.filter(p => p.screening.status === 'INCLUDED');
 const excluded = screenedPapers.filter(p => p.screening.status === 'EXCLUDED');
 assert(included.length === 4, 'Screening correctly included 4 clinical empirical studies', `Included: ${included.length}`);
 assert(excluded.length === 1 && excluded[0].screening.design.code === 'ineligible-animal', 'Screening excluded preclinical animal model', excluded[0]?.screening?.primaryReason);
+
+// Regression Assertion: Preclinical animal model escaping because abstract mentions "patients"
+const mouseModelPaper = {
+  title: 'Withaar et al. in a multi-hit mouse model of heart failure with preserved ejection fraction',
+  abstract: 'Heart failure with preserved ejection fraction affects human patients. In this mouse model we treated mice with SGLT2 inhibitors.',
+  pubType: ['journal-article']
+};
+const mouseScreen = screenPaperAgainstCriteria(mouseModelPaper, topic, pico, [], []);
+assert(mouseScreen.status === 'EXCLUDED' && mouseScreen.design.code === 'ineligible-animal', 'Mouse model paper in title is strictly EXCLUDED even when abstract mentions "patients"');
+
+// Regression Assertion: Narrative reviews, protocols, and off-target drugs
+const reviewPaper = {
+  title: 'A Review on Finerenone and Heart Failure with Preserved Ejection Fraction (HFpEF)',
+  abstract: 'Finerenone has emerged as a novel mineralocorticoid receptor antagonist in patients with HFpEF.',
+  pubType: ['journal-article']
+};
+const reviewScreen = screenPaperAgainstCriteria(reviewPaper, topic, pico, [], []);
+assert(reviewScreen.status === 'EXCLUDED', 'Narrative review titled "A Review on..." is strictly EXCLUDED');
+
+const protocolPaper = {
+  title: 'Rationale and design of the DELIVER trial in heart failure',
+  abstract: 'Study design and baseline characteristics of patients enrolled in the DELIVER trial.',
+  pubType: ['journal-article']
+};
+const protocolScreen = screenPaperAgainstCriteria(protocolPaper, topic, pico, [], []);
+assert(protocolScreen.status === 'EXCLUDED', 'Protocol paper titled "Rationale and design..." is strictly EXCLUDED');
+
+const offTargetDrugPaper = {
+  title: 'Semaglutide in Patients with Heart Failure with Preserved Ejection Fraction and Obesity',
+  abstract: 'Once-weekly subcutaneous semaglutide led to larger reductions in symptoms and physical limitations in patients.',
+  pubType: ['journal-article']
+};
+const offTargetScreen = screenPaperAgainstCriteria(offTargetDrugPaper, topic, pico, [], []);
+assert(offTargetScreen.status === 'EXCLUDED', 'Off-target drug without SGLT2 inhibitor is strictly EXCLUDED');
 
 // ─────────────────────────────────────────────────────────────
 // STEP 3: PRISMA Screening & RoB
@@ -304,7 +338,32 @@ window.CITATION_STYLE = CITATION_STYLE;
 const vancRefs = getFormattedReferencesForCurrentStyle();
 assert(vancRefs.length === 4 && vancRefs[0].text.startsWith('1. '), 'Vancouver citations sequential numbered 1..4');
 assert(!vancRefs[0].text.includes('[') && !vancRefs[0].text.includes(']'), 'Vancouver bibliography has ZERO square brackets');
-assert(vancRefs[0].text.includes('MCMURRAY') || vancRefs[0].text.includes('PACKER'), 'Vancouver authors formatted in uppercase');
+assert(vancRefs[0].text.includes('McMurray') || vancRefs[0].text.includes('Packer'), 'Vancouver authors formatted in standard Title Case format');
+
+// Author parsing regression assertions
+const doePaper = {
+  authors: 'Wolfram Doehner, Stefan D. Anker, Javed Butler',
+  title: 'Uric Acid in Heart Failure',
+  year: 2024
+};
+const vancDoe = formatVancouver(doePaper, 1);
+assert(vancDoe.includes('Doehner W, Anker SD, Butler J'), 'Author parsing correctly formats Western given-family names as "Doehner W, Anker SD, Butler J" without inverting into "WOLFRAM D"', vancDoe);
+
+const profPaper = {
+  authors: 'Prof. C.K.P.C.S. Rao',
+  title: 'Clinical Conundrums in Heart Failure',
+  year: 2022
+};
+const vancProf = formatVancouver(profPaper, 2);
+assert(!vancProf.includes('Prof.') && vancProf.includes('Rao'), 'Author parser strips academic honorific "Prof."', vancProf);
+
+const anonPaper = {
+  authors: 'Unknown Authors',
+  title: 'Aging and Inflammaging in Heart Failure',
+  year: 2026
+};
+const vancAnon = formatVancouver(anonPaper, 3);
+assert(vancAnon.includes('[Anonymous]'), 'Author parser falls back to [Anonymous] when authors are unknown without starting citation with bare title', vancAnon);
 
 const vancInText = citify('Evidence shows benefit [1, 2].');
 assert(vancInText.includes('<sup class="cite-num cite-vancouver"') && vancInText.includes('1, 2</sup>') && !vancInText.includes('['), 'Vancouver in-text rendered as uppercase superscript without brackets');
@@ -338,9 +397,9 @@ const metaStudies = syncMetaStudiesFromIncluded(included);
 assert(metaStudies.length === 4, 'Meta-analysis automatically synced 4 studies from included cohort');
 
 // Add mock binary event counts
-metaStudies[0].e1 = 386; metaStudies[0].n1 = 2373; metaStudies[0].e2 = 502; metaStudies[0].n2 = 2371; // Dapa-HF
-metaStudies[1].e1 = 361; metaStudies[1].n1 = 1863; metaStudies[1].e2 = 462; metaStudies[1].n2 = 1867; // Emperor-Reduced
-metaStudies[2].e1 = 415; metaStudies[2].n1 = 2997; metaStudies[2].e2 = 511; metaStudies[2].n2 = 2991; // Emperor-Preserved
+metaStudies[0].e1 = 386; metaStudies[0].n1 = 2373; metaStudies[0].e2 = 502; metaStudies[0].n2 = 2371; metaStudies[0].includedInPool = true; // Dapa-HF
+metaStudies[1].e1 = 361; metaStudies[1].n1 = 1863; metaStudies[1].e2 = 462; metaStudies[1].n2 = 1867; metaStudies[1].includedInPool = true; // Emperor-Reduced
+metaStudies[2].e1 = 415; metaStudies[2].n1 = 2997; metaStudies[2].e2 = 511; metaStudies[2].n2 = 2991; metaStudies[2].includedInPool = true; // Emperor-Preserved
 
 const metaState = {
   outcomeType: 'binary',
@@ -355,6 +414,37 @@ const pooled = metaStats.pooled;
 assert(!isNaN(pooled.pointEstimate) && pooled.pointEstimate > 0.6 && pooled.pointEstimate < 0.95, 'Meta-analysis pooled Risk Ratio calculated accurately', `Pooled RR: ${pooled.pointEstimate}`);
 assert(pooled.ciLow > 0 && pooled.ciHigh < 1.0, 'Meta-analysis confidence interval statistically significant [CI < 1.0]');
 assert(pooled.I2 !== undefined && !isNaN(pooled.I2), 'Heterogeneity I² statistic calculated');
+
+// Regression Assertion: Linear continuous measure MD is NOT exponentiated with Math.exp()
+const linearStudies = [
+  { id: 's1', studyId: 'Study A', m1: 12.0, s1: 3.0, n1: 50, m2: 15.0, s2: 3.2, n2: 50, includedInPool: true },
+  { id: 's2', studyId: 'Study B', m1: 11.5, s1: 2.8, n1: 45, m2: 14.8, s2: 3.0, n2: 45, includedInPool: true }
+];
+const linearRes = executeMetaAnalysis({
+  outcomeType: 'continuous',
+  effectMeasure: 'MD',
+  model: 'fixed',
+  confLevel: 0.95,
+  studies: linearStudies
+});
+assert(linearRes.isValid && linearRes.pooled.pointEstimate < 0 && linearRes.pooled.isRatio === false, 'Linear measure MD is NOT exponentiated with Math.exp()', `MD pointEstimate: ${linearRes.pooled?.pointEstimate}`);
+
+// Regression Assertion: Hedges' g variance for n1=15, n2=15, d=1.0 equals ~0.1420 (SE = 0.3768, scaled by J^2)
+const hedgesStudy = { id: 's1', m1: 10.0, s1: 2.0, n1: 15, m2: 8.0, s2: 2.0, n2: 15 };
+const hedgesCalc = calculateContinuousStudyEffect(hedgesStudy, 'SMD', 1.96);
+assert(hedgesCalc.valid && Math.abs(hedgesCalc.variance - 0.1420) < 0.005 && Math.abs(hedgesCalc.se - 0.3768) < 0.005, 'Hedges g variance correctly scaled by J^2 (~0.1420, SE ~0.3768)', `variance: ${hedgesCalc.variance}, se: ${hedgesCalc.se}`);
+
+// Regression Assertion: Prediction interval for k=3 uses t_(1, 0.975) = 12.706 rather than z = 1.96
+const tVal = getTCritical(1, 0.05);
+assert(Math.abs(tVal - 12.706) < 0.001, 'Student t critical value for df=1 (k=3 studies) is 12.706', `tVal: ${tVal}`);
+
+// Regression Assertion: Egger's test with k=2 returns { applicable: false } without NaN
+const eggerK2 = calculateEggerTest([{ calc: { se: 0.2, logEffect: -0.3 } }, { calc: { se: 0.3, logEffect: -0.4 } }]);
+assert(eggerK2.applicable === false && eggerK2.intercept === null, 'Eggers test with k=2 returns { applicable: false } without throwing or NaN');
+
+// Regression Assertion: PDF Text Sanitizer
+const sanitized = sanitizePdfText('I² = 0.0%, τ² = 0.00, 2016â€“2026');
+assert(sanitized === 'I^2 = 0.0%, tau^2 = 0.00, 2016-2026', 'sanitizePdfText converts I² to I^2, τ² to tau^2, and decodes mojibake en-dash â€“', sanitized);
 
 const forestSvg = renderForestPlotSVG(metaState, metaStats);
 assert(forestSvg.includes('<svg') && forestSvg.includes('Forest Plot'), 'Publication-ready Forest Plot SVG rendered');

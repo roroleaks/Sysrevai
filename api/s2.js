@@ -1,7 +1,7 @@
 const https = require('https');
 
 // Pre-configured Semantic Scholar API Key on server (Environment variable prioritized)
-const S2_DEFAULT_KEY = process.env.S2_API_KEY || 's2k-0rcC3ztnxRdNGsOKL1SNvwbOPnSaRh4qHBT9qe7A';
+const S2_DEFAULT_KEY = process.env.S2_API_KEY || '';
 
 function queryS2(targetPath, apiKey) {
   return new Promise((resolve, reject) => {
@@ -75,7 +75,12 @@ module.exports = async (req, res) => {
       if (year) targetPath += `&year=${encodeURIComponent(year)}`;
     }
 
-    const result = await queryS2(targetPath, userKey);
+    let result = await queryS2(targetPath, userKey);
+    // If rate-limited or forbidden with API key, retry once in public pool without key
+    if ((result.statusCode === 429 || result.statusCode === 403) && userKey) {
+      result = await queryS2(targetPath, null);
+    }
+
     res.statusCode = result.statusCode || 200;
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.end(result.body);

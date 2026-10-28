@@ -17,18 +17,18 @@ function cleanAbstract(raw) {
 }
 
 function extractYear(item) {
-  const currentYear = new Date().getFullYear();
   const dateParts = item.published?.['date-parts']?.[0]
     || item['published-print']?.['date-parts']?.[0]
     || item['published-online']?.['date-parts']?.[0]
-    || item.created?.['date-parts']?.[0];
+    || item.created?.['date-parts']?.[0]
+    || item.issued?.['date-parts']?.[0];
   if (Array.isArray(dateParts) && dateParts.length > 0 && Number(dateParts[0]) > 1900) {
     return Number(dateParts[0]);
   }
-  return currentYear;
+  return null;
 }
 
-function queryCrossref(query, pageSize = 30, startYear = null) {
+function queryCrossref(query, pageSize = 30, startYear = null, endYear = null) {
   return new Promise((resolve, reject) => {
     const params = new URLSearchParams({
       query: query,
@@ -37,8 +37,15 @@ function queryCrossref(query, pageSize = 30, startYear = null) {
       order: 'desc'
     });
 
+    const filters = [];
     if (startYear) {
-      params.set('filter', `from-pub-date:${startYear}-01-01`);
+      filters.push(`from-pub-date:${startYear}-01-01`);
+    }
+    if (endYear) {
+      filters.push(`until-pub-date:${endYear}-12-31`);
+    }
+    if (filters.length > 0) {
+      params.set('filter', filters.join(','));
     }
 
     const options = {
@@ -75,7 +82,13 @@ function queryCrossref(query, pageSize = 30, startYear = null) {
             let authorsStr = 'Unknown Authors';
             if (Array.isArray(item.author) && item.author.length > 0) {
               authorsStr = item.author
-                .map(a => [a.given, a.family].filter(Boolean).join(' ') || a.name || '')
+                .map(a => {
+                  if (a.family) {
+                    const initials = (a.given || '').split(/[\s.-]+/).filter(Boolean).map(n => n[0].toUpperCase()).join('');
+                    return initials ? `${a.family} ${initials}` : a.family;
+                  }
+                  return a.name || [a.given, a.family].filter(Boolean).join(' ') || '';
+                })
                 .filter(Boolean)
                 .join(', ') || 'Unknown Authors';
             }
@@ -98,7 +111,11 @@ function queryCrossref(query, pageSize = 30, startYear = null) {
               pmcid: '',
               title: cleanTitle || 'Untitled Study',
               authors: authorsStr,
+              authorObjects: Array.isArray(item.author) ? item.author : [],
               journal: journal,
+              volume: item.volume || '',
+              issue: item.issue || '',
+              pages: item.page || item['article-number'] || '',
               year: pubYear,
               abstract: abstract,
               abstract_summary: abstract,
@@ -156,9 +173,16 @@ module.exports = async (req, res) => {
     const year = urlObj.searchParams.get('year') || '';
 
     let startYear = null;
+    let endYear = null;
     if (year) {
-      const match = year.match(/^(\d{4})/);
-      if (match) startYear = parseInt(match[1], 10);
+      const rangeMatch = year.match(/^(\d{4})\s*[-–—]\s*(\d{4})/);
+      if (rangeMatch) {
+        startYear = parseInt(rangeMatch[1], 10);
+        endYear = parseInt(rangeMatch[2], 10);
+      } else {
+        const match = year.match(/^(\d{4})/);
+        if (match) startYear = parseInt(match[1], 10);
+      }
     }
 
     if (!query) {
@@ -167,7 +191,7 @@ module.exports = async (req, res) => {
       return res.end(JSON.stringify({ error: 'Missing query parameter' }));
     }
 
-    const result = await queryCrossref(query, limit, startYear);
+    const result = await queryCrossref(query, limit, startYear, endYear);
     res.statusCode = result.statusCode || 200;
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.end(JSON.stringify({

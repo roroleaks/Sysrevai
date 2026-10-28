@@ -2774,8 +2774,53 @@ async function fetchSemanticScholar(topic, pageSize, yearRange, signal) {
 // ═══════════════════════════════════════════════════════════════
 // DEDUPLICATION & CROSS-DATABASE RECORD MERGER
 // ═══════════════════════════════════════════════════════════════
+function normalizeDOI(doi) {
+  if (!doi || typeof doi !== 'string') return '';
+  return doi
+    .trim()
+    .toLowerCase()
+    .replace(/^(?:https?:\/\/(?:dx\.)?doi\.org\/|doi:\s*)/i, '')
+    .replace(/[.;\/]+$/, '')
+    .trim();
+}
+
+function normalizePMID(pmid) {
+  if (!pmid) return '';
+  return String(pmid).replace(/\D/g, '').trim();
+}
+
 function normalizeTitle(t) {
-  return cleanHtmlText(t).toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (!t) return '';
+  let str = cleanHtmlText(t)
+    .replace(/&amp;/gi, ' and ')
+    .replace(/&/g, ' and ')
+    .replace(/&beta;/gi, 'beta')
+    .replace(/&alpha;/gi, 'alpha')
+    .replace(/&#8211;|&#x2013;|–|—/g, '-')
+    .toLowerCase();
+  // Strip common clinical trial subtitle suffixes when comparing duplicate candidates
+  str = str.replace(/:\s*(?:a\s+)?(?:randomized|randomised|multicenter|controlled|blinded|clinical|prospective|phase\s+\d+).*$/i, '');
+  return str.replace(/[^a-z0-9]/g, '');
+}
+
+function getTitleTokens(t) {
+  if (!t) return new Set();
+  const cleaned = cleanHtmlText(t)
+    .replace(/&amp;/gi, ' and ')
+    .replace(/&/g, ' and ')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ');
+  return new Set(cleaned.split(/\s+/).filter(w => w.length > 2));
+}
+
+function titleJaccard(tokensA, tokensB) {
+  if (!tokensA.size || !tokensB.size) return 0;
+  let intersection = 0;
+  for (const token of tokensA) {
+    if (tokensB.has(token)) intersection++;
+  }
+  const union = tokensA.size + tokensB.size - intersection;
+  return union > 0 ? intersection / union : 0;
 }
 
 function deduplicatePapers(rawPapers) {
@@ -2787,41 +2832,76 @@ function deduplicatePapers(rawPapers) {
 
   for (const paper of rawPapers) {
     const normT = normalizeTitle(paper.title);
-    const pmid = paper.pmid ? String(paper.pmid).trim() : '';
-    const doi = paper.doi ? paper.doi.toLowerCase().replace(/^https?:\/\/(?:dx\.)?doi\.org\//, '').trim() : '';
+    const pmid = normalizePMID(paper.pmid);
+    const doi = normalizeDOI(paper.doi);
+    const paperTokens = getTitleTokens(paper.title);
+    const paperYear = Number(paper.year) || null;
 
     let existing = null;
-    if (pmid && pmidMap.has(pmid)) existing = pmidMap.get(pmid);
-    else if (doi && doiMap.has(doi)) existing = doiMap.get(doi);
-    else if (normT.length > 20 && titleMap.has(normT)) existing = titleMap.get(normT);
+    if (pmid && pmidMap.has(pmid)) {
+      existing = pmidMap.get(pmid);
+    } else if (doi && doiMap.has(doi)) {
+      existing = doiMap.get(doi);
+    } else if (normT.length > 15 && titleMap.has(normT)) {
+      existing = titleMap.get(normT);
+    } else if (normT.length > 15) {
+      // Fuzzy title match via token Jaccard similarity >= 0.88 with publication year within 1 year
+      for (const u of unique) {
+        const uYear = Number(u.year) || null;
+        if (paperYear && uYear && Math.abs(paperYear - uYear) > 1) continue;
+        const uTokens = getTitleTokens(u.title);
+        if (titleJaccard(paperTokens, uTokens) >= 0.88) {
+          existing = u;
+          break;
+        }
+      }
+    }
 
     if (existing) {
       duplicates++;
-      // Merge best attributes & preserve all source affiliations
-      const incomingSource = paper.source === 's2' ? 'Semantic Scholar' 
-        : paper.source === 'openalex' ? 'OpenAlex' 
-        : paper.source === 'crossref' ? 'Crossref' 
-        : 'Europe PMC';
-      if (!existing.sources.includes(incomingSource)) {
-        existing.sources.push(incomingSource);
-        existing.source = 'both';
-      }
+      // Non-destructive metadata merge
+      const incomingSources = Array.isArray(paper.sources) && paper.sources.length
+        ? paper.sources
+        : [paper.source === 's2' ? 'Semantic Scholar' 
+          : paper.source === 'openalex' ? 'OpenAlex' 
+          : paper.source === 'crossref' ? 'Crossref' 
+          : 'Europe PMC'];
+
+      if (!Array.isArray(existing.sources)) existing.sources = [existing.source || 'Europe PMC'];
+      incomingSources.forEach(s => {
+        if (!existing.sources.includes(s)) existing.sources.push(s);
+      });
+      existing.source = existing.sources.length > 1 ? 'both' : (existing.sources[0] || 'Europe PMC');
+
       if (!existing.pmid && pmid) existing.pmid = pmid;
       if (!existing.doi && doi) existing.doi = doi;
       if (!existing.pmcid && paper.pmcid) existing.pmcid = paper.pmcid;
+      if (!existing.volume && paper.volume) existing.volume = paper.volume;
+      if (!existing.issue && paper.issue) existing.issue = paper.issue;
+      if (!existing.pages && paper.pages) existing.pages = paper.pages;
+      if (Array.isArray(paper.authorObjects) && paper.authorObjects.length > 0 && (!existing.authorObjects || existing.authorObjects.length === 0)) {
+        existing.authorObjects = paper.authorObjects;
+      }
       if (paper.abstract && (!existing.abstract || paper.abstract.length > existing.abstract.length)) {
         existing.abstract = paper.abstract;
+        existing.abstract_summary = paper.abstract;
       }
-      if (paper.citationCount > existing.citationCount) existing.citationCount = paper.citationCount;
+      const pCites = Number(paper.citationCount || paper.citation_count || 0);
+      const eCites = Number(existing.citationCount || existing.citation_count || 0);
+      existing.citationCount = Math.max(eCites, pCites);
+      existing.citation_count = existing.citationCount;
       if (paper.isOpenAccess) existing.isOpenAccess = true;
       if (paper.openAccessPdfUrl && !existing.openAccessPdfUrl) existing.openAccessPdfUrl = paper.openAccessPdfUrl;
       continue;
     }
 
-    unique.push(paper);
     if (pmid) pmidMap.set(pmid, paper);
     if (doi) doiMap.set(doi, paper);
-    if (normT.length > 20) titleMap.set(normT, paper);
+    if (normT.length > 15) titleMap.set(normT, paper);
+    if (!Array.isArray(paper.sources)) {
+      paper.sources = [paper.source === 's2' ? 'Semantic Scholar' : paper.source === 'openalex' ? 'OpenAlex' : paper.source === 'crossref' ? 'Crossref' : 'Europe PMC'];
+    }
+    unique.push(paper);
   }
 
   return { unique, duplicates };
@@ -2831,11 +2911,15 @@ function deduplicatePapers(rawPapers) {
 // STUDY DESIGN & RISK OF BIAS (RoB) CLASSIFIER
 // ═══════════════════════════════════════════════════════════════
 function classifyStudyDesign(paper) {
-  const text = `${paper.title} ${paper.abstract} ${(paper.pubType || []).join(' ')} ${(paper.meshHeadings || []).join(' ')}`.toLowerCase();
+  const titleLower = (paper.title || '').toLowerCase();
+  const fullTextLower = `${paper.title} ${paper.abstract} ${(paper.pubType || []).join(' ')} ${(paper.meshHeadings || []).join(' ')}`.toLowerCase();
+  const text = fullTextLower;
 
   // 1. Identify Pre-clinical Animal / Cell Culture / In-Vitro Models (Ineligible)
-  if (/\b(rat|rats|mice|mouse|murine|rabbit|in vitro|cell line|isolated cardiomyocytes|canine|bovine|porcine|zebrafish)\b/i.test(text) &&
-      !/\b(human|patients|clinical trial|men|women|cohort|participants|subjects|volunteers)\b/i.test(text)) {
+  const hasAnimalInTitle = /\b(mouse|mice|murine|rat|rats|rodent|porcine|canine|rabbit|zebrafish|drosophila|in vitro|cell line|isolated cardiomyocytes|animal model|mouse model|rat model|preclinical)\b/i.test(titleLower);
+  const hasAnimalInAbstractOnly = /\b(mouse model|rat model|murine model|animal model|in vitro experiment|isolated cardiomyocytes|cultured cells)\b/i.test(fullTextLower) && !/\b(randomized|randomised|patients were|participants were|enrolling patients|clinical trial)\b/i.test(fullTextLower);
+
+  if (hasAnimalInTitle || hasAnimalInAbstractOnly) {
     return {
       code: 'ineligible-animal',
       name: 'Preclinical Animal / In-Vitro Model',
@@ -2847,9 +2931,20 @@ function classifyStudyDesign(paper) {
     };
   }
 
-  // 2. Identify Non-Empirical Literature: Narrative Reviews, Secondary Syntheses, Editorials, Letters (Ineligible)
-  if (/\b(systematic review|meta-analysis|meta analysis|prisma statement|scoping review|narrative review|critical review|literature review|editorial|commentary|author reply|letter to the editor|correspondence|perspective|viewpoint|meeting report|book review)\b/i.test(text) ||
-      (paper.pubType && paper.pubType.some(pt => /review|editorial|letter|comment/i.test(pt)))) {
+  // 2. Identify Non-Empirical Literature: Narrative Reviews, Secondary Syntheses, Editorials, Letters, Protocols (Ineligible)
+  const isReviewOrCommentaryTitle = /\b(systematic review|meta-analysis|meta analysis|prisma statement|scoping review|narrative review|critical review|literature review|overview of reviews|bibliometric analysis|scientometric|umbrella review|a review on|a review of|review of current|state-of-the-art review|mechanisms of benefits|molecular mechanisms of|rationale and design|study protocol|trial design|editorial|commentary|author reply|letter to the editor|letter to|correspondence|perspective|viewpoint|meeting report|book review|erratum|corrigendum|guideline|consensus statement|breakthrough in the management)\b/i.test(titleLower);
+  const isRhetoricalEditorial = /^(are|is|can|should|will)\b.*\?$/i.test(titleLower.trim()) && !/\b(randomized|randomised|patients|participants|enrolled|n\s*=)\b/i.test(fullTextLower);
+
+  const doiLower = (paper.doi || '').toLowerCase();
+  const journalLower = (paper.journal || '').toLowerCase();
+  const isConferenceOrRepository = /^10\.5281\/zenodo\./i.test(doiLower) 
+    || /\/eh[a-z]{2}\d+\.\d+$/i.test(doiLower)
+    || /\b(zenodo|repository|escholarship|thesis|dissertation|negative results)\b/i.test(journalLower);
+
+  const pubTypeLower = (paper.pubType || []).join(' ').toLowerCase();
+  const isPubTypeReview = /review|editorial|letter|comment/i.test(pubTypeLower);
+
+  if (isReviewOrCommentaryTitle || isRhetoricalEditorial || isConferenceOrRepository || isPubTypeReview) {
     return {
       code: 'ineligible-review',
       name: 'Non-Empirical Review / Editorial / Commentary',
@@ -2857,7 +2952,9 @@ function classifyStudyDesign(paper) {
       badgeClass: 'design-ineligible',
       icon: '📚',
       isEligible: false,
-      exclusionReason: 'Non-primary literature (narrative review, secondary synthesis, editorial, commentary, or letter)'
+      exclusionReason: isConferenceOrRepository 
+        ? 'Conference supplement abstract or non-peer-reviewed repository upload' 
+        : 'Non-primary literature (narrative review, secondary synthesis, editorial, commentary, or protocol)'
     };
   }
 
@@ -3099,7 +3196,53 @@ function screenPaperAgainstCriteria(paper, topic, pico, incCriteria, excCriteria
     }
   }
 
-  // Check 4: PICOS Intervention / Outcome match
+  // Check 4: PICOS Intervention Match
+  const interventionInput = (pico?.i || pico?.intervention || '').toLowerCase();
+  const topicLower = (topic || '').toLowerCase();
+
+  let targetInterventionTerms = [];
+  if (interventionInput.includes('sglt2') || topicLower.includes('sglt2') || interventionInput.includes('sodium-glucose') || topicLower.includes('sodium-glucose')) {
+    targetInterventionTerms = ['sglt2', 'sglt-2', 'sodium-glucose', 'sodium glucose', 'empagliflozin', 'dapagliflozin', 'canagliflozin', 'ertugliflozin', 'sotagliflozin'];
+  } else if (interventionInput.length > 3) {
+    targetInterventionTerms = interventionInput.split(/[,;\/]/).map(s => s.trim()).filter(s => s.length > 2);
+  }
+
+  if (status !== 'EXCLUDED' && targetInterventionTerms.length > 0) {
+    const hasIntervention = targetInterventionTerms.some(term => text.includes(term.toLowerCase()));
+    if (!hasIntervention) {
+      status = 'EXCLUDED';
+      primaryReason = `Exclusion: Does not evaluate target intervention (${pico?.i || 'specified intervention'})`;
+      violatedExclusions.push('Off-target Intervention (Target agent not evaluated)');
+    }
+  }
+
+  // Check 5: Mandatory Population Subtype Match (e.g. HFpEF vs exclusive HFrEF or acute MI)
+  const popInput = (pico?.p || pico?.population || topic || '').toLowerCase();
+  if (status !== 'EXCLUDED' && (popInput.includes('hfpef') || popInput.includes('preserved ejection fraction'))) {
+    const hasPreserved = /\b(hfpef|preserved ejection fraction|preserved ef|pef|lvef\s*[>=]\s*50%?|lvef\s*>\s*40%?|mildly reduced)\b/i.test(text);
+    const isExclusiveHFrEF = /\b(hfref|reduced ejection fraction|lvef\s*[<=]\s*40%?)\b/i.test(text) && !hasPreserved;
+    const isExclusiveAMI = /\b(acute myocardial infarction|post-ami|st-segment elevation)\b/i.test(text) && !hasPreserved;
+
+    if (isExclusiveHFrEF || isExclusiveAMI) {
+      status = 'EXCLUDED';
+      primaryReason = isExclusiveHFrEF 
+        ? 'Exclusion: Ineligible population (exclusively evaluates heart failure with reduced ejection fraction / HFrEF)' 
+        : 'Exclusion: Ineligible population (evaluates acute myocardial infarction rather than chronic HFpEF)';
+      violatedExclusions.push('Ineligible Population Subtype');
+    }
+  }
+
+  // Check 6: Secondary Subgroup publication tagging
+  let isSecondarySubgroup = false;
+  if (status === 'INCLUDED') {
+    if (/\b(subgroup analysis|secondary analysis|prespecified subanalysis|post-hoc analysis|health-related quality of life|health status and quality|uric acid and|body mass index)\b/i.test(paper.title || '') &&
+        /\b(emperor-preserved|deliver trial)\b/i.test(text)) {
+      isSecondarySubgroup = true;
+      matchedInclusions.push('Secondary Subgroup Publication of Landmark RCT');
+    }
+  }
+
+  // Check 7: Overall keyword relevance
   const topicWords = cleanQueryKeywords(topic).toLowerCase().split(' ').filter(w => w.length > 3);
   let topicWordHits = 0;
   for (const w of topicWords) {
@@ -3128,6 +3271,7 @@ function screenPaperAgainstCriteria(paper, topic, pico, incCriteria, excCriteria
     matchedInclusions,
     violatedExclusions,
     design,
+    isSecondarySubgroup,
     rob: evaluateRiskOfBias(paper)
   };
 }
@@ -3173,28 +3317,102 @@ function extractStudyCharacteristics(paper, pico) {
 // All reference styles strictly rendered without square brackets.
 // Vancouver authors rendered in uppercase in bibliography.
 // ═══════════════════════════════════════════════════════════════
-function parseAuthorList(authorsStr) {
+function parseAuthorList(authorsInput, paper) {
+  if (paper && Array.isArray(paper.authorObjects) && paper.authorObjects.length > 0) {
+    const list = [];
+    for (const a of paper.authorObjects) {
+      if (a.family) {
+        // Crossref author object { given, family }
+        const initials = (a.given || '').split(/[\s.-]+/).filter(Boolean).map(w => w[0].toUpperCase()).join('');
+        list.push({ lastName: a.family.trim(), initials });
+      } else if (a.displayName || a.name) {
+        // OpenAlex author object { displayName }
+        const rawName = (a.displayName || a.name || '')
+          .replace(/\b(Prof\.?|Professor|Dr\.?|MD|PhD|FRCP|FACC|FESC|Jr\.?|Sr\.?|III|II)\b/gi, '')
+          .trim();
+        const words = rawName.split(/\s+/).filter(Boolean);
+        if (words.length === 1) {
+          list.push({ lastName: words[0], initials: '' });
+        } else if (words.length > 1) {
+          const particles = ['von', 'van', 'de', 'del', 'der', 'ter', 'el', 'al', 'la', 'le'];
+          let lastIdx = words.length - 1;
+          let lastName = words[lastIdx];
+          if (lastIdx > 0 && particles.includes(words[lastIdx - 1].toLowerCase())) {
+            lastName = words[lastIdx - 1] + ' ' + lastName;
+            words.splice(lastIdx - 1, 1);
+          }
+          const preceding = words.slice(0, words.length - 1);
+          const initials = preceding.map(w => w[0].toUpperCase()).join('');
+          list.push({ lastName, initials });
+        }
+      }
+    }
+    if (list.length > 0) return list;
+  }
+
+  const authorsStr = typeof authorsInput === 'string' ? authorsInput : (paper?.authors || '');
   if (!authorsStr || authorsStr === 'Unknown Authors') return [];
-  const cleaned = authorsStr.replace(/\bet al\.?/i, '').trim();
-  const rawParts = cleaned.split(/[,;]/).map(s => s.trim()).filter(Boolean);
+
+  const cleaned = authorsStr
+    .replace(/\b(Prof\.?|Professor|Dr\.?|MD|PhD|FRCP|FACC|FESC|Jr\.?|Sr\.?|III|II)\b/gi, '')
+    .replace(/\bet al\.?/i, '')
+    .trim();
+
+  // If separated by semicolons or commas
+  const rawParts = cleaned.split(/;/).length > 1 
+    ? cleaned.split(/;/).map(s => s.trim()).filter(Boolean) 
+    : cleaned.split(/,\s*(?=[A-Z])/).map(s => s.trim()).filter(Boolean);
+
   const authors = [];
   rawParts.forEach(part => {
-    const words = part.split(/\s+/).filter(Boolean);
+    const trimmed = part.trim();
+    if (!trimmed) return;
+
+    if (trimmed.includes(',')) {
+      const segs = trimmed.split(',').map(s => s.trim()).filter(Boolean);
+      const lastName = segs[0];
+      const given = segs.slice(1).join(' ');
+      const initials = given.split(/[\s.-]+/).filter(Boolean).map(w => w[0].toUpperCase()).join('');
+      authors.push({ lastName, initials });
+      return;
+    }
+
+    const words = trimmed.split(/\s+/).filter(Boolean);
     if (words.length === 0) return;
     if (words.length === 1) {
       authors.push({ lastName: words[0], initials: '' });
-    } else {
-      const lastWord = words[words.length - 1];
-      const firstWord = words[0];
-      if (/^[A-Z]{1,3}\.?$/.test(lastWord)) {
-        authors.push({ lastName: words.slice(0, -1).join(' '), initials: lastWord.replace(/\./g, '') });
-      } else if (/^[A-Z]{1,3}\.?$/.test(firstWord)) {
-        authors.push({ lastName: words.slice(1).join(' '), initials: firstWord.replace(/\./g, '') });
-      } else {
-        authors.push({ lastName: words[0], initials: words.slice(1).map(w => w[0].toUpperCase()).join('') });
-      }
+      return;
     }
+
+    const lastWord = words[words.length - 1];
+    const firstWord = words[0];
+
+    // Case 1 (PubMed / NLM: "McMurray JJV" or "Anker SD" or "von Lewinski D"):
+    if (/^[A-Z]{1,4}\.?$/.test(lastWord) && /[a-z]/.test(words.slice(0, -1).join(' '))) {
+      authors.push({ lastName: words.slice(0, -1).join(' '), initials: lastWord.replace(/\./g, '') });
+      return;
+    }
+
+    // Case 2 (First word is initials: "JJV McMurray"):
+    if (/^[A-Z]{1,4}\.?$/.test(firstWord) && words.length > 1) {
+      authors.push({ lastName: words.slice(1).join(' '), initials: firstWord.replace(/\./g, '') });
+      return;
+    }
+
+    // Case 3 (Natural Western order: "Wolfram Doehner", "Stefan D. Anker"):
+    const particles = ['von', 'van', 'de', 'del', 'der', 'ter', 'el', 'al', 'la', 'le'];
+    let lastName = words[words.length - 1];
+    let givenWords = words.slice(0, -1);
+
+    if (givenWords.length > 0 && particles.includes(givenWords[givenWords.length - 1].toLowerCase())) {
+      lastName = givenWords[givenWords.length - 1] + ' ' + lastName;
+      givenWords = givenWords.slice(0, -1);
+    }
+
+    const initials = givenWords.map(w => w[0].toUpperCase()).join('');
+    authors.push({ lastName, initials });
   });
+
   return authors;
 }
 
@@ -3209,44 +3427,63 @@ function toSentenceCase(str) {
 
 function formatVancouver(paper, num) {
   let ref = num ? `${num}. ` : '';
-  const authorList = parseAuthorList(paper.authors);
+  const authorList = parseAuthorList(paper.authors, paper);
   let authors = '';
   if (authorList.length > 0) {
     if (authorList.length <= 6) {
-      authors = authorList.map(a => `${a.lastName.toUpperCase()} ${a.initials ? a.initials.toUpperCase() : ''}`.trim()).join(', ');
+      authors = authorList.map(a => `${a.lastName} ${a.initials || ''}`.trim()).join(', ');
     } else {
-      const first6 = authorList.slice(0, 6).map(a => `${a.lastName.toUpperCase()} ${a.initials ? a.initials.toUpperCase() : ''}`.trim()).join(', ');
+      const first6 = authorList.slice(0, 6).map(a => `${a.lastName} ${a.initials || ''}`.trim()).join(', ');
       authors = `${first6}, et al.`;
     }
   } else if (paper.authors && paper.authors !== 'Unknown Authors') {
-    authors = cleanHtmlText(paper.authors).toUpperCase();
+    authors = cleanHtmlText(paper.authors);
+  } else {
+    authors = '[Anonymous]';
   }
   if (authors) {
     ref += authors.trim();
     if (!ref.trimEnd().endsWith('.')) ref += '.';
     ref += ' ';
   }
-  const title = cleanHtmlText(paper.title);
-  if (title) {
-    ref += title.trim().replace(/\.$/, '') + '. ';
+
+  let title = cleanHtmlText(paper.title || 'Untitled study')
+    .replace(/â€“|â€”|[\u2013\u2014\u2212]/g, '-')
+    .replace(/â€™|[\u2018\u2019]/g, "'")
+    .replace(/â€œ|â€|[\u201C\u201D]/g, '"')
+    .trim()
+    .replace(/\.$/, '');
+  ref += title + '. ';
+
+  let journal = cleanHtmlText(paper.journal || 'Academic Journal')
+    .replace(/â€“|â€”|[\u2013\u2014\u2212]/g, '-')
+    .trim()
+    .replace(/\.$/, '');
+  ref += journal + '. ';
+
+  let pubDetails = `${paper.year || 2024}`;
+  if (paper.volume) {
+    pubDetails += `;${paper.volume}`;
+    if (paper.issue) pubDetails += `(${paper.issue})`;
   }
-  const journal = cleanHtmlText(paper.journal);
-  if (journal) {
-    ref += journal.trim() + '. ';
+  if (paper.pages) {
+    pubDetails += `:${paper.pages}`;
   }
-  ref += paper.year || 2024;
-  ref += '.';
-  const cleanDoi = (paper.doi || '').replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, '').replace(/^doi:\s*/i, '').trim();
+  pubDetails += '.';
+  ref += pubDetails;
+
+  const cleanDoi = normalizeDOI(paper.doi);
   if (cleanDoi) ref += ` doi:${cleanDoi}`;
-  if (paper.pmid) ref += ` PMID: ${paper.pmid}`;
+  const cleanPmid = normalizePMID(paper.pmid);
+  if (cleanPmid) ref += ` PMID: ${cleanPmid}`;
   return ref.trim();
 }
 
 function formatAPA(paper) {
-  const authorList = parseAuthorList(paper.authors);
+  const authorList = parseAuthorList(paper.authors, paper);
   let authStr = '';
   if (authorList.length === 0) {
-    authStr = paper.authors && paper.authors !== 'Unknown Authors' ? paper.authors : 'Investigators';
+    authStr = paper.authors && paper.authors !== 'Unknown Authors' ? paper.authors : '[Anonymous]';
   } else if (authorList.length === 1) {
     const a = authorList[0];
     authStr = `${a.lastName}, ${a.initials ? a.initials.split('').join('. ') + '.' : ''}`;
@@ -3265,24 +3502,26 @@ function formatAPA(paper) {
   if (!authStr.endsWith('.')) authStr += '.';
 
   const year = paper.year || 2024;
-  const title = toSentenceCase(cleanHtmlText(paper.title || 'Untitled study')).replace(/\.$/, '');
+  const title = toSentenceCase(cleanHtmlText(paper.title || 'Untitled study'))
+    .replace(/â€“|â€”|[\u2013\u2014\u2212]/g, '-')
+    .replace(/\.$/, '');
   const journal = cleanHtmlText(paper.journal || 'Academic Journal');
-  const cleanDoi = (paper.doi || '').replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, '').replace(/^doi:\s*/i, '').trim();
+  const cleanDoi = normalizeDOI(paper.doi);
 
   let ref = `${authStr} (${year}). ${title}. <em>${journal}</em>.`;
   if (cleanDoi) {
     ref += ` <a href="https://doi.org/${cleanDoi}" target="_blank" rel="noopener noreferrer" style="color:#0284c7;text-decoration:underline;">https://doi.org/${cleanDoi}</a>`;
   } else if (paper.pmid) {
-    ref += ` PubMed PMID: ${paper.pmid}`;
+    ref += ` PubMed PMID: ${normalizePMID(paper.pmid)}`;
   }
   return ref;
 }
 
 function formatHarvard(paper) {
-  const authorList = parseAuthorList(paper.authors);
+  const authorList = parseAuthorList(paper.authors, paper);
   let authStr = '';
   if (authorList.length === 0) {
-    authStr = paper.authors && paper.authors !== 'Unknown Authors' ? paper.authors : 'Investigators';
+    authStr = paper.authors && paper.authors !== 'Unknown Authors' ? paper.authors : '[Anonymous]';
   } else if (authorList.length === 1) {
     const a = authorList[0];
     authStr = `${a.lastName}, ${a.initials ? a.initials.split('').join('.') + '.' : ''}`;
@@ -3296,16 +3535,19 @@ function formatHarvard(paper) {
   }
 
   const year = paper.year || 2024;
-  const title = cleanHtmlText(paper.title || 'Untitled study').replace(/['"]/g, '').replace(/\.$/, '');
+  const title = cleanHtmlText(paper.title || 'Untitled study')
+    .replace(/â€“|â€”|[\u2013\u2014\u2212]/g, '-')
+    .replace(/['"]/g, '')
+    .replace(/\.$/, '');
   const journal = cleanHtmlText(paper.journal || 'Academic Journal');
-  const cleanDoi = (paper.doi || '').replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, '').replace(/^doi:\s*/i, '').trim();
+  const cleanDoi = normalizeDOI(paper.doi);
   const todayStr = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 
   let ref = `${authStr} (${year}) '${title}', <em>${journal}</em>.`;
   if (cleanDoi) {
     ref += ` Available at: <a href="https://doi.org/${cleanDoi}" target="_blank" rel="noopener noreferrer" style="color:#0284c7;text-decoration:underline;">https://doi.org/${cleanDoi}</a> (Accessed ${todayStr}).`;
   } else if (paper.pmid) {
-    ref += ` Available at: PubMed (PMID: ${paper.pmid}) (Accessed ${todayStr}).`;
+    ref += ` Available at: PubMed (PMID: ${normalizePMID(paper.pmid)}) (Accessed ${todayStr}).`;
   }
   return ref;
 }
@@ -3317,11 +3559,7 @@ function getPaperCiteData(indexOrNum) {
     ? stateObj.includedPapers 
     : (stateObj?.review?.references ? stateObj.review.references.map(r => r.paper).filter(Boolean) : []);
   if (papers && papers[idx]) return papers[idx];
-  return {
-    authors: `Study ${idx + 1}`,
-    year: 2024,
-    title: `Investigation ${idx + 1}`
-  };
+  return null;
 }
 
 function formatInTextAuthor(paper, style) {
@@ -4607,6 +4845,27 @@ async function exportSystematicReviewWordDoc() {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// PDF TEXT SANITIZER (Eliminates WinAnsi Unicode Encoding Mojibake)
+// ═══════════════════════════════════════════════════════════════
+function sanitizePdfText(input) {
+  if (input === null || input === undefined) return '';
+  return String(input)
+    .replace(/â€“|â€”|[\u2013\u2014\u2212]/g, '-')
+    .replace(/â€™|[\u2018\u2019]/g, "'")
+    .replace(/â€œ|â€|[\u201C\u201D]/g, '"')
+    .replace(/I²|I\u00B2/g, 'I^2')
+    .replace(/τ²|\u03C4\u00B2|\u03C42/g, 'tau^2')
+    .replace(/χ²|\u03C7\u00B2/g, 'chi^2')
+    .replace(/H²|H\u00B2/g, 'H^2')
+    .replace(/±|\u00B1/g, '+/-')
+    .replace(/≥|\u2265/g, '>=')
+    .replace(/≤|\u2264/g, '<=')
+    .replace(/×|\u00D7/g, 'x')
+    .replace(/p\s*<\s*0\.0001/gi, 'P < 0.001')
+    .replace(/[^\x09\x0A\x0D\x20-\x7E\xA0-\xFF]/g, '');
+}
+
+// ═══════════════════════════════════════════════════════════════
 // PDF EXPORT ENGINES (jsPDF)
 // ═══════════════════════════════════════════════════════════════
 async function exportSystematicReviewPDF() {
@@ -4782,48 +5041,58 @@ async function exportSystematicReviewPDF() {
       doc.text('Table 1. Characteristics of Included Empirical Studies', margin, y);
       y += 13;
 
+      // Table 1 Col Widths summing to 504 pt: [90, 68, 48, 126, 172]
+      const colW = [90, 68, 48, 126, 172];
+      const colX = [margin, margin + 90, margin + 158, margin + 206, margin + 332];
+
       // Table Header Row
       doc.setFillColor(15, 23, 42);
-      doc.rect(margin, y, textWidth, 15, 'F');
+      doc.rect(margin, y, textWidth, 16, 'F');
       doc.setFont('times', 'bold');
       doc.setFontSize(7.5);
       doc.setTextColor(255);
-      doc.text('Study ID & Year', margin + 6, y + 10);
-      doc.text('Study Design', margin + 105, y + 10);
-      doc.text('Sample', margin + 195, y + 10);
-      doc.text('Intervention / Comparator', margin + 240, y + 10);
-      doc.text('Key Clinical Findings', margin + 370, y + 10);
-      y += 15;
+      doc.text('Study ID & Year', colX[0] + 5, y + 11);
+      doc.text('Study Design', colX[1] + 5, y + 11);
+      doc.text('Sample', colX[2] + 5, y + 11);
+      doc.text('Intervention / Comparator', colX[3] + 5, y + 11);
+      doc.text('Key Clinical Findings', colX[4] + 5, y + 11);
+      y += 16;
 
       STATE.includedPapers.forEach((p, pIdx) => {
-        checkPageBreak(22);
         const auth = p.authors ? p.authors.split(',')[0].trim() : 'Author';
-        const studyId = `${auth} (${p.year})`;
-        const des = (p.screening?.design?.name || 'Observational').substring(0, 18);
+        const studyId = sanitizePdfText(`${auth} (${p.year})`);
+        const des = sanitizePdfText((p.screening?.design?.name || 'Observational').substring(0, 22));
         const chars = extractStudyCharacteristics(p, STATE.pico || {});
+        const sampleText = sanitizePdfText(chars.sampleSize);
+        const intCompText = sanitizePdfText(`${(STATE.pico?.i || 'Active').substring(0, 24)} / ${(STATE.pico?.c || 'Ctrl').substring(0, 20)}`);
+        const outcomeText = sanitizePdfText(chars.outcomeFinding);
+
+        const linesFindings = doc.splitTextToSize(outcomeText, colW[4] - 10);
+        const rowH = Math.max(18, linesFindings.length * 9.5 + 6);
+        checkPageBreak(rowH);
 
         if (pIdx % 2 === 1) {
           doc.setFillColor(248, 250, 252);
-          doc.rect(margin, y, textWidth, 16, 'F');
+          doc.rect(margin, y, textWidth, rowH, 'F');
         }
         doc.setDrawColor(226, 232, 240);
         doc.setLineWidth(0.5);
-        doc.line(margin, y + 16, margin + textWidth, y + 16);
+        doc.line(margin, y + rowH, margin + textWidth, y + rowH);
 
         doc.setFont('times', 'bold');
         doc.setFontSize(7.5);
         doc.setTextColor(15, 23, 42);
-        doc.text(studyId, margin + 6, y + 11);
+        doc.text(studyId, colX[0] + 5, y + 11);
 
         doc.setFont('times', 'normal');
         doc.setTextColor(50);
-        doc.text(des, margin + 105, y + 11);
-        doc.text(chars.sampleSize.substring(0, 10), margin + 195, y + 11);
-        doc.text(`${(STATE.pico?.i || 'Active').substring(0, 11)} / ${(STATE.pico?.c || 'Ctrl').substring(0, 10)}`, margin + 240, y + 11);
-        doc.text(chars.outcomeFinding.substring(0, 40) + '...', margin + 370, y + 11);
-        y += 16;
+        doc.text(des, colX[1] + 5, y + 11);
+        doc.text(sampleText, colX[2] + 5, y + 11);
+        doc.text(intCompText, colX[3] + 5, y + 11);
+        doc.text(linesFindings, colX[4] + 5, y + 11);
+        y += rowH;
       });
-      y += 10;
+      y += 12;
     }
 
     y += 8;
@@ -4943,58 +5212,59 @@ async function exportPRISMAReportPDF() {
   doc.text('METHODOLOGICAL QUALITY & RISK OF BIAS AUDIT (ROB 2 / ROBINS-I)', margin, y);
   y += 16;
 
+  // RoB 2 Table Col Widths summing to 504 pt: [124, 62, 62, 62, 62, 62, 70]
+  const robColX = [margin, margin + 124, margin + 186, margin + 248, margin + 310, margin + 372, margin + 434];
+
   doc.setFillColor(15, 23, 42);
-  doc.rect(margin, y, textWidth, 15, 'F');
+  doc.rect(margin, y, textWidth, 16, 'F');
   doc.setFontSize(7.5);
   doc.setFont('times', 'bold');
   doc.setTextColor(255);
-  doc.text('Study ID', margin + 6, y + 10);
-  doc.text('Study Type', margin + 105, y + 10);
-  doc.text('D1', margin + 225, y + 10);
-  doc.text('D2', margin + 255, y + 10);
-  doc.text('D3', margin + 285, y + 10);
-  doc.text('D4', margin + 315, y + 10);
-  doc.text('D5', margin + 345, y + 10);
-  doc.text('Overall RoB', margin + 380, y + 10);
-  y += 15;
+  doc.text('Study ID', robColX[0] + 6, y + 11);
+  doc.text('D1', robColX[1] + 16, y + 11);
+  doc.text('D2', robColX[2] + 16, y + 11);
+  doc.text('D3', robColX[3] + 16, y + 11);
+  doc.text('D4', robColX[4] + 16, y + 11);
+  doc.text('D5', robColX[5] + 16, y + 11);
+  doc.text('Overall RoB', robColX[6] + 8, y + 11);
+  y += 16;
 
   doc.setFont('times', 'normal');
   doc.setTextColor(30);
   STATE.includedPapers.forEach((p, idx) => {
     checkPageBreak(18);
     const auth = p.authors ? p.authors.split(',')[0].trim() : 'Author';
-    const studyId = `${auth} (${p.year})`;
+    const studyId = sanitizePdfText(`${auth} (${p.year})`);
     const rob = p.screening?.rob || evaluateRiskOfBias(p);
     const d = rob.domains;
 
     if (idx % 2 === 1) {
       doc.setFillColor(248, 250, 252);
-      doc.rect(margin, y, textWidth, 15, 'F');
+      doc.rect(margin, y, textWidth, 16, 'F');
     }
     doc.setDrawColor(226, 232, 240);
     doc.setLineWidth(0.5);
-    doc.line(margin, y + 15, margin + textWidth, y + 15);
+    doc.line(margin, y + 16, margin + textWidth, y + 16);
 
     doc.setFont('times', 'bold');
     doc.setFontSize(7.5);
     doc.setTextColor(15, 23, 42);
-    doc.text(studyId.substring(0, 20), margin + 6, y + 10);
+    doc.text(studyId.substring(0, 24), robColX[0] + 6, y + 11);
 
     doc.setFont('times', 'normal');
     doc.setTextColor(50);
-    doc.text((p.screening?.design?.name || 'Observational studies').substring(0, 22), margin + 105, y + 10);
-    doc.text(d.d1.substring(0, 3), margin + 225, y + 10);
-    doc.text(d.d2.substring(0, 3), margin + 255, y + 10);
-    doc.text(d.d3.substring(0, 3), margin + 285, y + 10);
-    doc.text(d.d4.substring(0, 3), margin + 315, y + 10);
-    doc.text(d.d5.substring(0, 3), margin + 345, y + 10);
+    doc.text(sanitizePdfText(d.d1.substring(0, 12)), robColX[1] + 16, y + 11);
+    doc.text(sanitizePdfText(d.d2.substring(0, 12)), robColX[2] + 16, y + 11);
+    doc.text(sanitizePdfText(d.d3.substring(0, 12)), robColX[3] + 16, y + 11);
+    doc.text(sanitizePdfText(d.d4.substring(0, 12)), robColX[4] + 16, y + 11);
+    doc.text(sanitizePdfText(d.d5.substring(0, 12)), robColX[5] + 16, y + 11);
 
     doc.setFont('times', 'bold');
     if (rob.overall === 'Low Risk') doc.setTextColor(21, 128, 61);
     else if (rob.overall === 'High Risk') doc.setTextColor(185, 28, 28);
     else doc.setTextColor(180, 83, 9);
-    doc.text(rob.overall, margin + 380, y + 10);
-    y += 15;
+    doc.text(sanitizePdfText(rob.overall), robColX[6] + 8, y + 11);
+    y += 16;
   });
 
   // Two-Pass Running Header & Footer Engine

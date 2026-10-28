@@ -1,13 +1,24 @@
 const https = require('https');
 
-const OPENALEX_API_KEY = process.env.OPENALEX_API_KEY || 'LCR4PBZ9z5sTV3HuRDicln';
+const OPENALEX_API_KEY = process.env.OPENALEX_API_KEY || '';
 
 function reconstructAbstract(invertedIndex) {
   if (!invertedIndex || typeof invertedIndex !== 'object') return '';
-  const words = [];
+  let maxPos = -1;
+  for (const pos of Object.values(invertedIndex)) {
+    if (Array.isArray(pos)) {
+      for (const i of pos) {
+        if (typeof i === 'number' && i > maxPos) maxPos = i;
+      }
+    }
+  }
+  if (maxPos < 0) return '';
+  const words = new Array(maxPos + 1);
   for (const [w, pos] of Object.entries(invertedIndex)) {
     if (Array.isArray(pos)) {
-      for (const i of pos) words[i] = w;
+      for (const i of pos) {
+        if (typeof i === 'number' && i >= 0) words[i] = w;
+      }
     }
   }
   return words.filter(Boolean).join(' ');
@@ -22,9 +33,11 @@ function queryOpenAlex(query, pageSize = 30, startYear = null, endYear = new Dat
     const params = new URLSearchParams({
       search: query,
       per_page: String(pageSize),
-      api_key: OPENALEX_API_KEY,
       mailto: 'raouf.roshdy@aimed.org'
     });
+    if (OPENALEX_API_KEY) {
+      params.set('api_key', OPENALEX_API_KEY);
+    }
     if (filter) params.set('filter', filter);
 
     const options = {
@@ -51,7 +64,11 @@ function queryOpenAlex(query, pageSize = 30, startYear = null, endYear = new Dat
         try {
           const json = JSON.parse(data);
           const results = (json.results || []).map(p => {
-            const rawAuthors = (p.authorships || []).map(a => a.author?.display_name).filter(Boolean);
+            const authorObjects = (p.authorships || []).map(a => ({
+              displayName: a.author?.display_name || '',
+              orcid: a.author?.orcid || ''
+            }));
+            const rawAuthors = authorObjects.map(a => a.displayName).filter(Boolean);
             const doi = p.doi ? p.doi.replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, '').trim() : '';
             const pmid = p.ids?.pmid ? String(p.ids.pmid).replace(/^https?:\/\/pubmed\.ncbi\.nlm\.nih\.gov\//i, '').replace(/^pmid:\s*/i, '').replace(/\/$/, '') : '';
             const pmcid = p.ids?.pmcid ? String(p.ids.pmcid).replace(/^https?:\/\/www\.ncbi\.nlm\.nih\.gov\/pmc\/articles\//i, '').replace(/\/$/, '') : '';
@@ -64,7 +81,11 @@ function queryOpenAlex(query, pageSize = 30, startYear = null, endYear = new Dat
               openalex_id: p.id,
               title: p.title || 'Untitled Study',
               authors: rawAuthors.length > 0 ? rawAuthors.join(', ') : 'Unknown Authors',
+              authorObjects: authorObjects,
               journal: p.primary_location?.source?.display_name || 'Academic Journal',
+              volume: p.biblio?.volume || '',
+              issue: p.biblio?.issue || '',
+              pages: (p.biblio?.first_page && p.biblio?.last_page) ? `${p.biblio.first_page}-${p.biblio.last_page}` : (p.biblio?.first_page || ''),
               year: p.publication_year || new Date().getFullYear(),
               publication_date: p.publication_date || String(p.publication_year || ''),
               abstract: abstract,
