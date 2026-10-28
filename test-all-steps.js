@@ -424,6 +424,22 @@ assert(!harvardRefs[0].text.includes('[') && !harvardRefs[0].text.includes(']'),
 const harvardInText = citify('Evidence shows benefit [1, 2].');
 assert(!harvardInText.includes('[') && !harvardInText.includes(']'), 'Harvard in-text citation has ZERO square brackets');
 
+// Volume, issue, and page numbers formatting
+const volPaper = {
+  authors: 'McMurray JJV, Solomon SD',
+  title: 'Dapagliflozin in Patients with Heart Failure',
+  journal: 'N Engl J Med',
+  year: 2019,
+  volume: '381',
+  issue: '21',
+  pages: '1995-2008',
+  doi: '10.1056/NEJMoa1911303'
+};
+const apaVol = formatAPA(volPaper);
+assert(apaVol.includes('381') && apaVol.includes('(21)') && apaVol.includes('1995-2008'), 'APA reference includes volume, issue, and pages', apaVol);
+const harvardVol = formatHarvard(volPaper);
+assert(harvardVol.includes('381') && harvardVol.includes('(21)') && harvardVol.includes('pp. 1995-2008'), 'Harvard reference includes volume, issue, and pp. pages', harvardVol);
+
 // ─────────────────────────────────────────────────────────────
 // STEP 5: Meta-Analysis Engine
 // ─────────────────────────────────────────────────────────────
@@ -504,6 +520,7 @@ exportSystematicReviewWordDoc();
 assert(wordBlobCaptured && wordBlobCaptured.opts?.type?.includes('msword'), 'Word Document (.doc) generated with valid Microsoft Word MIME type');
 const wordText = wordBlobCaptured ? wordBlobCaptured.parts.join('') : '';
 assert(wordText.includes('<w:WordDocument>') && wordText.includes('Structured Abstract') && wordText.includes('Table 1. Structured Characteristics'), 'Word Document contains MSO Word XML, Abstract, and Table 1');
+assert(wordText.includes('Table 2. Cochrane Risk of Bias Assessment Matrix'), 'Word Document contains Table 2 RoB Assessment Matrix');
 assert(wordText.includes('mso-header') && wordText.includes('mso-footer'), 'Word Document contains dedicated running headers and footers');
 
 // Test PDF Exporter

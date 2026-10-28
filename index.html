@@ -3602,7 +3602,16 @@ function formatAPA(paper) {
   const journal = cleanHtmlText(paper.journal || 'Academic Journal');
   const cleanDoi = normalizeDOI(paper.doi);
 
-  let ref = `${authStr} (${year}). ${title}. <em>${journal}</em>.`;
+  let pubDetails = `<em>${journal}</em>`;
+  if (paper.volume) {
+    pubDetails += `, <em>${paper.volume}</em>`;
+    if (paper.issue) pubDetails += `(${paper.issue})`;
+  }
+  if (paper.pages) {
+    pubDetails += `, ${paper.pages}`;
+  }
+
+  let ref = `${authStr} (${year}). ${title}. ${pubDetails}.`;
   if (cleanDoi) {
     ref += ` <a href="https://doi.org/${cleanDoi}" target="_blank" rel="noopener noreferrer" style="color:#0284c7;text-decoration:underline;">https://doi.org/${cleanDoi}</a>`;
   } else if (paper.pmid) {
@@ -3637,7 +3646,16 @@ function formatHarvard(paper) {
   const cleanDoi = normalizeDOI(paper.doi);
   const todayStr = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 
-  let ref = `${authStr} (${year}) '${title}', <em>${journal}</em>.`;
+  let pubDetails = `<em>${journal}</em>`;
+  if (paper.volume) {
+    pubDetails += `, ${paper.volume}`;
+    if (paper.issue) pubDetails += `(${paper.issue})`;
+  }
+  if (paper.pages) {
+    pubDetails += `, pp. ${paper.pages}`;
+  }
+
+  let ref = `${authStr} (${year}) '${title}', ${pubDetails}.`;
   if (cleanDoi) {
     ref += ` Available at: <a href="https://doi.org/${cleanDoi}" target="_blank" rel="noopener noreferrer" style="color:#0284c7;text-decoration:underline;">https://doi.org/${cleanDoi}</a> (Accessed ${todayStr}).`;
   } else if (paper.pmid) {
@@ -5236,6 +5254,75 @@ async function exportSystematicReviewPDF() {
         doc.text(sampleText, colX[2] + 5, y + 11);
         doc.text(intCompText, colX[3] + 5, y + 11);
         doc.text(linesFindings, colX[4] + 5, y + 11);
+        y += rowH;
+      });
+      y += 12;
+
+      // Table 2: Cochrane RoB Matrix
+      checkPageBreak(50);
+      doc.setFont('times', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(15, 107, 107);
+      doc.text('Table 2. Cochrane Risk of Bias Assessment Matrix (RoB 2 / ROBINS-I)', margin, y);
+      y += 13;
+
+      // Table 2 Col Widths summing to 504 pt: [110, 110, 40, 40, 40, 40, 40, 84]
+      const t2W = [110, 110, 40, 40, 40, 40, 40, 84];
+      const t2X = [margin, margin + 110, margin + 220, margin + 260, margin + 300, margin + 340, margin + 380, margin + 420];
+
+      // Table 2 Header Row
+      doc.setFillColor(15, 23, 42);
+      doc.rect(margin, y, textWidth, 16, 'F');
+      doc.setFont('times', 'bold');
+      doc.setFontSize(7.5);
+      doc.setTextColor(255);
+      doc.text('Study ID & Year', t2X[0] + 5, y + 11);
+      doc.text('Study Design', t2X[1] + 5, y + 11);
+      doc.text('D1', t2X[2] + 12, y + 11);
+      doc.text('D2', t2X[3] + 12, y + 11);
+      doc.text('D3', t2X[4] + 12, y + 11);
+      doc.text('D4', t2X[5] + 12, y + 11);
+      doc.text('D5', t2X[6] + 12, y + 11);
+      doc.text('Overall RoB', t2X[7] + 8, y + 11);
+      y += 16;
+
+      STATE.includedPapers.forEach((p, pIdx) => {
+        const auth = p.authors ? p.authors.split(',')[0].trim() : 'Author';
+        const studyId = sanitizePdfText(`${auth} (${p.year})`);
+        const des = sanitizePdfText((p.screening?.design?.name || 'Observational').substring(0, 22));
+        const rob = p.screening?.rob || evaluateRiskOfBias(p);
+        const d = rob.domains;
+        const rowH = 16;
+        checkPageBreak(rowH);
+
+        if (pIdx % 2 === 1) {
+          doc.setFillColor(248, 250, 252);
+          doc.rect(margin, y, textWidth, rowH, 'F');
+        }
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(0.5);
+        doc.line(margin, y + rowH, margin + textWidth, y + rowH);
+
+        doc.setFont('times', 'bold');
+        doc.setFontSize(7.5);
+        doc.setTextColor(15, 23, 42);
+        doc.text(studyId, t2X[0] + 5, y + 11);
+
+        doc.setFont('times', 'normal');
+        doc.setTextColor(50);
+        doc.text(des, t2X[1] + 5, y + 11);
+        doc.text(sanitizePdfText(d.d1), t2X[2] + 12, y + 11);
+        doc.text(sanitizePdfText(d.d2), t2X[3] + 12, y + 11);
+        doc.text(sanitizePdfText(d.d3), t2X[4] + 12, y + 11);
+        doc.text(sanitizePdfText(d.d4), t2X[5] + 12, y + 11);
+        doc.text(sanitizePdfText(d.d5), t2X[6] + 12, y + 11);
+
+        doc.setFont('times', 'bold');
+        if (rob.overall === 'Low Risk') doc.setTextColor(21, 128, 61);
+        else if (rob.overall === 'High Risk') doc.setTextColor(185, 28, 28);
+        else doc.setTextColor(180, 83, 9);
+        doc.text(sanitizePdfText(rob.overall), t2X[7] + 8, y + 11);
+
         y += rowH;
       });
       y += 12;
