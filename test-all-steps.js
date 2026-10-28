@@ -290,6 +290,41 @@ const offTargetDrugPaper = {
 const offTargetScreen = screenPaperAgainstCriteria(offTargetDrugPaper, topic, pico, [], []);
 assert(offTargetScreen.status === 'EXCLUDED', 'Off-target drug without SGLT2 inhibitor is strictly EXCLUDED');
 
+// Multi-word intervention with dosage and parenthetical notes (Aspirin for preeclampsia prevention)
+const aspirinTopic = 'Aspirin prophylaxis for preeclampsia prevention in high-risk pregnancies';
+const aspirinPico = {
+  p: 'High-risk nulliparous pregnant women',
+  i: 'Low-dose aspirin (75 - 150 mg daily) initiated before 16 weeks gestation',
+  c: 'Placebo',
+  o: 'Preeclampsia incidence',
+  s: 'RCT'
+};
+const aspirinPaper = {
+  title: 'Aspirin versus Placebo in Pregnancies at High Risk for Preterm Preeclampsia',
+  abstract: 'Treatment with low-dose aspirin in women at high risk for preterm preeclampsia resulted in a lower incidence of this diagnosis than placebo.',
+  pubType: ['randomized controlled trial']
+};
+const aspirinScreen = screenPaperAgainstCriteria(aspirinPaper, aspirinTopic, aspirinPico, [], []);
+assert(aspirinScreen.status === 'INCLUDED', 'Aspirin trial with dosage in PICO intervention is correctly INCLUDED');
+assert(Array.isArray(aspirinScreen.decisionRules) && aspirinScreen.decisionRules.length >= 4, 'Screening provides decisionRules breakdown');
+
+// GLP-1 trial with parenthetical brand names in PICO intervention
+const glp1Topic = 'Efficacy of GLP-1 receptor agonists on cardiovascular outcomes in Type 2 Diabetes';
+const glp1Pico = {
+  p: 'Adult patients with Type 2 Diabetes',
+  i: 'GLP-1 Receptor Agonists (e.g., Semaglutide, Liraglutide, Dulaglutide)',
+  c: 'Placebo',
+  o: '3-point MACE',
+  s: 'RCT'
+};
+const semaPaper = {
+  title: 'Semaglutide and Cardiovascular Outcomes in Patients with Type 2 Diabetes',
+  abstract: 'In patients with type 2 diabetes at high cardiovascular risk, the rate of first occurrence of death from cardiovascular causes, nonfatal myocardial infarction, or nonfatal stroke was significantly lower among those receiving semaglutide than among those receiving placebo.',
+  pubType: ['randomized controlled trial']
+};
+const semaScreen = screenPaperAgainstCriteria(semaPaper, glp1Topic, glp1Pico, [], []);
+assert(semaScreen.status === 'INCLUDED', 'GLP-1 semaglutide trial with parenthetical list in PICO intervention is correctly INCLUDED');
+
 // ─────────────────────────────────────────────────────────────
 // STEP 3: PRISMA Screening & RoB
 // ─────────────────────────────────────────────────────────────

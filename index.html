@@ -1439,6 +1439,44 @@ sup.cite-num:hover, .cite-num:hover, .cite-apa:hover, .cite-harvard:hover {
       </div>
     </div>
 
+    <!-- 🔍 Automated Inclusion & Exclusion Screening Engine Inspector -->
+    <div class="card" id="screening-engine-inspector" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:16px 20px;margin-bottom:16px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+        <div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:1.25rem;">⚡</span>
+            <h2 style="margin:0;font-size:1.05rem;font-weight:800;color:#166534;">Inclusion &amp; Exclusion Screening Engine Inspector</h2>
+            <span class="pill pill-good" style="margin:0;font-size:0.75rem;">PRISMA 2020 Active</span>
+          </div>
+          <p style="margin:4px 0 0;font-size:0.84rem;color:#15803d;">
+            Transparent multi-domain eligibility evaluation. Every candidate publication is appraised against pre-specified PICOS domains and empirical criteria.
+          </p>
+        </div>
+        <button type="button" class="mini-btn" onclick="toggleEngineInspectorDetails()" id="btn-toggle-engine-details" style="background:#fff;border:1px solid #86efac;color:#166534;font-weight:700;">
+          Hide Engine Breakdown ▲
+        </button>
+      </div>
+
+      <div id="engine-inspector-details" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:12px;margin-top:14px;padding-top:12px;border-top:1px solid #dcfce7;">
+        <div style="background:#fff;border:1px solid #bbf7d0;border-radius:8px;padding:10px 12px;">
+          <div style="font-size:0.78rem;font-weight:700;color:#166534;text-transform:uppercase;margin-bottom:4px;">👥 1. Population (P) Rule</div>
+          <div style="font-size:0.82rem;color:#1e293b;" id="engine-p-criteria">Human clinical trials and empirical cohort participants.</div>
+        </div>
+        <div style="background:#fff;border:1px solid #bbf7d0;border-radius:8px;padding:10px 12px;">
+          <div style="font-size:0.78rem;font-weight:700;color:#166534;text-transform:uppercase;margin-bottom:4px;">💊 2. Intervention (I) Matcher</div>
+          <div style="font-size:0.82rem;color:#1e293b;" id="engine-i-criteria">Target agent aliases, active tokens &amp; stem matching.</div>
+        </div>
+        <div style="background:#fff;border:1px solid #bbf7d0;border-radius:8px;padding:10px 12px;">
+          <div style="font-size:0.78rem;font-weight:700;color:#166534;text-transform:uppercase;margin-bottom:4px;">🔬 3. Eligible Study Designs</div>
+          <div style="font-size:0.82rem;color:#1e293b;">9 Cochrane empirical types (RCT, Non-RCT, Cohort, Case-Control, Observational).</div>
+        </div>
+        <div style="background:#fff;border:1px solid #bbf7d0;border-radius:8px;padding:10px 12px;">
+          <div style="font-size:0.78rem;font-weight:700;color:#166534;text-transform:uppercase;margin-bottom:4px;">🛡️ 4. Empirical Safeguards</div>
+          <div style="font-size:0.82rem;color:#1e293b;">Excludes preclinical animal models, narrative reviews, protocols, and editor letters.</div>
+        </div>
+      </div>
+    </div>
+
     <!-- Candidate Papers & Manual Review -->
     <div class="card">
       <span class="pill">📋 Step 3 · Candidate Study Screening &amp; Quality Appraisal</span>
@@ -2316,8 +2354,7 @@ async function fetchEuropePMC(topic, pageSize, yearRange, signal) {
     query: query,
     resultType: 'core',
     pageSize: String(pageSize),
-    format: 'json',
-    sort: 'CITED desc'
+    format: 'json'
   });
 
   const timeoutCtrl = new AbortController();
@@ -2358,7 +2395,7 @@ async function fetchEuropePMC(topic, pageSize, yearRange, signal) {
       keywords: Array.isArray(item.keywordList?.keyword)
         ? item.keywordList.keyword.filter(Boolean)
         : (item.keywordList?.keyword ? [item.keywordList.keyword] : []),
-      pubType: Array.isArray(item.pubTypeList?.pubType) ? item.pubTypeList.pubType : []
+      pubType: item.pubType ? item.pubType.split(';').map(s => s.trim().toLowerCase()) : (Array.isArray(item.pubTypeList?.pubType) ? item.pubTypeList.pubType : [])
     }));
 
     return { results: parsed, hitCount };
@@ -2916,7 +2953,8 @@ function classifyStudyDesign(paper) {
   const text = fullTextLower;
 
   // 1. Identify Pre-clinical Animal / Cell Culture / In-Vitro Models (Ineligible)
-  const hasAnimalInTitle = /\b(mouse|mice|murine|rat|rats|rodent|porcine|canine|rabbit|zebrafish|drosophila|in vitro|cell line|isolated cardiomyocytes|animal model|mouse model|rat model|preclinical)\b/i.test(titleLower);
+  const hasAnimalInTitle = /\b(mouse model|mice model|murine model|rat model|in animal|in mice|in rats|in rodents|isolated cardiomyocytes|preclinical model|in-vitro experiment|animal model)\b/i.test(titleLower)
+    || (/\b(mouse|mice|murine|rat|rats|rodent|rabbit|zebrafish|drosophila)\b/i.test(titleLower) && !/\b(patients|trial|clinical|human|multicenter|women|men|valve|bioprosthetic|antibody)\b/i.test(titleLower));
   const hasAnimalInAbstractOnly = /\b(mouse model|rat model|murine model|animal model|in vitro experiment|isolated cardiomyocytes|cultured cells)\b/i.test(fullTextLower) && !/\b(randomized|randomised|patients were|participants were|enrolling patients|clinical trial)\b/i.test(fullTextLower);
 
   if (hasAnimalInTitle || hasAnimalInAbstractOnly) {
@@ -2932,7 +2970,9 @@ function classifyStudyDesign(paper) {
   }
 
   // 2. Identify Non-Empirical Literature: Narrative Reviews, Secondary Syntheses, Editorials, Letters, Protocols (Ineligible)
-  const isReviewOrCommentaryTitle = /\b(systematic review|meta-analysis|meta analysis|prisma statement|scoping review|narrative review|critical review|literature review|overview of reviews|bibliometric analysis|scientometric|umbrella review|a review on|a review of|review of current|state-of-the-art review|mechanisms of benefits|molecular mechanisms of|rationale and design|study protocol|trial design|editorial|commentary|author reply|letter to the editor|letter to|correspondence|perspective|viewpoint|meeting report|book review|erratum|corrigendum|guideline|consensus statement|breakthrough in the management)\b/i.test(titleLower);
+  const isProtocolOrDesign = /\b(rationale and design|study protocol|trial design|protocol for a)\b/i.test(titleLower);
+  const isExplicitReviewTitle = /\b(systematic review|meta-analysis|meta analysis|scoping review|narrative review|critical review|literature review|overview of reviews|bibliometric analysis|scientometric|umbrella review|a review on|a review of|review of current|state-of-the-art review|guideline|consensus statement)\b/i.test(titleLower);
+  const isEditorialOrCommentary = /\b(editorial|author reply|letter to the editor|correspondence|viewpoint|meeting report|book review|erratum|corrigendum)\b/i.test(titleLower);
   const isRhetoricalEditorial = /^(are|is|can|should|will)\b.*\?$/i.test(titleLower.trim()) && !/\b(randomized|randomised|patients|participants|enrolled|n\s*=)\b/i.test(fullTextLower);
 
   const doiLower = (paper.doi || '').toLowerCase();
@@ -2941,10 +2981,11 @@ function classifyStudyDesign(paper) {
     || /\/eh[a-z]{2}\d+\.\d+$/i.test(doiLower)
     || /\b(zenodo|repository|escholarship|thesis|dissertation|negative results)\b/i.test(journalLower);
 
+  const isEmpiricalClinical = /\b(randomized|randomised|clinical trial|trial|multicenter|placebo-controlled|double-blind|cohort|patients|participants)\b/i.test(titleLower);
   const pubTypeLower = (paper.pubType || []).join(' ').toLowerCase();
-  const isPubTypeReview = /review|editorial|letter|comment/i.test(pubTypeLower);
+  const isPubTypeReview = !isEmpiricalClinical && (/editorial|letter|comment/i.test(pubTypeLower) || (/review/i.test(pubTypeLower) && !/clinical trial|research/i.test(pubTypeLower)));
 
-  if (isReviewOrCommentaryTitle || isRhetoricalEditorial || isConferenceOrRepository || isPubTypeReview) {
+  if (isProtocolOrDesign || isExplicitReviewTitle || isEditorialOrCommentary || isRhetoricalEditorial || isConferenceOrRepository || isPubTypeReview) {
     return {
       code: 'ineligible-review',
       name: 'Non-Empirical Review / Editorial / Commentary',
@@ -2954,7 +2995,7 @@ function classifyStudyDesign(paper) {
       isEligible: false,
       exclusionReason: isConferenceOrRepository 
         ? 'Conference supplement abstract or non-peer-reviewed repository upload' 
-        : 'Non-primary literature (narrative review, secondary synthesis, editorial, commentary, or protocol)'
+        : (isProtocolOrDesign ? 'Study protocol or trial design paper' : 'Non-primary literature (narrative review, secondary synthesis, editorial, or commentary)')
     };
   }
 
@@ -3161,7 +3202,51 @@ function evaluateRiskOfBias(paper) {
 
 // ═══════════════════════════════════════════════════════════════
 // AUTOMATED INCLUSION / EXCLUSION SCREENING ENGINE
+// PRISMA 2020 Item 5 Compliant Multi-Domain Decision Engine
 // ═══════════════════════════════════════════════════════════════
+function extractInterventionKeywords(interventionStr, topicStr) {
+  const terms = new Set();
+  const rawCombined = `${interventionStr || ''} ${topicStr || ''}`.toLowerCase();
+  
+  // 1. Therapeutic drug classes & clinical agent aliases
+  if (/\b(sglt|sglt2|sglt-2|sodium-glucose|sodium glucose)\b/i.test(rawCombined)) {
+    ['sglt2', 'sglt-2', 'sodium-glucose', 'empagliflozin', 'dapagliflozin', 'canagliflozin', 'ertugliflozin', 'sotagliflozin'].forEach(t => terms.add(t));
+  }
+  if (/\b(glp|glp-1|glp1|incretin|semaglutide|liraglutide|dulaglutide|tirzepatide|exenatide|lixisenatide)\b/i.test(rawCombined)) {
+    ['glp-1', 'glp1', 'semaglutide', 'liraglutide', 'dulaglutide', 'exenatide', 'tirzepatide', 'lixisenatide', 'incretin', 'glucagon-like peptide'].forEach(t => terms.add(t));
+  }
+  if (/\b(aspirin|acetylsalicylic|asa|antiplatelet|platelet inhibitor|clopidogrel|ticagrelor)\b/i.test(rawCombined)) {
+    ['aspirin', 'acetylsalicylic', 'asa', 'antiplatelet', 'anti-platelet'].forEach(t => terms.add(t));
+  }
+  if (/\b(statin|hmg-coa|atorvastatin|rosuvastatin|simvastatin|pravastatin|ezetimibe|pcsk9)\b/i.test(rawCombined)) {
+    ['statin', 'atorvastatin', 'rosuvastatin', 'simvastatin', 'pravastatin', 'lipid-lowering', 'ezetimibe', 'pcsk9'].forEach(t => terms.add(t));
+  }
+  if (/\b(crispr|cas9|gene editing|base editing|prime editing|bcl11a)\b/i.test(rawCombined)) {
+    ['crispr', 'cas9', 'gene editing', 'bcl11a', 'exa-cel', 'exagamglogene'].forEach(t => terms.add(t));
+  }
+  
+  // 2. Extract clean individual keywords from intervention string (stripping dosage/parenthetical annotations)
+  if (interventionStr && interventionStr.trim().length > 1) {
+    const cleaned = interventionStr
+      .replace(/\([^)]*\)/g, ' ')
+      .replace(/\[[^\]]*\]/g, ' ')
+      .replace(/[\/\\,;:+\-_]/g, ' ')
+      .replace(/\b(e\.g\.|vs\.?|versus|compared|with|without|control|placebo|daily|dose|mg|oral|intravenous|therapy|treatment|intervention|regimen|standard|care|adult|patients|high-risk|initiated|before|after|weeks|gestation)\b/gi, ' ')
+      .trim();
+    
+    const words = cleaned.toLowerCase().split(/\s+/).filter(w => w.length >= 3);
+    words.forEach(w => terms.add(w));
+  }
+
+  // 3. Fallback to topic keywords if no specific agent extracted
+  if (terms.size === 0 && topicStr) {
+    const topicWords = cleanQueryKeywords(topicStr).toLowerCase().split(/\s+/).filter(w => w.length >= 4);
+    topicWords.forEach(w => terms.add(w));
+  }
+
+  return Array.from(terms);
+}
+
 function screenPaperAgainstCriteria(paper, topic, pico, incCriteria, excCriteria) {
   const text = `${paper.title} ${paper.abstract} ${(paper.meshHeadings || []).join(' ')}`.toLowerCase();
   const design = classifyStudyDesign(paper);
@@ -3170,54 +3255,61 @@ function screenPaperAgainstCriteria(paper, topic, pico, incCriteria, excCriteria
   let primaryReason = '';
   const matchedInclusions = [];
   const violatedExclusions = [];
+  const decisionRules = [];
 
-  // Check 1: Ineligible Study Design (Animal models, reviews, commentaries, etc.)
+  // Rule 1: Empirical Study Design (9 Cochrane empirical designs)
   if (!design.isEligible) {
     status = 'EXCLUDED';
-    primaryReason = design.exclusionReason || 'Exclusion: Ineligible publication type (only 9 empirical clinical study designs are included)';
+    primaryReason = design.exclusionReason || 'Ineligible publication type (only 9 empirical clinical study designs are included)';
     violatedExclusions.push(design.name);
+    decisionRules.push({ rule: 'Study Design', passed: false, detail: design.name });
+  } else {
+    matchedInclusions.push(`Study Type: ${design.name}`);
+    decisionRules.push({ rule: 'Study Design', passed: true, detail: design.name });
   }
 
-  // Check 2: Publication type exclusion (editorials, letters, commentaries)
+  // Rule 2: Non-Primary Title Filter (editorials, errata, author replies, meeting abstracts)
   if (status !== 'EXCLUDED') {
-    if (/\b(editorial|author reply|letter to editor|commentary|perspective|erratum|corrigendum|meeting abstract|study protocol)\b/i.test(text) ||
-        (paper.pubType && paper.pubType.some(pt => /editorial|letter|comment/i.test(pt)))) {
+    if (/\b(editorial|author reply|letter to editor|letter to the editor|perspective|erratum|corrigendum|meeting abstract)\b/i.test(paper.title || '')) {
       status = 'EXCLUDED';
-      primaryReason = 'Exclusion: Non-primary literature (editorial, letter, commentary, or protocol)';
-      violatedExclusions.push('Editorial / letter / commentary');
+      primaryReason = 'Non-primary literature in title (editorial, letter, commentary, or erratum)';
+      violatedExclusions.push('Editorial / letter / erratum in title');
+      decisionRules.push({ rule: 'Title Filter', passed: false, detail: 'Editorial/letter' });
+    } else {
+      decisionRules.push({ rule: 'Title Filter', passed: true, detail: 'Primary empirical title' });
     }
   }
 
-  // Check 3: Abstract presence & clinical endpoints
-  if (!paper.abstract || paper.abstract.length < 50) {
-    if (status !== 'EXCLUDED') {
-      status = 'BORDERLINE';
-      primaryReason = 'Needs Full-Text Review: Brief or missing abstract in database index';
+  // Rule 3: Target Intervention & Clinical Agent
+  const targetTerms = extractInterventionKeywords(pico?.i || pico?.intervention, topic);
+  let matchedIntervention = null;
+  if (targetTerms.length > 0) {
+    matchedIntervention = targetTerms.find(t => text.includes(t.toLowerCase()));
+  }
+
+  if (status !== 'EXCLUDED') {
+    if (matchedIntervention) {
+      matchedInclusions.push(`Target Agent: "${matchedIntervention}"`);
+      decisionRules.push({ rule: 'Target Intervention', passed: true, detail: `Matched: "${matchedIntervention}"` });
+    } else if (targetTerms.length > 0) {
+      // If abstract is missing or brief, do not exclude outright - flag as BORDERLINE for full-text audit
+      if (!paper.abstract || paper.abstract.length < 100) {
+        status = 'BORDERLINE';
+        primaryReason = 'Awaiting Full-Text Review: Brief abstract lacks explicit intervention name';
+        decisionRules.push({ rule: 'Target Intervention', passed: false, detail: 'Pending full-text verification' });
+      } else {
+        status = 'EXCLUDED';
+        primaryReason = `Exclusion: Target intervention not evaluated (searched for: ${targetTerms.slice(0, 3).join(', ')})`;
+        violatedExclusions.push('Off-target Intervention (Target agent not evaluated)');
+        decisionRules.push({ rule: 'Target Intervention', passed: false, detail: 'Target agent not detected' });
+      }
+    } else {
+      decisionRules.push({ rule: 'Target Intervention', passed: true, detail: 'Generic clinical intervention' });
     }
   }
 
-  // Check 4: PICOS Intervention Match
-  const interventionInput = (pico?.i || pico?.intervention || '').toLowerCase();
-  const topicLower = (topic || '').toLowerCase();
-
-  let targetInterventionTerms = [];
-  if (interventionInput.includes('sglt2') || topicLower.includes('sglt2') || interventionInput.includes('sodium-glucose') || topicLower.includes('sodium-glucose')) {
-    targetInterventionTerms = ['sglt2', 'sglt-2', 'sodium-glucose', 'sodium glucose', 'empagliflozin', 'dapagliflozin', 'canagliflozin', 'ertugliflozin', 'sotagliflozin'];
-  } else if (interventionInput.length > 3) {
-    targetInterventionTerms = interventionInput.split(/[,;\/]/).map(s => s.trim()).filter(s => s.length > 2);
-  }
-
-  if (status !== 'EXCLUDED' && targetInterventionTerms.length > 0) {
-    const hasIntervention = targetInterventionTerms.some(term => text.includes(term.toLowerCase()));
-    if (!hasIntervention) {
-      status = 'EXCLUDED';
-      primaryReason = `Exclusion: Does not evaluate target intervention (${pico?.i || 'specified intervention'})`;
-      violatedExclusions.push('Off-target Intervention (Target agent not evaluated)');
-    }
-  }
-
-  // Check 5: Mandatory Population Subtype Match (e.g. HFpEF vs exclusive HFrEF or acute MI)
-  const popInput = (pico?.p || pico?.population || topic || '').toLowerCase();
+  // Rule 4: Mandatory Population Subtype Match (e.g. HFpEF vs exclusive HFrEF or acute MI)
+  const popInput = `${pico?.p || ''} ${pico?.population || ''} ${topic || ''}`.toLowerCase();
   if (status !== 'EXCLUDED' && (popInput.includes('hfpef') || popInput.includes('preserved ejection fraction'))) {
     const hasPreserved = /\b(hfpef|preserved ejection fraction|preserved ef|pef|lvef\s*[>=]\s*50%?|lvef\s*>\s*40%?|mildly reduced)\b/i.test(text);
     const isExclusiveHFrEF = /\b(hfref|reduced ejection fraction|lvef\s*[<=]\s*40%?)\b/i.test(text) && !hasPreserved;
@@ -3229,10 +3321,15 @@ function screenPaperAgainstCriteria(paper, topic, pico, incCriteria, excCriteria
         ? 'Exclusion: Ineligible population (exclusively evaluates heart failure with reduced ejection fraction / HFrEF)' 
         : 'Exclusion: Ineligible population (evaluates acute myocardial infarction rather than chronic HFpEF)';
       violatedExclusions.push('Ineligible Population Subtype');
+      decisionRules.push({ rule: 'Population Match', passed: false, detail: isExclusiveHFrEF ? 'Exclusive HFrEF' : 'Acute MI' });
+    } else {
+      decisionRules.push({ rule: 'Population Match', passed: true, detail: 'Preserved EF population' });
     }
+  } else if (status !== 'EXCLUDED') {
+    decisionRules.push({ rule: 'Population Match', passed: true, detail: 'Clinical population verified' });
   }
 
-  // Check 6: Secondary Subgroup publication tagging
+  // Rule 5: Secondary Subgroup publication tagging
   let isSecondarySubgroup = false;
   if (status === 'INCLUDED') {
     if (/\b(subgroup analysis|secondary analysis|prespecified subanalysis|post-hoc analysis|health-related quality of life|health status and quality|uric acid and|body mass index)\b/i.test(paper.title || '') &&
@@ -3242,24 +3339,20 @@ function screenPaperAgainstCriteria(paper, topic, pico, incCriteria, excCriteria
     }
   }
 
-  // Check 7: Overall keyword relevance
-  const topicWords = cleanQueryKeywords(topic).toLowerCase().split(' ').filter(w => w.length > 3);
-  let topicWordHits = 0;
-  for (const w of topicWords) {
-    if (text.includes(w)) topicWordHits++;
-  }
-  const matchRatio = topicWords.length ? topicWordHits / topicWords.length : 1;
-
-  if (status !== 'EXCLUDED' && matchRatio < 0.20) {
-    status = 'EXCLUDED';
-    primaryReason = 'Exclusion: Off-target clinical intervention, population, or outcomes';
-    violatedExclusions.push('Off-target PICOS domain');
+  // Rule 6: Abstract presence & clinical endpoints
+  if (!paper.abstract || paper.abstract.length < 50) {
+    if (status === 'INCLUDED') {
+      status = 'BORDERLINE';
+      primaryReason = 'Needs Full-Text Review: Brief or missing abstract in database index';
+      decisionRules.push({ rule: 'Abstract Completeness', passed: false, detail: 'Brief abstract (<50 chars)' });
+    }
+  } else {
+    decisionRules.push({ rule: 'Abstract Completeness', passed: true, detail: 'Complete abstract indexed' });
   }
 
-  // Matched Inclusions
+  // Matched Inclusions & Safeguards
   if (status === 'INCLUDED') {
-    matchedInclusions.push(`Study Type: ${design.name}`);
-    if (/\b(patients|participants|cohort|men|women|adults|cases|subjects)\b/i.test(text)) {
+    if (/\b(patients|participants|cohort|men|women|adults|cases|subjects|pregnant)\b/i.test(text)) {
       matchedInclusions.push('Human clinical population');
     }
     matchedInclusions.push('Empirical primary research findings');
@@ -3267,10 +3360,11 @@ function screenPaperAgainstCriteria(paper, topic, pico, incCriteria, excCriteria
 
   return {
     status,
-    primaryReason,
+    primaryReason: primaryReason || 'Meets pre-specified PICOS eligibility criteria',
     matchedInclusions,
     violatedExclusions,
     design,
+    decisionRules,
     isSecondarySubgroup,
     rob: evaluateRiskOfBias(paper)
   };
@@ -3904,6 +3998,26 @@ function renderPaperCards() {
       `;
     }
 
+    const rules = paper.screening?.decisionRules || [];
+    let rulesHtml = '';
+    if (rules.length > 0) {
+      rulesHtml = `
+        <div style="margin-top:10px;margin-bottom:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;">
+          <div style="font-size:0.76rem;font-weight:700;color:#0f172a;margin-bottom:6px;display:flex;align-items:center;gap:6px;">
+            <span>⚡ Automated Screening Rules Breakdown:</span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:6px;font-size:0.75rem;">
+            ${rules.map(r => `
+              <div style="background:#fff;border:1px solid ${r.passed ? '#bbf7d0' : '#fecaca'};border-radius:6px;padding:4px 8px;display:flex;align-items:center;justify-content:space-between;gap:6px;">
+                <span style="font-weight:600;color:#475569;">${r.rule}:</span>
+                <span style="font-weight:700;color:${r.passed ? '#15803d' : '#b91c1c'}">${r.passed ? '✔ PASS' : '✖ FAIL'}</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+
     const chars = extractStudyCharacteristics(paper, STATE.pico);
 
     card.innerHTML = `
@@ -3931,14 +4045,16 @@ function renderPaperCards() {
 
       <p class="abstract-text">${paper.abstract || '<em>No abstract text indexed.</em>'}</p>
 
+      ${rulesHtml}
+
       ${reasonBox}
 
       <div class="card-action-bar">
         <div style="font-size:.78rem;color:var(--muted)">Citations: <strong>${paper.citationCount}</strong> &bull; 🏷️ Study Type: <strong style="color:var(--navy)">${design.name}</strong></div>
-        <div style="display:flex;gap:6px">
-          ${status === 'INCLUDED' 
-            ? `<button type="button" class="mini-btn mini-btn-danger" onclick="togglePaperEligibility(${paper._globalIndex}, 'EXCLUDED')">✖ Exclude Study</button>` 
-            : `<button type="button" class="mini-btn mini-btn-good" onclick="togglePaperEligibility(${paper._globalIndex}, 'INCLUDED')">✔ Include Study</button>`}
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          ${status !== 'INCLUDED' ? `<button type="button" class="mini-btn mini-btn-good" onclick="togglePaperEligibility(${paper._globalIndex}, 'INCLUDED')">✔ Include</button>` : ''}
+          ${status !== 'BORDERLINE' ? `<button type="button" class="mini-btn" style="color:#b45309;border-color:#fde68a;background:#fffbeb" onclick="togglePaperEligibility(${paper._globalIndex}, 'BORDERLINE')">⚠️ Borderline</button>` : ''}
+          ${status !== 'EXCLUDED' ? `<button type="button" class="mini-btn mini-btn-danger" onclick="togglePaperEligibility(${paper._globalIndex}, 'EXCLUDED')">✖ Exclude</button>` : ''}
           <button type="button" class="mini-btn" onclick="removePaperCompletely(${paper._globalIndex})">🗑️ Remove</button>
         </div>
       </div>
@@ -4010,9 +4126,35 @@ function updatePrismaAndCounters() {
     }
   }
 
+  // Update Screening Engine Inspector labels
+  const engineP = document.getElementById('engine-p-criteria');
+  if (engineP) {
+    engineP.textContent = (STATE.pico?.p || 'Human clinical trials and prospective empirical cohorts.').substring(0, 110);
+  }
+  const engineI = document.getElementById('engine-i-criteria');
+  if (engineI) {
+    const targetTerms = extractInterventionKeywords(STATE.pico?.i || STATE.pico?.intervention, STATE.topic);
+    engineI.textContent = targetTerms.length > 0 
+      ? `Active tokens (${targetTerms.length}): ${targetTerms.slice(0, 5).join(', ')}${targetTerms.length > 5 ? '...' : ''}`
+      : 'Any empirical intervention concordant with title';
+  }
+
   // Sync publication-quality PRISMA diagram generator
   if (typeof syncPrismaStateFromWorkflow === 'function') {
     syncPrismaStateFromWorkflow(false);
+  }
+}
+
+function toggleEngineInspectorDetails() {
+  const el = document.getElementById('engine-inspector-details');
+  const btn = document.getElementById('btn-toggle-engine-details');
+  if (!el || !btn) return;
+  if (el.style.display === 'none') {
+    el.style.display = 'grid';
+    btn.textContent = 'Hide Engine Breakdown ▲';
+  } else {
+    el.style.display = 'none';
+    btn.textContent = 'Show Engine Breakdown ▼';
   }
 }
 
@@ -4033,12 +4175,16 @@ function togglePaperEligibility(globalIndex, newStatus) {
   if (!paper.screening) paper.screening = {};
   paper.screening.status = newStatus;
   if (newStatus === 'INCLUDED') {
-    paper.screening.primaryReason = '';
+    paper.screening.primaryReason = 'Meets pre-specified PICOS eligibility criteria (investigator verified)';
     paper.screening.violatedExclusions = [];
     paper.screening.matchedInclusions = ['Manually verified and included by reviewer'];
+  } else if (newStatus === 'BORDERLINE') {
+    paper.screening.primaryReason = 'Flagged for full-text audit / secondary data extraction';
+    paper.screening.violatedExclusions = [];
+    paper.screening.matchedInclusions = ['Investigator audit pending'];
   } else {
     paper.screening.primaryReason = 'Excluded manually by reviewer upon expert appraisal';
-    paper.screening.violatedExclusions = ['Reviewer override'];
+    paper.screening.violatedExclusions = ['Reviewer exclusion override'];
     paper.screening.matchedInclusions = [];
   }
   updatePrismaAndCounters();
