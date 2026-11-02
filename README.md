@@ -434,6 +434,25 @@ Launch the production web application directly in your browser:
    http://localhost:3000
    ```
 
+### Option 4: Production Deployment & Environment Variables
+
+SysRevAI operates with zero required configuration via public literature APIs and polite pools. For high-volume production deployments (e.g., on Vercel), configure server-side API keys via environment variables:
+
+```bash
+# Add Semantic Scholar Graph API Key
+vercel env add S2_API_KEY
+
+# Add OpenAlex Works API Key
+vercel env add OPENALEX_API_KEY
+```
+
+For local development with customized environment variables:
+1. Copy `.env.example` to `.env`:
+   ```bash
+   cp .env.example .env
+   ```
+2. Populate `S2_API_KEY` and `OPENALEX_API_KEY`. Server proxy endpoints (`/api/s2`, `/api/openalex`) automatically read these keys on the server without ever exposing them to browser clients.
+
 ---
 
 ## 🛠️ Technology Stack

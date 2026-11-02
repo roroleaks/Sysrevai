@@ -446,18 +446,38 @@ assert(harvardVol.includes('381') && harvardVol.includes('(21)') && harvardVol.i
 console.log('\n▶️ STEP 5: META-ANALYSIS WORKSPACE & STATISTICAL POOLING');
 const metaStudies = syncMetaStudiesFromIncluded(included);
 assert(metaStudies.length === 4, 'Meta-analysis automatically synced 4 studies from included cohort');
+assert(metaStudies[0].e1 === null && metaStudies[0].verified === false, 'Studies sync as unextracted with null counts and verified: false');
 
-// Add mock binary event counts
-metaStudies[0].e1 = 386; metaStudies[0].n1 = 2373; metaStudies[0].e2 = 502; metaStudies[0].n2 = 2371; metaStudies[0].includedInPool = true; // Dapa-HF
-metaStudies[1].e1 = 361; metaStudies[1].n1 = 1863; metaStudies[1].e2 = 462; metaStudies[1].n2 = 1867; metaStudies[1].includedInPool = true; // Emperor-Reduced
-metaStudies[2].e1 = 415; metaStudies[2].n1 = 2997; metaStudies[2].e2 = 511; metaStudies[2].n2 = 2991; metaStudies[2].includedInPool = true; // Emperor-Preserved
+// Add non-circular GLP-1 RA landmark cardiovascular trial counts (W12):
+// REWIND (Gerstein 2019): 594/4949 vs 663/4952
+// SUSTAIN-6 (Marso 2016): 108/1648 vs 146/1649
+// PIONEER-6 (Husain 2019): 61/1591 vs 76/1592
+// EXSCEL (Holman 2017): 839/7356 vs 905/7396
+metaStudies[0].studyId = 'Gerstein et al. (2019)'; metaStudies[0].e1 = 594; metaStudies[0].n1 = 4949; metaStudies[0].e2 = 663; metaStudies[0].n2 = 4952; metaStudies[0].includedInPool = true;
+metaStudies[1].studyId = 'Marso et al. (2016)'; metaStudies[1].e1 = 108; metaStudies[1].n1 = 1648; metaStudies[1].e2 = 146; metaStudies[1].n2 = 1649; metaStudies[1].includedInPool = true;
+metaStudies[2].studyId = 'Husain et al. (2019)'; metaStudies[2].e1 = 61; metaStudies[2].n1 = 1591; metaStudies[2].e2 = 76; metaStudies[2].n2 = 1592; metaStudies[2].includedInPool = true;
+metaStudies[3].studyId = 'Holman et al. (2017)'; metaStudies[3].e1 = 839; metaStudies[3].n1 = 7356; metaStudies[3].e2 = 905; metaStudies[3].n2 = 7396; metaStudies[3].includedInPool = true;
+
+// Regression Assertion: executeMetaAnalysis throws on modelType field typo (Task 4)
+let threwModelType = false;
+try {
+  executeMetaAnalysis({
+    outcomeType: 'binary',
+    effectMeasure: 'RR',
+    modelType: 'random',
+    studies: metaStudies
+  });
+} catch (err) {
+  if (err.message && err.message.includes('modelType')) threwModelType = true;
+}
+assert(threwModelType, 'executeMetaAnalysis throws descriptive error naming field typo if modelType is passed');
 
 const metaState = {
   outcomeType: 'binary',
   effectMeasure: 'RR',
-  modelType: 'random',
+  model: 'random',
   confLevel: 0.95,
-  studies: metaStudies.slice(0, 3)
+  studies: metaStudies
 };
 const metaStats = executeMetaAnalysis(metaState);
 assert(metaStats.isValid === true && metaStats.pooled, 'Meta-analysis calculation succeeded');
@@ -465,6 +485,14 @@ const pooled = metaStats.pooled;
 assert(!isNaN(pooled.pointEstimate) && pooled.pointEstimate > 0.6 && pooled.pointEstimate < 0.95, 'Meta-analysis pooled Risk Ratio calculated accurately', `Pooled RR: ${pooled.pointEstimate}`);
 assert(pooled.ciLow > 0 && pooled.ciHigh < 1.0, 'Meta-analysis confidence interval statistically significant [CI < 1.0]');
 assert(pooled.I2 !== undefined && !isNaN(pooled.I2), 'Heterogeneity I² statistic calculated');
+
+// Regression Assertion: Integer-ness validation in calculateBinaryStudyEffect (W13)
+const nonIntRes = calculateBinaryStudyEffect({ e1: 12.5, n1: 100, e2: 15, n2: 100 }, 'RR', 1.96);
+assert(nonIntRes.valid === false && nonIntRes.error.includes('integers'), 'calculateBinaryStudyEffect rejects non-integer counts');
+
+// Regression Assertion: Conservative variance fallback for double-zero RD (W14)
+const doubleZeroRD = calculateBinaryStudyEffect({ e1: 0, n1: 50, e2: 0, n2: 50 }, 'RD', 1.96);
+assert(doubleZeroRD.valid === true && doubleZeroRD.variance === (1 / 100) * 2, 'calculateBinaryStudyEffect applies conservative double-zero RD variance fallback');
 
 // Regression Assertion: Linear continuous measure MD is NOT exponentiated with Math.exp()
 const linearStudies = [
@@ -496,6 +524,9 @@ assert(eggerK2.applicable === false && eggerK2.intercept === null, 'Eggers test 
 // Regression Assertion: PDF Text Sanitizer
 const sanitized = sanitizePdfText('I² = 0.0%, τ² = 0.00, 2016â€“2026');
 assert(sanitized === 'I^2 = 0.0%, tau^2 = 0.00, 2016-2026', 'sanitizePdfText converts I² to I^2, τ² to tau^2, and decodes mojibake en-dash â€“', sanitized);
+assert(sanitizePdfText('2016â€"2026') === '2016-2026', 'sanitizePdfText decodes mojibake em-dash â€" (U+201D)');
+assert(sanitizePdfText('Effect 10²') === 'Effect 10^2', 'sanitizePdfText converts superscript 2');
+assert(sanitizePdfText('CO₂ emissions') === 'CO_2 emissions', 'sanitizePdfText converts subscript 2');
 
 const forestSvg = renderForestPlotSVG(metaState, metaStats);
 assert(forestSvg.includes('<svg') && forestSvg.includes('Forest Plot'), 'Publication-ready Forest Plot SVG rendered');

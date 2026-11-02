@@ -100,14 +100,17 @@ function fetchSemanticScholar(topic, limit = 5) {
       limit: String(limit),
       fields: 'paperId,title,authors,year,venue,externalIds,citationCount'
     });
+    const headers = {
+      'User-Agent': 'SysRevAI/1.0 (mailto:raouf.roshdy@aimed.org)'
+    };
+    if (S2_KEY) {
+      headers['x-api-key'] = S2_KEY;
+    }
     const options = {
       hostname: 'api.semanticscholar.org',
       path: `/graph/v1/paper/search?${params.toString()}`,
       method: 'GET',
-      headers: {
-        'User-Agent': 'SysRevAI/1.0 (mailto:raouf.roshdy@aimed.org)',
-        'x-api-key': S2_KEY
-      },
+      headers,
       timeout: 8000
     };
     const req = https.request(options, res => {
@@ -144,9 +147,11 @@ function fetchOpenAlex(topic, limit = 5) {
     const params = new URLSearchParams({
       search: cleanQueryKeywords(topic),
       per_page: String(limit),
-      api_key: OPENALEX_KEY,
       mailto: 'raouf.roshdy@aimed.org'
     });
+    if (OPENALEX_KEY) {
+      params.set('api_key', OPENALEX_KEY);
+    }
     const options = {
       hostname: 'api.openalex.org',
       path: `/works?${params.toString()}`,

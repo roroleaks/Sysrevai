@@ -127,10 +127,25 @@ function metaChiSquarePValue(q, df) {
  * Computes individual study effect size, variance, SE, and 95% CI for binary data.
  */
 function calculateBinaryStudyEffect(s, measure, zCrit) {
-  let e1 = Number(s.e1) || 0;
-  let n1 = Number(s.n1) || 0;
-  let e2 = Number(s.e2) || 0;
-  let n2 = Number(s.n2) || 0;
+  if (s.outcomeType === 'hierarchical' || (s.abstract && /win ratio|hierarchical outcome|stratified outcome/i.test(s.abstract))) {
+    return { valid: false, error: 'Hierarchical/win ratio outcomes cannot be pooled as binary event counts (Cochrane §6.4.1)' };
+  }
+
+  if (s.e1 === null || s.e1 === undefined || s.e1 === '' ||
+      s.e2 === null || s.e2 === undefined || s.e2 === '' ||
+      s.n1 === null || s.n1 === undefined || s.n1 === '' ||
+      s.n2 === null || s.n2 === undefined || s.n2 === '') {
+    return { valid: false, error: 'Event counts and sample sizes must be specified' };
+  }
+
+  let e1 = Number(s.e1);
+  let n1 = Number(s.n1);
+  let e2 = Number(s.e2);
+  let n2 = Number(s.n2);
+
+  if (!Number.isInteger(e1) || !Number.isInteger(e2) || !Number.isInteger(n1) || !Number.isInteger(n2)) {
+    return { valid: false, error: 'Event counts and sample sizes must be integers' };
+  }
 
   if (n1 <= 0 || n2 <= 0) {
     return { valid: false, error: 'Total sample size must be > 0' };
@@ -179,7 +194,7 @@ function calculateBinaryStudyEffect(s, measure, zCrit) {
     effect = p1 - p2;
     logEffect = effect; // RD is on the linear scale
     v = (p1 * (1 - p1) / n1) + (p2 * (1 - p2) / n2);
-    if (v <= 0) v = 1 / (n1 + n2);
+    if (v <= 0) v = (1 / (n1 + n2)) * 2; // conservative fallback for double-zero RD
     se = Math.sqrt(v);
     ciLow = effect - zCrit * se;
     ciHigh = effect + zCrit * se;
@@ -342,6 +357,10 @@ function calculateEggerTest(studiesEvaluated) {
  * Executes statistical pooling across all eligible studies.
  */
 function executeMetaAnalysis(state) {
+  if (state && state.modelType !== undefined && state.model === undefined) {
+    throw new Error('executeMetaAnalysis: use field "model", not "modelType". Got modelType=' + state.modelType);
+  }
+
   const zCrit = state.confLevel === 0.99 ? 2.576 : 1.96;
   const isRatio = (state.outcomeType === 'binary' && (state.effectMeasure === 'RR' || state.effectMeasure === 'OR'));
 
@@ -349,7 +368,14 @@ function executeMetaAnalysis(state) {
   const errors = [];
   const warnings = [];
 
-  const eligibleStudies = state.studies.filter(s => s.includedInPool !== false);
+  const eligibleStudies = (state.studies || []).filter(s => {
+    if (s.includedInPool === false) return false;
+    if (state.outcomeType === 'binary' && (s.outcomeType === 'hierarchical' || (s.abstract && /win ratio|hierarchical outcome|stratified outcome/i.test(s.abstract)))) {
+      warnings.push(`Study "${s.studyId || s.title || s.id}" excluded from binary pooling: Hierarchical/win ratio outcome requires specialized analysis per Cochrane §6.4.1.`);
+      return false;
+    }
+    return true;
+  });
 
   if (eligibleStudies.length < 2) {
     errors.push(`At least 2 studies are required for quantitative meta-analysis (current eligible studies: ${eligibleStudies.length}).`);
@@ -1148,80 +1174,45 @@ function syncMetaStudiesFromIncluded(includedPapers) {
     const studyId = hasMultiple ? `${firstAuthor} et al. (${yearStr})` : `${firstAuthor} (${yearStr})`;
     const design = p.screening?.design?.name || (p.screening?.design?.short) || 'Randomized controlled trials (RCTs)';
 
-    let sampleSize = 100;
-    const nMatch = (p.abstract || '').match(/\b(?:n\s*=\s*|enrolled\s+|randomized\s+|total of\s+|cohort of\s+)([0-9,]+)/i);
-    if (nMatch) {
-      const parsed = parseInt(nMatch[1].replace(/,/g, ''), 10);
-      if (!isNaN(parsed) && parsed > 10 && parsed < 500000) sampleSize = parsed;
+    // Hierarchical / win ratio outcome detection (Cochrane §6.4.1)
+    const textToCheck = ((p.title || '') + ' ' + (p.abstract || '')).toLowerCase();
+    const isHierarchical = textToCheck.includes('win ratio') || textToCheck.includes('hierarchical outcome') || textToCheck.includes('stratified outcome');
+    const outcomeType = isHierarchical ? 'hierarchical' : 'binary';
+
+    // Stricter regex requiring medical-events context (suggested only, never auto-verified)
+    let suggestedCounts = null;
+    const medicalFracMatches = [...(p.abstract || '').matchAll(/\b(\d{1,4})\s*(?:of|\/)\s*(\d{2,6})\s+(?:patients|participants|subjects|individuals|cases)\b/gi)];
+    if (medicalFracMatches.length >= 2) {
+      suggestedCounts = {
+        e1: parseInt(medicalFracMatches[0][1], 10),
+        n1: parseInt(medicalFracMatches[0][2], 10),
+        e2: parseInt(medicalFracMatches[1][1], 10),
+        n2: parseInt(medicalFracMatches[1][2], 10)
+      };
     }
-    const nPerArm = Math.max(20, Math.round(sampleSize / 2));
-
-    let e1 = null, n1 = nPerArm, e2 = null, n2 = nPerArm;
-    let m1 = null, s1 = null, m2 = null, s2 = null;
-    let verified = false;
-
-    // Check landmark published RCTs for accurate ground-truth clinical pooling
-    const lowerTitle = (p.title || '').toLowerCase();
-    const lowerAbstract = (p.abstract || '').toLowerCase();
-    const isDeliver = lowerTitle.includes('deliver') || lowerAbstract.includes('deliver trial');
-    const isEmperorPreserved = lowerTitle.includes('emperor-preserved') || lowerAbstract.includes('emperor-preserved');
-    const isDapaHf = lowerTitle.includes('dapa-hf') || lowerAbstract.includes('dapa-hf');
-    const isEmperorReduced = lowerTitle.includes('emperor-reduced') || lowerAbstract.includes('emperor-reduced');
-    const isEmpulse = lowerTitle.includes('empulse') || lowerAbstract.includes('empulse');
-
-    if (isDeliver) {
-      e1 = 512; n1 = 3131; e2 = 610; n2 = 3132;
-      verified = true;
-    } else if (isEmperorPreserved) {
-      e1 = 415; n1 = 2997; e2 = 511; n2 = 2991;
-      verified = true;
-    } else if (isDapaHf) {
-      e1 = 386; n1 = 2373; e2 = 502; n2 = 2371;
-      verified = true;
-    } else if (isEmperorReduced) {
-      e1 = 361; n1 = 1863; e2 = 462; n2 = 1867;
-      verified = true;
-    } else if (isEmpulse) {
-      e1 = 112; n1 = 265; e2 = 148; n2 = 265;
-      verified = true;
-    } else {
-      const fracMatches = [...(p.abstract || '').matchAll(/\b(\d{1,4})\s*\/\s*(\d{2,5})\b/g)];
-      if (fracMatches.length >= 2) {
-        e1 = parseInt(fracMatches[0][1], 10);
-        n1 = parseInt(fracMatches[0][2], 10);
-        e2 = parseInt(fracMatches[1][1], 10);
-        n2 = parseInt(fracMatches[1][2], 10);
-        verified = true;
-      }
-    }
-
-    const meanMatches = [...(p.abstract || '').matchAll(/(?:mean|Mean)\s*[:=]?\s*(\d+\.?\d*)\s*(?:±|\+\/-)\s*(\d+\.?\d*)/g)];
-    if (meanMatches.length >= 2) {
-      m1 = parseFloat(meanMatches[0][1]);
-      s1 = parseFloat(meanMatches[0][2]);
-      m2 = parseFloat(meanMatches[1][1]);
-      s2 = parseFloat(meanMatches[1][2]);
-      verified = true;
-    }
-
-    const hasData = verified && (e1 !== null || m1 !== null);
 
     return {
       id: p.id || `study-${idx + 1}`,
       studyId,
       design,
-      e1,
-      n1,
-      e2,
-      n2,
-      m1,
-      s1,
-      m2,
-      s2,
+      e1: null,
+      n1: null,
+      e2: null,
+      n2: null,
+      m1: null,
+      s1: null,
+      m2: null,
+      s2: null,
+      outcomeType,
+      isHierarchical,
+      suggestedCounts,
       title: p.title || '',
-      verified: hasData,
-      includedInPool: hasData,
-      note: hasData ? '' : 'Qualitative synthesis only (awaiting extracted 2x2 counts in Step 4)'
+      abstract: p.abstract || '',
+      verified: false,
+      includedInPool: false,
+      note: isHierarchical 
+        ? 'Excluded from binary pooling: Hierarchical/win ratio outcome requires specialized synthesis (Cochrane §6.4.1).'
+        : 'Qualitative synthesis only (awaiting extracted 2x2 counts in Step 4)'
     };
   });
 }

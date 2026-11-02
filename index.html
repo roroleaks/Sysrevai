@@ -2001,13 +2001,9 @@ sup.cite-num:hover, .cite-num:hover, .cite-apa:hover, .cite-harvard:hover {
 const EPMC_API_BASE = 'https://www.ebi.ac.uk/europepmc/webservices/rest/search';
 const S2_API_BASE = 'https://api.semanticscholar.org/graph/v1';
 
-// Dedicated Semantic Scholar API Key embedded from the AIMed / SciDraft core
-const S2_DEFAULT_EMBEDDED_KEY = 's2k-0rcC3ztnxRdNGsOKL1SNvwbOPnSaRh4qHBT9qe7A';
+// Upstream API proxies & endpoints (keys secured in server-side environment variables)
 let S2_USER_KEY = '';
-
-// Dedicated OpenAlex API Key & Crossref public endpoint configuration
 const OPENALEX_API_BASE = 'https://api.openalex.org/works';
-const OPENALEX_DEFAULT_KEY = 'LCR4PBZ9z5sTV3HuRDicln';
 const CROSSREF_API_BASE = 'https://api.crossref.org/works';
 
 const VALIDATION_CACHE = new Map();
@@ -2465,28 +2461,17 @@ async function fetchOpenAlex(topic, pageSize, yearRange, signal) {
 
   try {
     let res = null;
-    let proxySucceeded = false;
     try {
       res = await fetch(`/api/openalex?${queryParams.toString()}`, { signal: combinedSignal });
-      if (res && res.ok) proxySucceeded = true;
     } catch (proxyErr) {
       if (proxyErr.name === 'AbortError' && signal?.aborted) throw proxyErr;
-    }
-
-    if (!proxySucceeded) {
-      // Direct CORS client fallback with Polite Pool and key
-      let directUrl = `${OPENALEX_API_BASE}?search=${encodeURIComponent(cleanTopic)}&per_page=${pageSize}&api_key=${OPENALEX_DEFAULT_KEY}&mailto=raouf.roshdy@aimed.org`;
-      if (fromYear) {
-        directUrl += `&filter=publication_year:${fromYear}-${currentYear}`;
-      }
-      res = await fetch(directUrl, { signal: combinedSignal });
     }
 
     clearTimeout(timeoutId);
 
     if (!res || !res.ok) {
       console.warn(`OpenAlex query returned HTTP ${res ? res.status : 'No response'}`);
-      return { results: [], hitCount: 0, error: `HTTP ${res ? res.status : 'Unavailable'}` };
+      return { results: [], hitCount: 0, error: 'OpenAlex proxy unavailable' };
     }
 
     const json = await res.json();
@@ -2705,25 +2690,14 @@ async function fetchSemanticScholar(topic, pageSize, yearRange, signal) {
 
   try {
     const headers = {};
-    const apiKey = S2_USER_KEY || S2_DEFAULT_EMBEDDED_KEY;
+    const apiKey = S2_USER_KEY || '';
     if (apiKey) headers['x-api-key'] = apiKey;
 
     let res = null;
-    let proxySucceeded = false;
     try {
       res = await fetch(`/api/s2?${queryParams}`, { headers, signal: combinedSignal });
-      if (res && res.ok) proxySucceeded = true;
     } catch (proxyErr) {
       if (proxyErr.name === 'AbortError' && signal?.aborted) throw proxyErr;
-    }
-
-    if (!proxySucceeded) {
-      // Fallback to direct public search only if server proxy was unreachable or throttled
-      try {
-        res = await fetch(`${S2_API_BASE}/paper/search?${queryParams}`, { headers, signal: combinedSignal });
-      } catch (directErr) {
-        if (directErr.name === 'AbortError' && signal?.aborted) throw directErr;
-      }
     }
 
     clearTimeout(timeoutId);
@@ -2999,110 +2973,219 @@ function classifyStudyDesign(paper) {
     };
   }
 
-  // 3. Classify strictly into the 9 Empirical Study Types:
-
-  // (1) Non-randomized controlled trials (Evaluated before RCT to prevent hyphenated non-randomized false match)
-  if (/\b(non-randomized|non-randomised|quasi-experimental|controlled clinical trial|open-label trial|phase [12iI]{1,2} trial|interventional non-randomized|before-and-after study|before-after study|interrupted time series)\b/i.test(text)) {
-    return {
-      code: 'non-rct',
-      name: 'Non-randomized controlled trials',
-      short: 'Non-RCT Trial',
-      badgeClass: 'design-nonrct',
-      icon: '⚖️',
-      isEligible: true,
-      weight: 0.80
-    };
-  }
-
-  // (2) Randomized controlled trials (RCTs)
-  if ((/\b(randomized controlled trial|randomised controlled trial|randomized clinical trial|randomised clinical trial|randomly assigned|random allocation|double-blind|triple-blind|placebo-controlled|rct|cluster-randomized|crossover trial)\b/i.test(text) && !/\bnon[- ]/i.test(text)) ||
-      (paper.pubType && paper.pubType.some(pt => /randomized controlled trial/i.test(pt)))) {
-    return {
+  // 3. Classify strictly into the 9 Empirical Study Types with Disambiguation Scoring (W9):
+  // Counts how many regex alternatives match each design code and picks the design with highest match count.
+  // Ties broken by design hierarchy: rct > non-rct > cohort > case-control > cross-sectional > case-series > qualitative > observational
+  const designDefs = [
+    {
       code: 'rct',
       name: 'Randomized controlled trials (RCTs)',
       short: 'RCT',
       badgeClass: 'design-rct',
       icon: '🎲',
       isEligible: true,
-      weight: 1.0
-    };
-  }
-
-  // (3) Diagnostic accuracy studies
-  if (/\b(diagnostic accuracy|diagnostic performance|sensitivity and specificity|receiver operating characteristic|roc curve|auc-roc|positive predictive value|negative predictive value|area under the curve|gold standard comparison|index test|reference standard|diagnostic test accuracy)\b/i.test(text)) {
-    return {
+      weight: 1.0,
+      priority: 100,
+      regexes: [
+        /\brandomized controlled trial\b/gi,
+        /\brandomised controlled trial\b/gi,
+        /\brandomized clinical trial\b/gi,
+        /\brandomised clinical trial\b/gi,
+        /\brandomly assigned\b/gi,
+        /\brandom allocation\b/gi,
+        /\bdouble-blind\b/gi,
+        /\btriple-blind\b/gi,
+        /\bplacebo-controlled\b/gi,
+        /\brct\b/gi,
+        /\bcluster-randomized\b/gi,
+        /\bcrossover trial\b/gi
+      ],
+      bonus: (paper.pubType && paper.pubType.some(pt => /randomized controlled trial/i.test(pt))) ? 2 : 0,
+      disqualifier: /\bnon[- ](?:randomized|randomised)\b/i
+    },
+    {
+      code: 'non-rct',
+      name: 'Non-randomized controlled trials',
+      short: 'Non-RCT Trial',
+      badgeClass: 'design-nonrct',
+      icon: '⚖️',
+      isEligible: true,
+      weight: 0.80,
+      priority: 90,
+      regexes: [
+        /\bnon-randomized\b/gi,
+        /\bnon-randomised\b/gi,
+        /\bquasi-experimental\b/gi,
+        /\bcontrolled clinical trial\b/gi,
+        /\bopen-label trial\b/gi,
+        /\bphase [12iI]{1,2} trial\b/gi,
+        /\binterventional non-randomized\b/gi,
+        /\bbefore-and-after study\b/gi,
+        /\bbefore-after study\b/gi,
+        /\binterrupted time series\b/gi
+      ]
+    },
+    {
       code: 'diagnostic-accuracy',
       name: 'Diagnostic accuracy studies',
       short: 'Diagnostic Accuracy',
       badgeClass: 'design-diag',
       icon: '🎯',
       isEligible: true,
-      weight: 0.85
-    };
-  }
-
-  // (4) Qualitative studies
-  if (/\b(qualitative study|qualitative research|qualitative interview|qualitative exploration|qualitative method|thematic analysis|thematic interview|grounded theory|semi-structured interview|in-depth interview|focus group|phenomenological|ethnographic|qualitative synthesis|inductive thematic)\b/i.test(text)) {
-    return {
-      code: 'qualitative',
-      name: 'Qualitative studies',
-      short: 'Qualitative Study',
-      badgeClass: 'design-qual',
-      icon: '💬',
-      isEligible: true,
-      weight: 0.70
-    };
-  }
-
-  // (5) Cohort studies (prospective or retrospective)
-  if (/\b(cohort study|prospective cohort|retrospective cohort|longitudinal cohort|follow-up cohort|population-based cohort|birth cohort|incident cohort|longitudinal study|follow-up study)\b/i.test(text)) {
-    return {
+      weight: 0.85,
+      priority: 85,
+      regexes: [
+        /\bdiagnostic accuracy\b/gi,
+        /\bdiagnostic performance\b/gi,
+        /\bsensitivity and specificity\b/gi,
+        /\breceiver operating characteristic\b/gi,
+        /\broc curve\b/gi,
+        /\bauc-roc\b/gi,
+        /\bpositive predictive value\b/gi,
+        /\bnegative predictive value\b/gi,
+        /\barea under the curve\b/gi,
+        /\bgold standard comparison\b/gi,
+        /\bindex test\b/gi,
+        /\breference standard\b/gi,
+        /\bdiagnostic test accuracy\b/gi
+      ]
+    },
+    {
       code: 'cohort',
       name: 'Cohort studies (prospective or retrospective)',
       short: 'Cohort Study',
       badgeClass: 'design-cohort',
       icon: '👥',
       isEligible: true,
-      weight: 0.85
-    };
-  }
-
-  // (6) Case-control studies
-  if (/\b(case-control|case control|nested case-control|matched case-control|case-referent)\b/i.test(text)) {
-    return {
+      weight: 0.85,
+      priority: 80,
+      regexes: [
+        /\bcohort study\b/gi,
+        /\bprospective cohort\b/gi,
+        /\bretrospective cohort\b/gi,
+        /\blongitudinal cohort\b/gi,
+        /\bfollow-up cohort\b/gi,
+        /\bpopulation-based cohort\b/gi,
+        /\bbirth cohort\b/gi,
+        /\bincident cohort\b/gi,
+        /\blongitudinal study\b/gi,
+        /\bfollow-up study\b/gi,
+        /\bcohort\b/gi
+      ]
+    },
+    {
       code: 'case-control',
       name: 'Case-control studies',
       short: 'Case-Control',
       badgeClass: 'design-casecontrol',
       icon: '🔍',
       isEligible: true,
-      weight: 0.75
-    };
-  }
-
-  // (7) Cross-sectional studies
-  if (/\b(cross-sectional|cross sectional|prevalence study|point-prevalence|cross-sectional survey)\b/i.test(text)) {
-    return {
+      weight: 0.75,
+      priority: 70,
+      regexes: [
+        /\bcase-control\b/gi,
+        /\bcase control\b/gi,
+        /\bnested case-control\b/gi,
+        /\bmatched case-control\b/gi,
+        /\bcase-referent\b/gi
+      ]
+    },
+    {
       code: 'cross-sectional',
       name: 'Cross-sectional studies',
       short: 'Cross-Sectional',
       badgeClass: 'design-cross',
       icon: '📊',
       isEligible: true,
-      weight: 0.65
-    };
-  }
-
-  // (8) Case series and case reports
-  if (/\b(case series|case report|case report series|clinical case report|single-patient case|series of \d+ cases|consecutive case series)\b/i.test(text)) {
-    return {
+      weight: 0.65,
+      priority: 60,
+      regexes: [
+        /\bcross-sectional\b/gi,
+        /\bcross sectional\b/gi,
+        /\bprevalence study\b/gi,
+        /\bpoint-prevalence\b/gi,
+        /\bcross-sectional survey\b/gi
+      ]
+    },
+    {
       code: 'case-series-reports',
       name: 'Case series and case reports',
       short: 'Case Series / Report',
       badgeClass: 'design-caseseries',
       icon: '📋',
       isEligible: true,
-      weight: 0.60
+      weight: 0.60,
+      priority: 50,
+      regexes: [
+        /\bcase series\b/gi,
+        /\bcase report\b/gi,
+        /\bcase report series\b/gi,
+        /\bclinical case report\b/gi,
+        /\bsingle-patient case\b/gi,
+        /\bseries of \d+ cases\b/gi,
+        /\bconsecutive case series\b/gi
+      ]
+    },
+    {
+      code: 'qualitative',
+      name: 'Qualitative studies',
+      short: 'Qualitative Study',
+      badgeClass: 'design-qual',
+      icon: '💬',
+      isEligible: true,
+      weight: 0.70,
+      priority: 40,
+      regexes: [
+        /\bqualitative study\b/gi,
+        /\bqualitative research\b/gi,
+        /\bqualitative interview\b/gi,
+        /\bqualitative exploration\b/gi,
+        /\bqualitative method\b/gi,
+        /\bthematic analysis\b/gi,
+        /\bthematic interview\b/gi,
+        /\bgrounded theory\b/gi,
+        /\bsemi-structured interview\b/gi,
+        /\bin-depth interview\b/gi,
+        /\bfocus group\b/gi,
+        /\bphenomenological\b/gi,
+        /\bethnographic\b/gi,
+        /\bqualitative synthesis\b/gi,
+        /\binductive thematic\b/gi
+      ]
+    }
+  ];
+
+  let bestDesign = null;
+  let bestScore = 0;
+  let bestPriority = -1;
+
+  for (const def of designDefs) {
+    if (def.disqualifier && def.disqualifier.test(text)) {
+      continue;
+    }
+    let count = 0;
+    for (const rx of def.regexes) {
+      const matches = text.match(rx);
+      if (matches) count += matches.length;
+    }
+    if (def.bonus) count += def.bonus;
+
+    if (count > bestScore || (count === bestScore && count > 0 && def.priority > bestPriority)) {
+      bestScore = count;
+      bestPriority = def.priority;
+      bestDesign = def;
+    }
+  }
+
+  if (bestDesign && bestScore > 0) {
+    return {
+      code: bestDesign.code,
+      name: bestDesign.name,
+      short: bestDesign.short,
+      badgeClass: bestDesign.badgeClass,
+      icon: bestDesign.icon,
+      isEligible: bestDesign.isEligible,
+      weight: bestDesign.weight
     };
   }
 
@@ -3329,11 +3412,12 @@ function screenPaperAgainstCriteria(paper, topic, pico, incCriteria, excCriteria
     decisionRules.push({ rule: 'Population Match', passed: true, detail: 'Clinical population verified' });
   }
 
-  // Rule 5: Secondary Subgroup publication tagging
+  // Rule 5: Secondary Subgroup publication tagging (gated strictly on title terms per W10)
   let isSecondarySubgroup = false;
   if (status === 'INCLUDED') {
-    if (/\b(subgroup analysis|secondary analysis|prespecified subanalysis|post-hoc analysis|health-related quality of life|health status and quality|uric acid and|body mass index)\b/i.test(paper.title || '') &&
-        /\b(emperor-preserved|deliver trial)\b/i.test(text)) {
+    const title = paper.title || '';
+    if (/\b(subgroup|secondary analysis|post-hoc|prespecified subanalysis)\b/i.test(title) &&
+        /\b(emperor-preserved|deliver trial)\b/i.test(title)) {
       isSecondarySubgroup = true;
       matchedInclusions.push('Secondary Subgroup Publication of Landmark RCT');
     }
@@ -3747,12 +3831,14 @@ function getFormattedReferencesForCurrentStyle() {
 // SYSTEMATIC REVIEW MANUSCRIPT GENERATOR (PRISMA 2020)
 // ═══════════════════════════════════════════════════════════════
 class SystematicReviewGenerator {
-  constructor(topic, pico, papers, duplicatesRemoved, totalIdentified) {
-    this.topic = topic;
-    this.pico = pico;
+  constructor(topic, pico, papers, duplicatesRemoved, totalIdentified, metaResults = null) {
+    this.topic = topic || 'Systematic Review';
+    this.pico = pico || {};
     this.papers = papers || [];
     this.duplicatesRemoved = duplicatesRemoved || 0;
-    this.totalIdentified = totalIdentified || papers.length;
+    this.totalIdentified = totalIdentified || (papers ? papers.length : 0);
+    this.metaResults = metaResults || (typeof STATE !== 'undefined' && STATE.metaResults) || (typeof window !== 'undefined' && window.META_ANALYSIS_STATE?.results) || null;
+    this.manuscriptAssertions = [];
     
     this.citMap = {};
     this.papers.forEach((p, idx) => {
@@ -3786,19 +3872,49 @@ class SystematicReviewGenerator {
 
   generateStructuredAbstract() {
     const n = this.papers.length;
+    if (n === 0) {
+      return {
+        background: `Clinical questions surrounding ${this.topic} require systematic evidence appraisal. No eligible empirical studies met inclusion criteria.`,
+        objectives: `To systematically appraise and synthesize peer-reviewed clinical evidence evaluating ${this.pico.i || this.topic} in ${this.pico.p || 'target clinical populations'}.`,
+        methods: `In accordance with PRISMA 2020 standards, electronic searches of ${this.getHarvestedSourcesString()} were executed. Of ${this.totalIdentified} identified candidate records, exactly 0 unique peer-reviewed studies met pre-specified inclusion criteria.`,
+        results: `Zero empirical studies met pre-specified PICOS eligibility criteria. No qualitative or quantitative evidence synthesis could be performed.`,
+        conclusions: `No empirical evidence was identified to support clinical recommendations for ${this.pico.i || this.topic}.`,
+        registration: `Review Protocol: Structured under PRISMA 2020 standards and pre-specified within the SysRev AI evidence synthesis workspace.`
+      };
+    }
+
     const years = this.papers.map(p => p.year).filter(Boolean).sort();
     const rctCount = this.papers.filter(p => p.screening?.design?.code === 'rct').length;
+    const pooled = this.metaResults?.pooled || null;
+    const isSignificant = pooled && typeof pooled.pValue === 'number' && pooled.pValue < 0.05;
+    const isHarmful = pooled && ((pooled.isRatio && pooled.pointEstimate > 1.0) || (!pooled.isRatio && pooled.pointEstimate > 0 && String(this.pico.o || '').toLowerCase().match(/death|mortality|adverse|event|failure/i)));
 
     const background = `Clinical questions surrounding ${this.topic} demand rigorous evidence synthesis to resolve therapeutic equipoise and establish standardized practice guidelines ${this.cite(0, 1)}.`;
-    
     const objectives = `To systematically appraise and synthesize peer-reviewed clinical evidence evaluating the efficacy, safety, and outcome profiles of ${this.pico.i || this.topic} compared to ${this.pico.c || 'control regimens'} in ${this.pico.p || 'target clinical populations'}.`;
-    
     const methods = `In accordance with PRISMA 2020 standards, electronic searches of ${this.getHarvestedSourcesString()} were executed through ${years[years.length - 1] || new Date().getFullYear()}. Deduplication, pre-specified PICOS eligibility screening, and Cochrane-aligned Risk of Bias (RoB) appraisals were conducted. Of ${this.totalIdentified} identified candidate records, exactly ${n} unique peer-reviewed studies (${rctCount} RCTs) met all pre-specified inclusion criteria.`;
-    
-    const results = `Across the ${n} included investigations, synthesized findings demonstrate consistent clinical efficacy for primary endpoints (${this.pico.o || 'clinical outcomes'}). Risk of bias was predominantly evaluated as Low Risk or Some Concerns across randomized cohorts, with robust biological concordance reported.`;
-    
-    const conclusions = `Synthesized evidence provides peer-reviewed clinical data regarding ${this.pico.i || this.topic}. Standardized clinical integration and longitudinal monitoring are recommended.`;
-    
+
+    let results = '';
+    if (pooled && isSignificant && !isHarmful) {
+      results = `Across the ${n} included investigations, quantitative synthesis demonstrates a statistically significant reduction in primary clinical endpoints (${this.pico.o || 'clinical outcomes'}) with ${this.pico.i || 'intervention'} (pooled ${pooled.measure || 'RR'} ${pooled.pointEstimate.toFixed(3)}, 95% CI [${pooled.ciLow.toFixed(3)}, ${pooled.ciHigh.toFixed(3)}]; P=${pooled.pValue < 0.001 ? '<0.001' : pooled.pValue.toFixed(3)}).`;
+    } else if (pooled && isSignificant && isHarmful) {
+      results = `Across the ${n} included investigations, quantitative synthesis demonstrates a statistically significant increase in adverse outcomes (${this.pico.o || 'clinical outcomes'}) with ${this.pico.i || 'intervention'} (pooled ${pooled.measure || 'RR'} ${pooled.pointEstimate.toFixed(3)}, 95% CI [${pooled.ciLow.toFixed(3)}, ${pooled.ciHigh.toFixed(3)}]; P=${pooled.pValue < 0.001 ? '<0.001' : pooled.pValue.toFixed(3)}).`;
+    } else if (pooled && !isSignificant) {
+      results = `Across the ${n} included investigations, quantitative synthesis did not demonstrate a statistically significant difference in primary clinical endpoints (${this.pico.o || 'clinical outcomes'}) (pooled ${pooled.measure || 'RR'} ${pooled.pointEstimate.toFixed(3)}, 95% CI [${pooled.ciLow.toFixed(3)}, ${pooled.ciHigh.toFixed(3)}]; P=${pooled.pValue.toFixed(3)}).`;
+    } else {
+      results = `Across the ${n} included investigations, primary endpoints and study characteristics were extracted and synthesized qualitatively. Risk of bias was appraised across Cochrane-aligned domains.`;
+    }
+
+    let conclusions = '';
+    if (pooled && isSignificant && !isHarmful) {
+      conclusions = `Synthesized evidence indicates clinical benefit for ${this.pico.i || this.topic} in eligible populations. Standardized clinical integration and longitudinal monitoring are recommended.`;
+    } else if (pooled && isSignificant && isHarmful) {
+      conclusions = `Synthesized evidence indicates an increased risk of adverse outcomes with ${this.pico.i || this.topic}; clinical risk stratification and caution are warranted.`;
+    } else if (pooled && !isSignificant) {
+      conclusions = `Current evidence does not confirm a statistically significant therapeutic difference for ${this.pico.i || this.topic}; further adequately powered trials are warranted.`;
+    } else {
+      conclusions = `Synthesized evidence provides empirical clinical data regarding ${this.pico.i || this.topic}. Clinical interpretation should consider individual study findings and methodological risk of bias.`;
+    }
+
     const registration = `Review Protocol: Structured under PRISMA 2020 standards and pre-specified within the SysRev AI evidence synthesis workspace.`;
 
     return { background, objectives, methods, results, conclusions, registration };
@@ -3811,7 +3927,13 @@ class SystematicReviewGenerator {
 
   generateIntroduction() {
     const t = this.topic;
-    const p1 = `1.1 Rationale & Clinical Equipoise\n\n${cap(t)} represents an essential therapeutic and investigative domain within modern clinical medicine. While targeted clinical trials have demonstrated promising biological and symptomatic outcomes ${this.cite(0, 1)}, persistent variations in trial methodologies, patient risk stratification, and reported effect estimates have prevented unambiguous consensus. A rigorous, PRISMA 2020-compliant systematic review is essential to synthesize disparate findings and provide an evidence-based clinical synthesis.`;
+    const n = this.papers.length;
+    if (n === 0) {
+      return `1.1 Rationale & Clinical Question\n\n${cap(t)} represents an important area of biomedical inquiry. A systematic review was initiated under PRISMA 2020 to identify relevant clinical evidence.\n\n` +
+        `1.2 Objectives & Formal PICOS Question\n\n• Population (P): ${this.pico.p || 'Target clinical population'}\n• Intervention (I): ${this.pico.i || 'Target intervention'}\n• Comparator (C): ${this.pico.c || 'Control'}\n• Outcomes (O): ${this.pico.o || 'Clinical outcomes'}\n• Study Design (S): ${this.pico.s || 'Empirical designs'}`;
+    }
+
+    const p1 = `1.1 Rationale & Clinical Equipoise\n\n${cap(t)} represents an essential therapeutic and investigative domain within modern clinical medicine. While targeted clinical trials have evaluated clinical outcomes ${this.cite(0, 1)}, persistent variations in trial methodologies, patient risk stratification, and reported effect estimates have prevented unambiguous consensus. A rigorous, PRISMA 2020-compliant systematic review is essential to synthesize disparate findings and provide an evidence-based clinical synthesis.`;
 
     const p2 = `1.2 Objectives & Formal PICOS Question\n\nThe structured objective of this systematic review was formulated under the PICOS framework:\n` +
       `• Population (P): ${this.pico.p || 'Target clinical population'}\n` +
@@ -3826,7 +3948,8 @@ class SystematicReviewGenerator {
   generateMethods() {
     const n = this.papers.length;
     const years = this.papers.map(p => p.year).filter(Boolean);
-    const minY = Math.min(...years, 2010), maxY = Math.max(...years, new Date().getFullYear());
+    const minY = years.length ? Math.min(...years, 2010) : 2015;
+    const maxY = years.length ? Math.max(...years, new Date().getFullYear()) : new Date().getFullYear();
 
     const p1 = `2.1 Protocol and Registration\n\nThis systematic review was conducted in strict accordance with the Preferred Reporting Items for Systematic Reviews and Meta-Analyses (PRISMA 2020) statement. The study protocol was pre-specified with explicit eligibility criteria, search architectures, and risk of bias assessment paradigms.`;
 
@@ -3843,6 +3966,13 @@ class SystematicReviewGenerator {
 
   generateResults() {
     const n = this.papers.length;
+    if (n === 0) {
+      return `3.1 Study Selection (PRISMA Flow Dynamics)\n\nThe electronic search identified ${this.totalIdentified} total candidate records across ${this.getHarvestedSourcesString()}. Following deduplication (${this.duplicatesRemoved} removed) and screening against PICOS criteria, zero studies met the eligibility criteria.\n\n` +
+        `3.2 Study Characteristics\n\nNo primary study characteristics are available as zero studies were included.\n\n` +
+        `3.3 Synthesis of Included Studies & Primary Findings\n\nNo eligible empirical studies were available for qualitative synthesis.\n\n` +
+        `3.4 Methodological Quality & Risk of Bias Assessment\n\nRisk of bias appraisal could not be performed as zero studies met eligibility criteria.`;
+    }
+
     const years = this.papers.map(p => p.year).filter(Boolean);
     const avgYear = years.length ? Math.round(years.reduce((a, b) => a + b, 0) / years.length) : 2024;
     
@@ -3865,10 +3995,45 @@ class SystematicReviewGenerator {
       const rob = p.screening?.rob?.overall || 'Low Risk';
       const chars = extractStudyCharacteristics(p, this.pico);
 
-      p3 += `${auth} (${p.year}) ${this.cite(idx)}, in a study designed as a **${des}** (${chars.sampleSize}), evaluated ${this.topic}. Risk of bias was appraised as ${rob}. The authors reported: "${chars.outcomeFinding}" These findings directly corroborate primary efficacy endpoints across the synthesized cohort.\n\n`;
+      p3 += `${auth} (${p.year}) ${this.cite(idx)}, in a study designed as a **${des}** (${chars.sampleSize}), evaluated ${this.topic}. Risk of bias was appraised as ${rob}. The authors reported: "${chars.outcomeFinding}" Reported findings and effect estimates are synthesized for systematic appraisal.\n\n`;
     });
 
-    const p4 = `3.4 Methodological Quality & Risk of Bias Assessment\n\nEvaluation of the ${n} studies using Cochrane-aligned domains demonstrated high overall methodological rigor. Randomized controlled trials exhibited adequate sequence generation and allocation concealment. Observational cohorts demonstrated robust multivariable adjustment for clinical confounders. No major selective reporting biases were detected.`;
+    // 3.4 Methodological Quality & Risk of Bias Assessment
+    let highRiskCount = 0;
+    let someConcernsCount = 0;
+    let lowRiskCount = 0;
+    let reportingConcernsCount = 0;
+
+    this.papers.forEach(p => {
+      const rob = p.screening?.rob;
+      const overall = rob?.overall || 'Low Risk';
+      if (overall === 'High Risk') highRiskCount++;
+      else if (overall === 'Some Concerns') someConcernsCount++;
+      else lowRiskCount++;
+
+      const d5 = rob?.domains?.d5;
+      if (d5 && d5 !== 'Low') reportingConcernsCount++;
+    });
+
+    let p4 = `3.4 Methodological Quality & Risk of Bias Assessment\n\n`;
+    if (highRiskCount > 0) {
+      p4 += `Evaluation of the ${n} studies using Cochrane-aligned domains indicated that methodological rigor was heterogeneous, with at least one study rated High Risk of Bias (see Table 2). `;
+      this.manuscriptAssertions.push({ claim: 'Methodological rigor was heterogeneous with at least one study rated High Risk of Bias', evidence: `${highRiskCount} High Risk study/studies`, evidenceType: 'robDomain' });
+    } else if (someConcernsCount > 0) {
+      p4 += `Evaluation of the ${n} studies using Cochrane-aligned domains demonstrated moderate methodological quality, with Some Concerns identified across one or more assessment domains (see Table 2). `;
+      this.manuscriptAssertions.push({ claim: 'Methodological quality moderate with Some Concerns', evidence: `${someConcernsCount} Some Concerns study/studies`, evidenceType: 'robDomain' });
+    } else {
+      p4 += `Evaluation of the ${n} studies using Cochrane-aligned domains demonstrated high overall methodological rigor across assessed domains. Randomized controlled trials exhibited adequate sequence generation and allocation concealment. Observational cohorts demonstrated robust multivariable adjustment for clinical confounders. `;
+      this.manuscriptAssertions.push({ claim: 'High overall methodological rigor across assessed domains', evidence: 'All included studies Low Risk', evidenceType: 'robDomain' });
+    }
+
+    if (reportingConcernsCount > 0) {
+      p4 += `Selective reporting concerns were identified in ${reportingConcernsCount} study (see Table 2).`;
+      this.manuscriptAssertions.push({ claim: 'Selective reporting concerns identified', evidence: `${reportingConcernsCount} study/studies with d5 !== Low`, evidenceType: 'robDomain' });
+    } else {
+      p4 += `No major selective reporting biases were detected.`;
+      this.manuscriptAssertions.push({ claim: 'No major selective reporting biases detected', evidence: 'All included studies d5 === Low', evidenceType: 'robDomain' });
+    }
 
     return [p1, p2, p3.trim(), p4].join('\n\n');
   }
@@ -3877,9 +4042,32 @@ class SystematicReviewGenerator {
     const n = this.papers.length;
     const t = this.topic;
 
-    const p1 = `4.1 Summary of Main Findings\n\nThis systematic review synthesized evidence from ${n} peer-reviewed clinical studies evaluating ${t}. Across both randomized trials and high-quality cohorts, findings demonstrate consistent, statistically significant clinical improvements for ${this.pico.o || 'primary endpoints'} with favorable safety profiles ${this.cite(0, 1)}.`;
+    if (n === 0) {
+      return `4.1 Summary of Main Findings\n\nNo eligible clinical studies were identified evaluating ${t}.\n\n` +
+        `4.2 Overall Completeness & Clinical Applicability\n\nClinical applicability cannot be established due to the absence of included studies.\n\n` +
+        `4.3 Quality of Evidence & Limitations\n\nThe primary limitation of this review is the absence of eligible peer-reviewed literature meeting pre-specified criteria. Comprehensive database queries confirmed a lack of eligible published empirical data.`;
+    }
 
-    const p2 = `4.2 Overall Completeness & Clinical Applicability\n\nThe synthesized evidence base demonstrates broad applicability across diverse adult populations. Concordant therapeutic outcomes observed across multicenter trials confirm clinical generalizability. Furthermore, mechanistic alignment across included studies supports biological plausibility.`;
+    const pooled = this.metaResults?.pooled || null;
+    const isSignificant = pooled && typeof pooled.pValue === 'number' && pooled.pValue < 0.05;
+    const isHarmful = pooled && ((pooled.isRatio && pooled.pointEstimate > 1.0) || (!pooled.isRatio && pooled.pointEstimate > 0 && String(this.pico.o || '').toLowerCase().match(/death|mortality|adverse|event|failure/i)));
+
+    let p1 = `4.1 Summary of Main Findings\n\nThis systematic review synthesized evidence from ${n} peer-reviewed clinical studies evaluating ${t}. `;
+    if (pooled && isSignificant && !isHarmful) {
+      p1 += `Quantitative synthesis demonstrates a statistically significant benefit of ${this.pico.i || t} for ${this.pico.o || 'primary endpoints'} (pooled ${pooled.measure || 'effect'} ${pooled.pointEstimate.toFixed(3)}, 95% CI [${pooled.ciLow.toFixed(3)}, ${pooled.ciHigh.toFixed(3)}]; P=${pooled.pValue < 0.001 ? '<0.001' : pooled.pValue.toFixed(3)}) ${this.cite(0, 1)}.`;
+      this.manuscriptAssertions.push({ claim: 'Statistically significant benefit in quantitative synthesis', evidence: `Pooled ${pooled.measure || 'effect'} ${pooled.pointEstimate.toFixed(3)}, P=${pooled.pValue}`, evidenceType: 'pooledEffect' });
+    } else if (pooled && isSignificant && isHarmful) {
+      p1 += `Quantitative synthesis demonstrates a statistically significant association between ${this.pico.i || t} and adverse ${this.pico.o || 'clinical outcomes'} (pooled ${pooled.measure || 'effect'} ${pooled.pointEstimate.toFixed(3)}, 95% CI [${pooled.ciLow.toFixed(3)}, ${pooled.ciHigh.toFixed(3)}]; P=${pooled.pValue < 0.001 ? '<0.001' : pooled.pValue.toFixed(3)}) ${this.cite(0, 1)}.`;
+      this.manuscriptAssertions.push({ claim: 'Statistically significant association with adverse outcomes', evidence: `Pooled ${pooled.measure || 'effect'} ${pooled.pointEstimate.toFixed(3)}, P=${pooled.pValue}`, evidenceType: 'pooledEffect' });
+    } else if (pooled && !isSignificant) {
+      p1 += `Quantitative synthesis did not reach statistical significance (pooled ${pooled.measure || 'effect'} ${pooled.pointEstimate.toFixed(3)}, 95% CI [${pooled.ciLow.toFixed(3)}, ${pooled.ciHigh.toFixed(3)}]; P=${pooled.pValue.toFixed(3)}) ${this.cite(0, 1)}.`;
+      this.manuscriptAssertions.push({ claim: 'Non-significant difference in quantitative synthesis', evidence: `Pooled ${pooled.measure || 'effect'} ${pooled.pointEstimate.toFixed(3)}, P=${pooled.pValue}`, evidenceType: 'pooledEffect' });
+    } else {
+      p1 += `Direction of effect across included studies is reported in §3.3; quantitative synthesis is presented separately in §5 where applicable.`;
+      this.manuscriptAssertions.push({ claim: 'Directional qualitative summary', evidence: `${n} included studies`, evidenceType: 'studyAttribute' });
+    }
+
+    const p2 = `4.2 Overall Completeness & Clinical Applicability\n\nThe synthesized evidence base reflects the clinical characteristics and eligibility criteria of the ${n} included investigations. Clinical applicability should be evaluated in the context of the study populations and trial settings described in Table 1. Variations in baseline patient risk and clinical settings warrant consideration during guideline interpretation.`;
 
     const p3 = `4.3 Quality of Evidence & Limitations\n\nReview-level limitations must be acknowledged: (1) language restrictions may introduce geographical selection bias; (2) variations in trial follow-up durations create minor clinical heterogeneity; and (3) automated bibliographic search retrieval is dependent on database indexing. Nonetheless, comprehensive multi-database harvesting and rigorous PRISMA screening substantiate the validity of these conclusions.`;
 
@@ -3890,7 +4078,29 @@ class SystematicReviewGenerator {
     const t = this.topic;
     const n = this.papers.length;
 
-    const p1 = `5.1 Implications for Practice\n\nSynthesized evidence from ${n} peer-reviewed studies confirms that ${this.pico.i || t} provides demonstrable clinical efficacy compared to ${this.pico.c || 'control regimens'}. Clinicians should integrate these findings into evidence-based treatment algorithms.`;
+    if (n === 0) {
+      return `5.1 Implications for Practice\n\nNo empirical evidence is available from eligible studies to inform clinical practice regarding ${this.pico.i || t}.\n\n` +
+        `5.2 Recommendations for Future Research\n\nProspective randomized clinical trials evaluating ${this.pico.i || t} in well-defined clinical cohorts are urgently warranted.`;
+    }
+
+    const pooled = this.metaResults?.pooled || null;
+    const isSignificant = pooled && typeof pooled.pValue === 'number' && pooled.pValue < 0.05;
+    const isHarmful = pooled && ((pooled.isRatio && pooled.pointEstimate > 1.0) || (!pooled.isRatio && pooled.pointEstimate > 0 && String(this.pico.o || '').toLowerCase().match(/death|mortality|adverse|event|failure/i)));
+
+    let p1 = `5.1 Implications for Practice\n\n`;
+    if (pooled && isSignificant && !isHarmful) {
+      p1 += `Synthesized evidence from ${n} peer-reviewed studies indicates clinical benefit for ${this.pico.i || t} compared to ${this.pico.c || 'control regimens'}. Clinicians should integrate these findings into evidence-based treatment algorithms.`;
+      this.manuscriptAssertions.push({ claim: 'Practice recommendation for clinical benefit', evidence: `P=${pooled.pValue}`, evidenceType: 'pooledEffect' });
+    } else if (pooled && isSignificant && isHarmful) {
+      p1 += `Synthesized evidence from ${n} peer-reviewed studies indicates an increased risk of adverse outcomes associated with ${this.pico.i || t} compared to ${this.pico.c || 'control regimens'}. Clinicians should exercise caution and weigh individual patient risk profiles.`;
+      this.manuscriptAssertions.push({ claim: 'Practice caution for adverse risk', evidence: `P=${pooled.pValue}`, evidenceType: 'pooledEffect' });
+    } else if (pooled && !isSignificant) {
+      p1 += `Synthesized evidence from ${n} peer-reviewed studies did not confirm a statistically significant therapeutic difference between ${this.pico.i || t} and ${this.pico.c || 'control regimens'}. Routine implementation cannot be definitively recommended on current pooled evidence.`;
+      this.manuscriptAssertions.push({ claim: 'Practice recommendation noting non-significance', evidence: `P=${pooled.pValue}`, evidenceType: 'pooledEffect' });
+    } else {
+      p1 += `This review identified ${n} studies meeting pre-specified eligibility criteria; clinical practice implications should be drawn from the directional findings in §3.3 and the quantitative synthesis in §5 if performed.`;
+      this.manuscriptAssertions.push({ claim: 'Qualitative practice implications', evidence: `${n} studies`, evidenceType: 'studyAttribute' });
+    }
 
     const p2 = `5.2 Recommendations for Future Research\n\nFuture research priorities include: (1) long-term prospective trials assessing sustained durability of clinical endpoints; (2) head-to-head comparative effectiveness studies between next-generation therapeutic agents; and (3) cost-effectiveness evaluations in diverse healthcare systems.`;
 
@@ -3906,16 +4116,28 @@ class SystematicReviewGenerator {
   }
 
   generate() {
+    this.manuscriptAssertions = [];
+    const title = this.generateTitle();
+    const abstractObj = this.generateStructuredAbstract();
+    const keywords = this.generateKeywords();
+    const intro = this.generateIntroduction();
+    const methods = this.generateMethods();
+    const results = this.generateResults();
+    const discussion = this.generateDiscussion();
+    const conclusions = this.generateConclusions();
+    const references = this.generateReferences();
+
     return {
-      title:            this.generateTitle(),
-      abstractObj:      this.generateStructuredAbstract(),
-      keywords:         this.generateKeywords(),
-      intro:            this.generateIntroduction(),
-      methods:          this.generateMethods(),
-      results:          this.generateResults(),
-      discussion:       this.generateDiscussion(),
-      conclusions:      this.generateConclusions(),
-      references:       this.generateReferences()
+      title,
+      abstractObj,
+      keywords,
+      intro,
+      methods,
+      results,
+      discussion,
+      conclusions,
+      references,
+      manuscriptAssertions: this.manuscriptAssertions
     };
   }
 }
@@ -5014,13 +5236,18 @@ async function exportSystematicReviewWordDoc() {
 function sanitizePdfText(input) {
   if (input === null || input === undefined) return '';
   return String(input)
-    .replace(/â€“|â€”|[\u2013\u2014\u2212]/g, '-')
+    .replace(/â€“|â€”|â€"|â€\u201D|â€\u201C|[\u2013\u2014\u2212]/g, '-')
     .replace(/â€™|[\u2018\u2019]/g, "'")
-    .replace(/â€œ|â€|[\u201C\u201D]/g, '"')
+    .replace(/â€œ|[\u201C\u201D]/g, '"')
     .replace(/I²|I\u00B2/g, 'I^2')
     .replace(/τ²|\u03C4\u00B2|\u03C42/g, 'tau^2')
     .replace(/χ²|\u03C7\u00B2/g, 'chi^2')
     .replace(/H²|H\u00B2/g, 'H^2')
+    .replace(/²|\u00B2/g, '^2')
+    .replace(/³|\u00B3/g, '^3')
+    .replace(/₀|\u2080/g, '_0')
+    .replace(/₁|\u2081/g, '_1')
+    .replace(/₂|\u2082/g, '_2')
     .replace(/±|\u00B1/g, '+/-')
     .replace(/≥|\u2265/g, '>=')
     .replace(/≤|\u2264/g, '<=')
@@ -5691,7 +5918,7 @@ async function runPipeline() {
       rawPapers.push(...epmcRes.results);
       if (epmcRes.isFallback) {
         alexActual += epmcRes.results.length;
-        notices.push(`Europe PMC was unavailable (${epmcRes.originalError || 'HTTP 503'}). Resiliently harvested ${epmcRes.results.length} records via OpenAlex.`);
+        notices.push('Europe PMC is unavailable; results sourced from OpenAlex.');
       } else {
         epmcActual += epmcRes.results.length;
       }
@@ -5705,8 +5932,7 @@ async function runPipeline() {
       if (s2Res.isFallback) {
         alexActual += (s2Res.alexCount || 0);
         crossActual += (s2Res.crossCount || 0);
-        const fbNames = s2Res.fallbackSources?.join(' & ') || 'OpenAlex & Crossref';
-        notices.push(`Semantic Scholar was rate-limited (${s2Res.originalError || 'HTTP 429'}). Harvested ${s2Res.results.length} candidate records via ${fbNames} fallback.`);
+        notices.push('Semantic Scholar is rate-limited; results sourced from OpenAlex + Crossref.');
       } else {
         s2Actual += s2Res.results.length;
       }
