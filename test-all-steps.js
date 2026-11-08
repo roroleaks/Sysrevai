@@ -561,6 +561,7 @@ assert(wordBlobCaptured && wordBlobCaptured.opts?.type?.includes('msword'), 'Wor
 const wordText = wordBlobCaptured ? wordBlobCaptured.parts.join('') : '';
 assert(wordText.includes('<w:WordDocument>') && wordText.includes('Structured Abstract') && wordText.includes('Table 1. Structured Characteristics'), 'Word Document contains MSO Word XML, Abstract, and Table 1');
 assert(wordText.includes('Table 2. Cochrane Risk of Bias Assessment Matrix'), 'Word Document contains Table 2 RoB Assessment Matrix');
+assert(wordText.includes('Table 3. Quantitative Evidence Synthesis &amp; Statistical Pooling Matrix'), 'Word Document contains Table 3 Quantitative Meta-Analysis Matrix when pooled');
 assert(wordText.includes('mso-header') && wordText.includes('mso-footer'), 'Word Document contains dedicated running headers and footers');
 
 // Test PDF Exporter

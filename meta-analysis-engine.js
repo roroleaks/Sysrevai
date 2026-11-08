@@ -677,7 +677,7 @@ function renderForestPlotSVG(state, results) {
   <text x="${colX.exp}" y="63" class="fp-header">${escapeXml(state.interventionLabel)}</text>
   <text x="${colX.ctrl}" y="63" class="fp-header">${escapeXml(state.controlLabel)}</text>
   <text x="${colX.weight}" y="63" class="fp-header">Weight (%)</text>
-  <text x="${colX.plotStart + plotWidth / 2}" y="63" class="fp-header" text-anchor="middle">${escapeXml(state.effectMeasure)} [${(state.confLevel * 100)}% CI]</text>
+  <text x="${colX.plotStart + plotWidth / 2}" y="63" class="fp-header" text-anchor="middle">Forest Plot (${escapeXml(state.effectMeasure)})</text>
   <text x="${colX.effect}" y="63" class="fp-header">${escapeXml(state.effectMeasure)} [${(state.confLevel * 100)}% CI]</text>
   <line x1="20" y1="70" x2="${totalWidth - 20}" y2="70" class="fp-line" stroke-width="1.2" stroke="#94a3b8"/>
 
@@ -716,8 +716,12 @@ function renderForestPlotSVG(state, results) {
 
   <!-- Horizontal CI Whisker -->
   <line x1="${lowX}" y1="${y - 4}" x2="${highX}" y2="${y - 4}" class="fp-whisker"/>
-  <line x1="${lowX}" y1="${y - 8}" x2="${lowX}" y2="${y}" class="fp-whisker"/>
-  <line x1="${highX}" y1="${y - 8}" x2="${highX}" y2="${y}" class="fp-whisker"/>
+  ${(isRatio ? s.calc.ciLow >= scaleMin : s.calc.ciLow >= scaleMin) 
+    ? `<line x1="${lowX}" y1="${y - 8}" x2="${lowX}" y2="${y}" class="fp-whisker"/>` 
+    : `<polygon points="${lowX},${y - 4} ${lowX + 6},${y - 8} ${lowX + 6},${y}" fill="#0f172a"/>`}
+  ${(isRatio ? s.calc.ciHigh <= scaleMax : s.calc.ciHigh <= scaleMax) 
+    ? `<line x1="${highX}" y1="${y - 8}" x2="${highX}" y2="${y}" class="fp-whisker"/>` 
+    : `<polygon points="${highX},${y - 4} ${highX - 6},${y - 8} ${highX - 6},${y}" fill="#0f172a"/>`}
   <!-- Weight-Proportional Marker -->
   <rect x="${estX - (boxSize / 2)}" y="${y - 4 - (boxSize / 2)}" width="${boxSize}" height="${boxSize}" class="fp-box"/>
 
@@ -763,13 +767,17 @@ function renderForestPlotSVG(state, results) {
   });
 
   // Directional Labels
-  svg += `  <text x="${colX.plotStart + 15}" y="${summaryY + 48}" class="fp-muted" text-anchor="start">◀ Favours ${escapeXml(state.interventionLabel)}</text>
-  <text x="${colX.plotEnd - 15}" y="${summaryY + 48}" class="fp-muted" text-anchor="end">Favours ${escapeXml(state.controlLabel)} ▶</text>
+  const isDesirable = /(survival|cure|remission|response|success|recovery|healed|cleared)/i.test(state.outcomeName);
+  const leftLabel = isDesirable ? `Favours ${escapeXml(state.controlLabel)}` : `Favours ${escapeXml(state.interventionLabel)}`;
+  const rightLabel = isDesirable ? `Favours ${escapeXml(state.interventionLabel)}` : `Favours ${escapeXml(state.controlLabel)}`;
+
+  svg += `  <text x="${colX.plotStart + 15}" y="${summaryY + 48}" class="fp-muted" text-anchor="start">◀ ${leftLabel}</text>
+  <text x="${colX.plotEnd - 15}" y="${summaryY + 48}" class="fp-muted" text-anchor="end">${rightLabel} ▶</text>
 
   <!-- Footnotes & Statistics -->
   <line x1="20" y1="${summaryY + 54}" x2="${totalWidth - 20}" y2="${summaryY + 54}" class="fp-line" stroke-width="1.2" stroke="#94a3b8"/>
-  <text x="24" y="${summaryY + 70}" class="fp-text"><strong>Heterogeneity:</strong> Tau² = ${pooled.tau2.toFixed(4)}; Chi² = ${pooled.Q.toFixed(2)}, df = ${pooled.df} (P = ${pooled.pChi2 < 0.001 ? '&lt; 0.001' : pooled.pChi2.toFixed(3)}); I² = ${pooled.I2.toFixed(1)}%</text>
-  <text x="24" y="${summaryY + 88}" class="fp-text"><strong>Test for overall effect:</strong> Z = ${pooled.zScore.toFixed(2)} (P = ${pooled.pValue < 0.001 ? '&lt; 0.001' : pooled.pValue.toFixed(4)}) · Model: ${escapeXml(pooled.model === 'random' ? 'Random effects (DerSimonian-Laird)' : 'Fixed effect (Inverse-Variance)')}</text>
+  <text x="24" y="${summaryY + 70}" class="fp-text"><tspan font-weight="700">Heterogeneity:</tspan> Tau² = ${pooled.tau2.toFixed(4)}; Chi² = ${pooled.Q.toFixed(2)}, df = ${pooled.df} (P = ${pooled.pChi2 < 0.001 ? '&lt; 0.001' : pooled.pChi2.toFixed(3)}); I² = ${pooled.I2.toFixed(1)}%</text>
+  <text x="24" y="${summaryY + 88}" class="fp-text"><tspan font-weight="700">Test for overall effect:</tspan> Z = ${pooled.zScore.toFixed(2)} (P = ${pooled.pValue < 0.001 ? '&lt; 0.001' : pooled.pValue.toFixed(4)}) · Model: ${escapeXml(pooled.model === 'random' ? 'Random effects (DerSimonian-Laird)' : 'Fixed effect (Inverse-Variance)')}</text>
   <text x="${totalWidth - 24}" y="${summaryY + 88}" class="fp-muted" text-anchor="end">SysRevAI · Publication-Quality Forest Plot</text>
 
 </svg>`;

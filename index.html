@@ -1541,6 +1541,7 @@ sup.cite-num:hover, .cite-num:hover, .cite-apa:hover, .cite-harvard:hover {
         <button class="primary" onclick="exportSystematicReviewWordDoc()" style="background:#1e40af;border-color:#1e40af">⬇ Download Word Manuscript (.doc)</button>
         <button class="primary" onclick="exportSystematicReviewPDF()">⬇ Download Systematic Review PDF</button>
         <button class="secondary" onclick="exportPRISMAReportPDF()">⬇ PRISMA &amp; RoB PDF</button>
+        <button class="secondary" onclick="switchTab('meta', document.getElementById('tab-btn-meta'))" style="font-weight:700;color:var(--accent);">📈 Meta-Analysis &amp; Forest Plot</button>
         <button class="secondary" onclick="openPrismaDiagramEditor()" style="font-weight:700">📊 PRISMA 2020 Editor</button>
         <button class="secondary" onclick="resetApp()">↩ New Review</button>
       </div>
@@ -1622,6 +1623,7 @@ sup.cite-num:hover, .cite-num:hover, .cite-apa:hover, .cite-harvard:hover {
       <button class="primary" onclick="exportSystematicReviewWordDoc()" style="background:#1e40af;border-color:#1e40af">⬇ Download Word Manuscript (.doc)</button>
       <button class="primary" onclick="exportSystematicReviewPDF()">⬇ Download Systematic Review PDF</button>
       <button class="secondary" onclick="exportPRISMAReportPDF()">⬇ PRISMA &amp; RoB PDF</button>
+      <button class="secondary" onclick="switchTab('meta', document.getElementById('tab-btn-meta'))" style="font-weight:700;color:var(--accent);">📈 Meta-Analysis &amp; Forest Plot</button>
       <button class="secondary" id="btn-export-refs-pdf" onclick="exportReferencesPDF()">⬇ References PDF</button>
       <button class="secondary" onclick="openPrismaDiagramEditor()" style="font-weight:700">📊 PRISMA 2020 Editor</button>
       <button class="secondary" onclick="resetApp()">↩ New Review</button>
@@ -4030,7 +4032,40 @@ class SystematicReviewGenerator {
       this.manuscriptAssertions.push({ claim: 'No major selective reporting biases detected', evidence: 'All included studies d5 === Low', evidenceType: 'robDomain' });
     }
 
-    return [p1, p2, p3.trim(), p4].join('\n\n');
+    let p5 = '';
+    const pooled = this.metaResults?.pooled;
+    if (pooled && typeof pooled.pointEstimate === 'number') {
+      const modelStr = pooled.model === 'random' ? 'random-effects model (DerSimonian-Laird method)' : 'fixed-effect model (Inverse-Variance method)';
+      const pValStr = pooled.pValue < 0.001 ? '< 0.001' : (pooled.pValue != null ? pooled.pValue.toFixed(4) : '-');
+      const chi2PStr = pooled.pChi2 < 0.001 ? '< 0.001' : (pooled.pChi2 != null ? pooled.pChi2.toFixed(3) : '-');
+      const isSig = typeof pooled.pValue === 'number' && pooled.pValue < 0.05;
+      const zStr = pooled.zScore != null ? pooled.zScore.toFixed(2) : '-';
+      const qStr = pooled.Q != null ? pooled.Q.toFixed(2) : '-';
+      const dfStr = pooled.df != null ? pooled.df : '-';
+      const i2Val = pooled.I2 != null ? pooled.I2 : 0;
+      const i2Str = i2Val.toFixed(1);
+      const tau2Str = pooled.tau2 != null ? pooled.tau2.toFixed(4) : '0.0000';
+
+      p5 = `3.5 Quantitative Outcome Synthesis (Meta-Analysis)\n\n` +
+        `Statistical pooling of quantitative effect sizes was conducted across eligible empirical studies reporting outcome data for ${this.pico.o || 'primary clinical outcomes'}. ` +
+        `Under a ${modelStr}, the overall pooled ${pooled.measure || 'effect size'} was ${pooled.pointEstimate.toFixed(3)} (95% CI [${Number(pooled.ciLow || 0).toFixed(3)}, ${Number(pooled.ciHigh || 0).toFixed(3)}]; Z = ${zStr}, P = ${pValStr}). ` +
+        `This demonstrated a ${isSig ? 'statistically significant' : 'non-statistically significant'} ${pooled.isRatio && pooled.pointEstimate < 1.0 ? 'reduction in risk' : (pooled.isRatio ? 'relative effect' : 'difference')} between ${this.pico.i || 'intervention'} and ${this.pico.c || 'control'}.\n\n` +
+        `Assessment of statistical heterogeneity across investigations revealed Cochran's Q = ${qStr} (df = ${dfStr}, P = ${chi2PStr}), ` +
+        `with an inconsistency index I² of ${i2Str}% and between-study variance Tau² = ${tau2Str}. ` +
+        (i2Val >= 50
+          ? `Substantial heterogeneity (I² ≥ 50%) warranted the application of the DerSimonian-Laird random-effects framework to incorporate between-study clinical variance.`
+          : `Heterogeneity was low-to-moderate (I² < 50%), confirming consistency of the estimated effect.`);
+
+      this.manuscriptAssertions.push({
+        claim: 'Quantitative outcome synthesis pooled effect and heterogeneity',
+        evidence: `Pooled ${pooled.measure || 'effect'} ${pooled.pointEstimate.toFixed(3)} [${Number(pooled.ciLow || 0).toFixed(3)}, ${Number(pooled.ciHigh || 0).toFixed(3)}], I²=${i2Str}%`,
+        evidenceType: 'pooledEffect'
+      });
+    }
+
+    const sections = [p1, p2, p3.trim(), p4];
+    if (p5) sections.push(p5);
+    return sections.join('\n\n');
   }
 
   generateDiscussion() {
@@ -4678,6 +4713,58 @@ function renderPaperPreview(review) {
     <div class="s-head">3. Results</div>
     ${review.results.split('\n\n').map(p => `<p>${citify(p).replace(/\n/g, '<br/>')}</p>`).join('')}
 
+    ${(() => {
+      const esc = typeof escapeXml === 'function' ? escapeXml : cleanHtmlText;
+      const hasMeta = window.STATE?.metaResults?.pooled && window.META_ANALYSIS_STATE && typeof renderForestPlotSVG === 'function';
+      if (hasMeta) {
+        const metaRes = window.STATE.metaResults;
+        const forestSvg = renderForestPlotSVG(window.META_ANALYSIS_STATE, metaRes);
+        return `
+        <div class="figure-container" style="background:#ffffff;border:1px solid #cbd5e1;border-radius:10px;padding:16px;margin:20px 0;box-shadow:0 2px 10px rgba(0,0,0,0.04);">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+            <div>
+              <span style="font-weight:700;font-size:0.95rem;color:#0f172a;">📊 Figure 2: Forest Plot of Quantitative Outcome Synthesis (${esc(metaRes.pooled.measure || 'Effect Size')})</span>
+              <div style="font-size:0.8rem;color:#64748b;margin-top:2px;">DerSimonian–Laird Random-Effects Pooling across ${metaRes.studiesEvaluated ? metaRes.studiesEvaluated.length : 0} eligible trials</div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button type="button" class="mini-btn" onclick="exportMetaSVG()" style="font-size:0.75rem;">⬇ Download SVG</button>
+              <button type="button" class="mini-btn" onclick="exportMetaPNG()" style="font-size:0.75rem;">⬇ Download PNG</button>
+              <button type="button" class="mini-btn" onclick="switchTab('meta', document.getElementById('tab-btn-meta'))" style="font-size:0.75rem;background:#0f6b6b;color:#fff;border-color:#0f6b6b;font-weight:700;">Open Meta-Analysis Studio ➜</button>
+            </div>
+          </div>
+          <div style="width:100%;overflow-x:auto;background:#ffffff;border-radius:6px;border:1px solid #f1f5f9;padding:8px 0;">
+            ${forestSvg}
+          </div>
+          <div style="font-size:0.8rem;color:#64748b;margin-top:8px;line-height:1.4;">
+            <em>Figure 2: Forest plot displaying individual trial effect estimates (${esc(metaRes.pooled.measure || 'Effect')}), 95% confidence intervals, relative statistical weights (%), and pooled summary diamond. Model: ${esc(metaRes.pooled.model === 'random' ? 'Random-effects (DerSimonian-Laird)' : 'Fixed-effect (Inverse-Variance)')}.</em>
+          </div>
+        </div>
+        `;
+      } else {
+        const incCount = (review.papers && review.papers.length) || (window.STATE?.includedPapers?.length) || 0;
+        return `
+        <div style="background:linear-gradient(135deg, #f0fdfa, #f8fafc);border:1px dashed #0f6b6b;border-radius:10px;padding:16px 20px;margin:20px 0;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;">
+          <div>
+            <div style="font-weight:700;color:#0f6b6b;font-size:0.95rem;display:flex;align-items:center;gap:6px;">
+              <span>📈</span> Quantitative Outcome Synthesis (Meta-Analysis Available)
+            </div>
+            <div style="font-size:0.84rem;color:#475569;margin-top:4px;max-width:560px;line-height:1.45;">
+              Synthesize 2×2 clinical event counts or continuous effect sizes across the ${incCount} included studies to produce a publication-grade Forest Plot with DerSimonian–Laird random-effects pooling.
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button type="button" class="primary" onclick="initiateMetaAnalysis(true); switchTab('meta', document.getElementById('tab-btn-meta'));" style="font-weight:700;font-size:0.82rem;padding:8px 16px;background:#0f6b6b;color:#ffffff;border:none;border-radius:6px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+              ⚡ Auto-Extract &amp; Generate Forest Plot
+            </button>
+            <button type="button" class="secondary" onclick="switchTab('meta', document.getElementById('tab-btn-meta'));" style="font-weight:600;font-size:0.82rem;padding:8px 14px;cursor:pointer;">
+              Open Studio ➜
+            </button>
+          </div>
+        </div>
+        `;
+      }
+    })()}
+
     <div class="s-head">4. Discussion</div>
     ${review.discussion.split('\n\n').map(p => `<p>${citify(p).replace(/\n/g, '<br/>')}</p>`).join('')}
 
@@ -4934,8 +5021,9 @@ function citifyPlainText(text) {
 // MICROSOFT WORD (.DOC) OFFICE DOCUMENT EXPORT ENGINE
 // ═══════════════════════════════════════════════════════════════
 async function exportSystematicReviewWordDoc() {
-  if (!STATE.review) return;
-  const review = STATE.review;
+  try {
+    if (!STATE.review) return;
+    const review = STATE.review;
   const safeTopic = (STATE.topic || 'Systematic_Review').replace(/[^a-zA-Z0-9]/g, '_').substring(0, 30);
   const ab = review.abstractObj || {};
   const style = CITATION_STYLE || 'vancouver';
@@ -4988,6 +5076,79 @@ async function exportSystematicReviewWordDoc() {
       </tr>
     `;
   });
+
+  // Format Table 3: Quantitative Outcome Synthesis Matrix (if pooled)
+  let table3Html = '';
+  if (STATE.metaResults && STATE.metaResults.pooled) {
+    const pooled = STATE.metaResults.pooled;
+    const studies = STATE.metaResults.studiesEvaluated || [];
+    const isRatio = pooled.isRatio;
+    const effName = pooled.measure || (isRatio ? 'Risk Ratio (RR)' : 'Mean Difference (MD)');
+    const modelStr = pooled.model === 'random' ? 'Random-Effects (DerSimonian-Laird)' : 'Fixed-Effect (Inverse-Variance)';
+
+    let table3Rows = '';
+    studies.forEach((s, idx) => {
+      const bg = idx % 2 === 1 ? '#f8fafc' : '#ffffff';
+      const intData = isRatio ? `${s.e1} / ${s.n1}` : `${s.m1} ± ${s.s1} (N=${s.n1})`;
+      const ctrlData = isRatio ? `${s.e2} / ${s.n2}` : `${s.m2} ± ${s.s2} (N=${s.n2})`;
+      const eff = (s.calc?.effect != null ? s.calc.effect : s.calc?.pointEstimate);
+      const ciL = s.calc?.ciLow;
+      const ciH = s.calc?.ciHigh;
+      const wt = (s.weightPct != null ? s.weightPct : s.calc?.weightPct);
+      const effStr = (eff != null && ciL != null && ciH != null)
+        ? `${Number(eff).toFixed(2)} [${Number(ciL).toFixed(2)}, ${Number(ciH).toFixed(2)}]`
+        : '-';
+      const wtStr = wt != null ? `${Number(wt).toFixed(1)}%` : '-';
+
+      table3Rows += `
+        <tr style="background-color:${bg};">
+          <td style="padding:6pt 8pt; border:1pt solid #cbd5e1; font-weight:bold; color:#0f172a;">${cleanHtmlText(s.studyId)}</td>
+          <td style="padding:6pt 8pt; border:1pt solid #cbd5e1; text-align:center; color:#334155;">${cleanHtmlText(intData)}</td>
+          <td style="padding:6pt 8pt; border:1pt solid #cbd5e1; text-align:center; color:#334155;">${cleanHtmlText(ctrlData)}</td>
+          <td style="padding:6pt 8pt; border:1pt solid #cbd5e1; text-align:center; font-weight:bold; color:#0f6b6b;">${cleanHtmlText(wtStr)}</td>
+          <td style="padding:6pt 8pt; border:1pt solid #cbd5e1; text-align:center; font-weight:bold; color:#0f172a;">${cleanHtmlText(effStr)}</td>
+        </tr>
+      `;
+    });
+
+    const totalInt = isRatio ? `${pooled.totalE1} / ${pooled.totalN1}` : `Total N = ${pooled.totalN1}`;
+    const totalCtrl = isRatio ? `${pooled.totalE2} / ${pooled.totalN2}` : `Total N = ${pooled.totalN2}`;
+    const totalEffStr = `${pooled.pointEstimate.toFixed(2)} [${pooled.ciLow.toFixed(2)}, ${pooled.ciHigh.toFixed(2)}]`;
+
+    table3Rows += `
+      <tr style="background-color:#f1f5f9; font-weight:bold;">
+        <td style="padding:7pt 8pt; border:1pt solid #94a3b8; color:#0f172a;">Total (95% CI)</td>
+        <td style="padding:7pt 8pt; border:1pt solid #94a3b8; text-align:center; color:#0f172a;">${cleanHtmlText(totalInt)}</td>
+        <td style="padding:7pt 8pt; border:1pt solid #94a3b8; text-align:center; color:#0f172a;">${cleanHtmlText(totalCtrl)}</td>
+        <td style="padding:7pt 8pt; border:1pt solid #94a3b8; text-align:center; color:#0f6b6b;">100.0%</td>
+        <td style="padding:7pt 8pt; border:1pt solid #94a3b8; text-align:center; color:#0f172a; font-size:10pt;">${cleanHtmlText(totalEffStr)}</td>
+      </tr>
+    `;
+
+    table3Html = `
+  <!-- Table 3: Meta-Analysis Quantitative Matrix -->
+  <h2 class="sub-heading" style="color:#0d9488; font-size:12pt; font-weight:bold; margin:14pt 0 4pt 0;">Table 3. Quantitative Evidence Synthesis &amp; Statistical Pooling Matrix</h2>
+  <p style="font-size:9pt; font-style:italic; color:#64748b; margin:0 0 8pt 0;">Individual study effect sizes, relative inverse-variance weights, and pooled ${cleanHtmlText(modelStr)} effect estimate for ${cleanHtmlText(STATE.pico?.o || 'primary endpoints')}.</p>
+  <table class="table-grid">
+    <thead>
+      <tr>
+        <th style="width:28%;">Study ID</th>
+        <th style="width:18%; text-align:center;">Intervention</th>
+        <th style="width:18%; text-align:center;">Control</th>
+        <th style="width:14%; text-align:center;">Weight (%)</th>
+        <th style="width:22%; text-align:center;">${cleanHtmlText(effName)} [95% CI]</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${table3Rows}
+    </tbody>
+  </table>
+  <p style="font-size:8.5pt; color:#475569; margin:4pt 0 12pt 0; line-height:1.35;">
+    <strong>Heterogeneity:</strong> Tau² = ${(pooled.tau2 != null ? pooled.tau2.toFixed(4) : '0.0000')}; Chi² = ${(pooled.Q != null ? pooled.Q.toFixed(2) : '-')}, df = ${pooled.df ?? '-'} (P = ${pooled.pChi2 < 0.001 ? '&lt; 0.001' : (pooled.pChi2 != null ? pooled.pChi2.toFixed(3) : '-')}); I² = ${(pooled.I2 != null ? pooled.I2.toFixed(1) : '0.0')}%.<br/>
+    <strong>Test for overall effect:</strong> Z = ${(pooled.zScore != null ? pooled.zScore.toFixed(2) : '-')} (P = ${pooled.pValue < 0.001 ? '&lt; 0.001' : (pooled.pValue != null ? pooled.pValue.toFixed(4) : '-')}). <strong>Statistical Model:</strong> ${cleanHtmlText(modelStr)}.
+  </p>
+    `;
+  }
 
   // Format References
   const refs = getFormattedReferencesForCurrentStyle();
@@ -5203,6 +5364,8 @@ async function exportSystematicReviewWordDoc() {
     </tbody>
   </table>
 
+  ${table3Html}
+
   <!-- Section 4: Discussion -->
   <h1 class="sec-heading">4. Discussion</h1>
   ${formatSectionHtml(review.discussion)}
@@ -5230,6 +5393,9 @@ async function exportSystematicReviewWordDoc() {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error('[WORD-EXPORT ERROR]:', err);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -5262,7 +5428,8 @@ function sanitizePdfText(input) {
 // PDF EXPORT ENGINES (jsPDF)
 // ═══════════════════════════════════════════════════════════════
 async function exportSystematicReviewPDF() {
-  if (!STATE.review) return;
+  try {
+    if (!STATE.review) return;
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
   const review = STATE.review;
@@ -5555,6 +5722,106 @@ async function exportSystematicReviewPDF() {
         y += rowH;
       });
       y += 12;
+
+      // Table 3: Quantitative Outcome Synthesis Matrix (if pooled)
+      if (STATE.metaResults && STATE.metaResults.pooled) {
+        const pooled = STATE.metaResults.pooled;
+        const studies = STATE.metaResults.studiesEvaluated || [];
+        const isRatio = pooled.isRatio;
+        const effName = pooled.measure || (isRatio ? 'RR' : 'MD');
+        const modelStr = pooled.model === 'random' ? 'Random-Effects (DerSimonian-Laird)' : 'Fixed-Effect (IV)';
+
+        checkPageBreak(50);
+        doc.setFont('times', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(15, 107, 107);
+        doc.text('Table 3. Quantitative Evidence Synthesis & Statistical Pooling Matrix', margin, y);
+        y += 13;
+
+        // Table 3 Col Widths summing to 504 pt: [144, 90, 90, 60, 120]
+        const t3X = [margin, margin + 144, margin + 234, margin + 324, margin + 384];
+
+        // Table 3 Header Row
+        doc.setFillColor(15, 23, 42);
+        doc.rect(margin, y, textWidth, 16, 'F');
+        doc.setFont('times', 'bold');
+        doc.setFontSize(7.5);
+        doc.setTextColor(255);
+        doc.text('Study ID & Year', t3X[0] + 5, y + 11);
+        doc.text('Intervention', t3X[1] + 5, y + 11);
+        doc.text('Control', t3X[2] + 5, y + 11);
+        doc.text('Weight (%)', t3X[3] + 5, y + 11);
+        doc.text(`${effName} [95% CI]`, t3X[4] + 5, y + 11);
+        y += 16;
+
+        studies.forEach((s, sIdx) => {
+          const rowH = 15;
+          checkPageBreak(rowH);
+          if (sIdx % 2 === 1) {
+            doc.setFillColor(248, 250, 252);
+            doc.rect(margin, y, textWidth, rowH, 'F');
+          }
+          doc.setDrawColor(226, 232, 240);
+          doc.setLineWidth(0.5);
+          doc.line(margin, y + rowH, margin + textWidth, y + rowH);
+
+          const intData = sanitizePdfText(isRatio ? `${s.e1} / ${s.n1}` : `${s.m1} ± ${s.s1} (N=${s.n1})`);
+          const ctrlData = sanitizePdfText(isRatio ? `${s.e2} / ${s.n2}` : `${s.m2} ± ${s.s2} (N=${s.n2})`);
+          const eff = (s.calc?.effect != null ? s.calc.effect : s.calc?.pointEstimate);
+          const ciL = s.calc?.ciLow;
+          const ciH = s.calc?.ciHigh;
+          const wt = (s.weightPct != null ? s.weightPct : s.calc?.weightPct);
+          const effStr = sanitizePdfText((eff != null && ciL != null && ciH != null)
+            ? `${Number(eff).toFixed(2)} [${Number(ciL).toFixed(2)}, ${Number(ciH).toFixed(2)}]`
+            : '-');
+          const wtStr = sanitizePdfText(wt != null ? `${Number(wt).toFixed(1)}%` : '-');
+
+          doc.setFont('times', 'bold');
+          doc.setFontSize(7.5);
+          doc.setTextColor(15, 23, 42);
+          doc.text(sanitizePdfText(s.studyId), t3X[0] + 5, y + 10.5);
+
+          doc.setFont('times', 'normal');
+          doc.setTextColor(50);
+          doc.text(intData, t3X[1] + 5, y + 10.5);
+          doc.text(ctrlData, t3X[2] + 5, y + 10.5);
+          doc.text(wtStr, t3X[3] + 5, y + 10.5);
+          doc.text(effStr, t3X[4] + 5, y + 10.5);
+          y += rowH;
+        });
+
+        // Summary Row
+        const sumRowH = 16;
+        checkPageBreak(sumRowH + 20);
+        doc.setFillColor(241, 245, 249);
+        doc.rect(margin, y, textWidth, sumRowH, 'F');
+        doc.setDrawColor(148, 163, 184);
+        doc.setLineWidth(0.8);
+        doc.line(margin, y + sumRowH, margin + textWidth, y + sumRowH);
+
+        const totalInt = sanitizePdfText(isRatio ? `${pooled.totalE1} / ${pooled.totalN1}` : `N = ${pooled.totalN1}`);
+        const totalCtrl = sanitizePdfText(isRatio ? `${pooled.totalE2} / ${pooled.totalN2}` : `N = ${pooled.totalN2}`);
+        const totalEffStr = sanitizePdfText(`${pooled.pointEstimate.toFixed(2)} [${pooled.ciLow.toFixed(2)}, ${pooled.ciHigh.toFixed(2)}]`);
+
+        doc.setFont('times', 'bold');
+        doc.setFontSize(7.5);
+        doc.setTextColor(15, 23, 42);
+        doc.text('Total (95% CI)', t3X[0] + 5, y + 11);
+        doc.text(totalInt, t3X[1] + 5, y + 11);
+        doc.text(totalCtrl, t3X[2] + 5, y + 11);
+        doc.text('100.0%', t3X[3] + 5, y + 11);
+        doc.text(totalEffStr, t3X[4] + 5, y + 11);
+        y += sumRowH + 4;
+
+        // Statistics footnote
+        doc.setFont('times', 'italic');
+        doc.setFontSize(7);
+        doc.setTextColor(71, 85, 105);
+        const hetFootnote = sanitizePdfText(`Heterogeneity: Tau² = ${(pooled.tau2 != null ? pooled.tau2.toFixed(4) : '0.0000')}; Chi² = ${(pooled.Q != null ? pooled.Q.toFixed(2) : '-')}, df = ${pooled.df ?? '-'} (P = ${pooled.pChi2 < 0.001 ? '<0.001' : (pooled.pChi2 != null ? pooled.pChi2.toFixed(3) : '-')}); I² = ${(pooled.I2 != null ? pooled.I2.toFixed(1) : '0.0')}%. Test for overall effect: Z = ${(pooled.zScore != null ? pooled.zScore.toFixed(2) : '-')} (P = ${pooled.pValue < 0.001 ? '<0.001' : (pooled.pValue != null ? pooled.pValue.toFixed(4) : '-')}). Model: ${modelStr}.`);
+        const fnLines = doc.splitTextToSize(hetFootnote, textWidth);
+        doc.text(fnLines, margin, y + 6);
+        y += fnLines.length * 9 + 8;
+      }
     }
 
     y += 8;
@@ -5609,6 +5876,9 @@ async function exportSystematicReviewPDF() {
 
   const safeTopic = (STATE.topic || 'Systematic_Review').replace(/[^a-zA-Z0-9]/g, '_').substring(0, 30);
   doc.save(`Sysrevai_Systematic_Review_${safeTopic}.pdf`);
+  } catch (err) {
+    console.error('[PDF-EXPORT ERROR]:', err);
+  }
 }
 
 async function exportPRISMAReportPDF() {
