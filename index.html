@@ -273,8 +273,13 @@ button.secondary:disabled { opacity: .55; cursor: not-allowed; }
   border-color: var(--accent); background: var(--accent-light);
   color: var(--accent); font-weight: 700;
 }
-.year-option input[type="radio"], .paper-option input[type="radio"], .engine-option input[type="radio"] {
+.year-option input[type="radio"], .paper-option input[type="radio"], .engine-option input[type="radio"], .engine-option input[type="checkbox"] {
   accent-color: var(--accent);
+  width: 17px;
+  height: 17px;
+  cursor: pointer;
+  margin: 0;
+  flex-shrink: 0;
 }
 
 /* ═══════════════════════════════════════════════════
@@ -1222,34 +1227,45 @@ sup.cite-num:hover, .cite-num:hover, .cite-apa:hover, .cite-harvard:hover {
     <input type="hidden" id="page-size" value="35"/>
 
     <!-- Search engine sources -->
-    <div style="margin-top:18px">
-      <h2 class="sec-h" style="margin:0">🌐 Literature Search Databases</h2>
+    <div style="margin-top:20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+      <div>
+        <h2 class="sec-h" style="margin:0">🌐 Literature Search Databases</h2>
+        <p class="hint" style="margin:4px 0 0">Select individual databases or query all 4 concurrently (meets PRISMA 2020 Item 6 requirements):</p>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button type="button" class="mini-btn" id="btn-select-all-dbs" onclick="selectAllSearchDatabases(true)" style="font-weight:700;font-size:0.78rem;background:var(--accent);color:#fff;border-color:var(--accent);">✓ Select All 4 Databases</button>
+        <button type="button" class="mini-btn" onclick="selectSearchEngine(null, 'both')" style="font-size:0.78rem;">Dual Core (EPMC + S2)</button>
+        <button type="button" class="mini-btn" onclick="selectAllSearchDatabases(false)" style="font-size:0.78rem;">Clear All</button>
+      </div>
     </div>
-    <p class="hint">Simultaneous multi-database harvesting meets PRISMA 2020 Item 6 requirements:</p>
-    <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px" id="engine-options">
-      <label class="engine-option selected" onclick="selectSearchEngine(this,'both')">
-        <input type="radio" name="searchengine" value="both" checked>
-        <span>🌐 Dual Core (Europe PMC + Semantic Scholar with Fallbacks) <strong style="color:var(--accent);font-size:.78rem">Recommended ✓</strong></span>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));gap:10px;margin:12px 0 16px;" id="engine-options">
+      <label class="engine-option selected" id="db-opt-epmc">
+        <input type="checkbox" name="search_db" id="db-cb-epmc" value="epmc" checked onchange="onSearchDatabaseChange('epmc')">
+        <div style="display:flex;flex-direction:column;gap:2px;">
+          <span style="font-weight:700;color:var(--accent);">🇪🇺 Europe PMC ✓</span>
+          <span style="font-size:0.76rem;color:var(--muted);font-weight:normal;">PubMed Central, MEDLINE &amp; Life Sciences</span>
+        </div>
       </label>
-      <label class="engine-option" onclick="selectSearchEngine(this,'all')">
-        <input type="radio" name="searchengine" value="all">
-        <span>🚀 All 4 Databases (Europe PMC, Semantic Scholar, OpenAlex, Crossref)</span>
+      <label class="engine-option selected" id="db-opt-s2">
+        <input type="checkbox" name="search_db" id="db-cb-s2" value="s2" checked onchange="onSearchDatabaseChange('s2')">
+        <div style="display:flex;flex-direction:column;gap:2px;">
+          <span style="font-weight:700;color:var(--accent);">🎓 Semantic Scholar ✓</span>
+          <span style="font-size:0.76rem;color:var(--muted);font-weight:normal;">AI Academic Graph, Citation &amp; Velocity Network</span>
+        </div>
       </label>
-      <label class="engine-option" onclick="selectSearchEngine(this,'openalex')">
-        <input type="radio" name="searchengine" value="openalex">
-        <span>🏛️ OpenAlex Only (250M+ Works, Open Scholarly Graph)</span>
+      <label class="engine-option selected" id="db-opt-openalex">
+        <input type="checkbox" name="search_db" id="db-cb-openalex" value="openalex" checked onchange="onSearchDatabaseChange('openalex')">
+        <div style="display:flex;flex-direction:column;gap:2px;">
+          <span style="font-weight:700;color:var(--accent);">🏛️ OpenAlex ✓</span>
+          <span style="font-size:0.76rem;color:var(--muted);font-weight:normal;">250M+ Works, Open Global Scholarly Graph</span>
+        </div>
       </label>
-      <label class="engine-option" onclick="selectSearchEngine(this,'crossref')">
-        <input type="radio" name="searchengine" value="crossref">
-        <span>🔍 Crossref Only (150M+ Official DOI Publisher Records)</span>
-      </label>
-      <label class="engine-option" onclick="selectSearchEngine(this,'epmc')">
-        <input type="radio" name="searchengine" value="epmc">
-        <span>🇪🇺 Europe PMC Only (PubMed Central, MEDLINE)</span>
-      </label>
-      <label class="engine-option" onclick="selectSearchEngine(this,'s2')">
-        <input type="radio" name="searchengine" value="s2">
-        <span>🎓 Semantic Scholar Only (AI Academic Graph)</span>
+      <label class="engine-option selected" id="db-opt-crossref">
+        <input type="checkbox" name="search_db" id="db-cb-crossref" value="crossref" checked onchange="onSearchDatabaseChange('crossref')">
+        <div style="display:flex;flex-direction:column;gap:2px;">
+          <span style="font-weight:700;color:var(--accent);">🔍 Crossref ✓</span>
+          <span style="font-size:0.76rem;color:var(--muted);font-weight:normal;">150M+ Official DOI Publisher Metadata Registry</span>
+        </div>
       </label>
     </div>
 
@@ -2019,7 +2035,13 @@ let STATE = {
   exclusionCriteria: [],
   yearRange: 5,
   pageSize: 35,
-  searchSource: 'both',
+  selectedDatabases: {
+    epmc: true,
+    s2: true,
+    openalex: true,
+    crossref: true
+  },
+  searchSource: 'all',
   
   // Raw & processed studies
   rawCandidateCount: 0,
@@ -2208,20 +2230,114 @@ function selectPaperCount(el, val) {
   document.getElementById('page-size').value = val;
 }
 
-function selectSearchEngine(el, mode) {
-  document.querySelectorAll('.engine-option').forEach(l => {
-    l.classList.remove('selected');
-    const span = l.querySelector('span');
-    if (span) span.textContent = span.textContent.replace(' ✓', '');
-    const rad = l.querySelector('input');
-    if (rad) rad.checked = false;
+function onSearchDatabaseChange(dbKey) {
+  if (!STATE.selectedDatabases) {
+    STATE.selectedDatabases = { epmc: true, s2: true, openalex: true, crossref: true };
+  }
+  const cb = document.getElementById(`db-cb-${dbKey}`);
+  if (cb) {
+    STATE.selectedDatabases[dbKey] = !!cb.checked;
+  }
+  updateDatabaseOptionUI(dbKey);
+  syncSearchSourceState();
+}
+
+function toggleSearchDatabase(dbKey) {
+  if (!STATE.selectedDatabases) {
+    STATE.selectedDatabases = { epmc: true, s2: true, openalex: true, crossref: true };
+  }
+  const cb = document.getElementById(`db-cb-${dbKey}`);
+  if (cb) {
+    cb.checked = !cb.checked;
+    STATE.selectedDatabases[dbKey] = cb.checked;
+  } else {
+    STATE.selectedDatabases[dbKey] = !STATE.selectedDatabases[dbKey];
+  }
+  updateDatabaseOptionUI(dbKey);
+  syncSearchSourceState();
+}
+
+function updateDatabaseOptionUI(dbKey) {
+  const cb = document.getElementById(`db-cb-${dbKey}`);
+  const card = document.getElementById(`db-opt-${dbKey}`);
+  const isChecked = cb ? !!cb.checked : (STATE.selectedDatabases && !!STATE.selectedDatabases[dbKey]);
+
+  if (card) {
+    if (card.classList && typeof card.classList.add === 'function') {
+      if (isChecked) {
+        card.classList.add('selected');
+      } else {
+        card.classList.remove('selected');
+      }
+    }
+
+    if (typeof card.querySelector === 'function') {
+      const nameSpan = card.querySelector('div > span:first-child') || card.querySelector('span');
+      if (nameSpan && typeof nameSpan.textContent === 'string') {
+        const rawName = nameSpan.textContent.replace(' ✓', '').trim();
+        nameSpan.textContent = isChecked ? `${rawName} ✓` : rawName;
+      }
+    }
+  }
+}
+
+function selectAllSearchDatabases(selected = true) {
+  if (!STATE.selectedDatabases) {
+    STATE.selectedDatabases = { epmc: true, s2: true, openalex: true, crossref: true };
+  }
+  ['epmc', 's2', 'openalex', 'crossref'].forEach(dbKey => {
+    STATE.selectedDatabases[dbKey] = !!selected;
+    const cb = document.getElementById(`db-cb-${dbKey}`);
+    if (cb) cb.checked = !!selected;
+    updateDatabaseOptionUI(dbKey);
   });
-  el.classList.add('selected');
-  const rad = el.querySelector('input');
-  if (rad) rad.checked = true;
-  const span = el.querySelector('span');
-  if (span && !span.textContent.includes('✓')) span.textContent += ' ✓';
-  STATE.searchSource = mode;
+  syncSearchSourceState();
+}
+
+function syncSearchSourceState() {
+  if (!STATE.selectedDatabases) {
+    STATE.selectedDatabases = { epmc: true, s2: true, openalex: true, crossref: true };
+  }
+  const dbs = STATE.selectedDatabases;
+  const active = Object.keys(dbs).filter(k => dbs[k]);
+  if (active.length === 4) {
+    STATE.searchSource = 'all';
+  } else if (active.length === 2 && dbs.epmc && dbs.s2) {
+    STATE.searchSource = 'both';
+  } else if (active.length === 1) {
+    STATE.searchSource = active[0];
+  } else {
+    STATE.searchSource = active.join('+') || 'none';
+  }
+}
+
+function selectSearchEngine(el, mode) {
+  if (!STATE.selectedDatabases) {
+    STATE.selectedDatabases = { epmc: true, s2: true, openalex: true, crossref: true };
+  }
+  if (mode === 'all') {
+    selectAllSearchDatabases(true);
+  } else if (mode === 'both') {
+    STATE.selectedDatabases.epmc = true;
+    STATE.selectedDatabases.s2 = true;
+    STATE.selectedDatabases.openalex = false;
+    STATE.selectedDatabases.crossref = false;
+    ['epmc', 's2', 'openalex', 'crossref'].forEach(k => {
+      const cb = document.getElementById(`db-cb-${k}`);
+      if (cb) cb.checked = STATE.selectedDatabases[k];
+      updateDatabaseOptionUI(k);
+    });
+    syncSearchSourceState();
+  } else if (['epmc', 's2', 'openalex', 'crossref'].includes(mode)) {
+    ['epmc', 's2', 'openalex', 'crossref'].forEach(k => {
+      const match = (k === mode);
+      STATE.selectedDatabases[k] = match;
+      const cb = document.getElementById(`db-cb-${k}`);
+      if (cb) cb.checked = match;
+      updateDatabaseOptionUI(k);
+    });
+    syncSearchSourceState();
+  }
 }
 
 function clearStep1Alert() {
@@ -2305,6 +2421,7 @@ function resetApp() {
       window.renderMetaAnalysisInitialBanner();
     }
   }
+  selectAllSearchDatabases(true);
   showSection('step-1');
   setStep(1);
 }
@@ -6123,6 +6240,15 @@ async function runPipeline() {
   STATE.inclusionCriteria = getCriteriaList('inc');
   STATE.exclusionCriteria = getCriteriaList('exc');
 
+  if (!STATE.selectedDatabases) {
+    STATE.selectedDatabases = { epmc: true, s2: true, openalex: true, crossref: true };
+  }
+  const activeDbs = Object.keys(STATE.selectedDatabases).filter(k => STATE.selectedDatabases[k]);
+  if (activeDbs.length === 0) {
+    showStep1Alert('Search Database Required', 'Please select at least one literature search database (Europe PMC, Semantic Scholar, OpenAlex, or Crossref) before searching.');
+    return;
+  }
+
   currentAbortController = new AbortController();
   const signal = currentAbortController.signal;
 
@@ -6148,32 +6274,28 @@ async function runPipeline() {
 
   try {
     // Stage 1: Concurrent Retrieval across Selected Scientific Literature Databases
-    setProc('Querying electronic literature databases…', 'Executing multi-database retrieval across scientific repositories', 15);
+    setProc('Querying electronic literature databases…', `Executing concurrent retrieval across ${activeDbs.length} selected databases`, 15);
     await abortableSleep(350, signal);
 
-    const targetSize = Math.max(20, Math.ceil(STATE.pageSize * (STATE.searchSource === 'all' ? 0.35 : 0.7)));
+    const activeDbCount = activeDbs.length;
+    const targetSize = Math.max(15, Math.ceil(STATE.pageSize / activeDbCount));
 
     let epmcPromise = Promise.resolve({ results: [], hitCount: 0 });
     let s2Promise = Promise.resolve({ results: [], hitCount: 0 });
     let alexPromise = Promise.resolve({ results: [], hitCount: 0 });
     let crossPromise = Promise.resolve({ results: [], hitCount: 0 });
 
-    if (STATE.searchSource === 'all') {
+    if (STATE.selectedDatabases.epmc) {
       epmcPromise = fetchEuropePMC(topic, targetSize, STATE.yearRange, signal).catch(err => ({ results: [], hitCount: 0, error: err.message }));
+    }
+    if (STATE.selectedDatabases.s2) {
       s2Promise = fetchSemanticScholar(topic, targetSize, STATE.yearRange, signal).catch(err => ({ results: [], hitCount: 0, error: err.message }));
+    }
+    if (STATE.selectedDatabases.openalex) {
       alexPromise = fetchOpenAlex(topic, targetSize, STATE.yearRange, signal).catch(err => ({ results: [], hitCount: 0, error: err.message }));
+    }
+    if (STATE.selectedDatabases.crossref) {
       crossPromise = fetchCrossref(topic, targetSize, STATE.yearRange, signal).catch(err => ({ results: [], hitCount: 0, error: err.message }));
-    } else if (STATE.searchSource === 'both') {
-      epmcPromise = fetchEuropePMC(topic, targetSize, STATE.yearRange, signal).catch(err => ({ results: [], hitCount: 0, error: err.message }));
-      s2Promise = fetchSemanticScholar(topic, targetSize, STATE.yearRange, signal).catch(err => ({ results: [], hitCount: 0, error: err.message }));
-    } else if (STATE.searchSource === 'openalex') {
-      alexPromise = fetchOpenAlex(topic, STATE.pageSize, STATE.yearRange, signal).catch(err => ({ results: [], hitCount: 0, error: err.message }));
-    } else if (STATE.searchSource === 'crossref') {
-      crossPromise = fetchCrossref(topic, STATE.pageSize, STATE.yearRange, signal).catch(err => ({ results: [], hitCount: 0, error: err.message }));
-    } else if (STATE.searchSource === 'epmc') {
-      epmcPromise = fetchEuropePMC(topic, STATE.pageSize, STATE.yearRange, signal).catch(err => ({ results: [], hitCount: 0, error: err.message }));
-    } else if (STATE.searchSource === 's2') {
-      s2Promise = fetchSemanticScholar(topic, STATE.pageSize, STATE.yearRange, signal).catch(err => ({ results: [], hitCount: 0, error: err.message }));
     }
 
     const [epmcRes, s2Res, alexRes, crossRes] = await Promise.all([epmcPromise, s2Promise, alexPromise, crossPromise]);
@@ -6194,7 +6316,7 @@ async function runPipeline() {
       } else {
         epmcActual += epmcRes.results.length;
       }
-    } else if (epmcRes.error && (STATE.searchSource === 'epmc' || STATE.searchSource === 'both' || STATE.searchSource === 'all')) {
+    } else if (epmcRes.error && STATE.selectedDatabases.epmc) {
       notices.push(`Europe PMC was temporarily unavailable (${epmcRes.error}).`);
     }
 
@@ -6208,7 +6330,7 @@ async function runPipeline() {
       } else {
         s2Actual += s2Res.results.length;
       }
-    } else if (s2Res.error && (STATE.searchSource === 's2' || STATE.searchSource === 'both' || STATE.searchSource === 'all')) {
+    } else if (s2Res.error && STATE.selectedDatabases.s2) {
       notices.push(`Semantic Scholar: ${s2Res.error}.`);
     }
 
@@ -6216,12 +6338,16 @@ async function runPipeline() {
     if (alexRes.results && alexRes.results.length > 0) {
       rawPapers.push(...alexRes.results);
       alexActual += alexRes.results.length;
+    } else if (alexRes.error && STATE.selectedDatabases.openalex) {
+      notices.push(`OpenAlex: ${alexRes.error}.`);
     }
 
     // Crossref Direct Results Processing
     if (crossRes.results && crossRes.results.length > 0) {
       rawPapers.push(...crossRes.results);
       crossActual += crossRes.results.length;
+    } else if (crossRes.error && STATE.selectedDatabases.crossref) {
+      notices.push(`Crossref: ${crossRes.error}.`);
     }
 
     if (rawPapers.length === 0) {

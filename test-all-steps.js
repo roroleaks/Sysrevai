@@ -44,15 +44,24 @@ const window = {
   }
 };
 global.window = window;
+const mockElementStore = {};
 global.document = {
-  getElementById: (id) => ({
-    value: id === 'topic-input' ? 'SGLT2 inhibitors in heart failure' : '',
-    trim: () => 'SGLT2 inhibitors in heart failure',
-    classList: { add: () => {}, remove: () => {}, contains: () => false },
-    textContent: '',
-    innerHTML: '',
-    style: {}
-  }),
+  getElementById: (id) => {
+    if (!mockElementStore[id]) {
+      mockElementStore[id] = {
+        id,
+        value: id === 'topic-input' ? 'SGLT2 inhibitors in heart failure' : '',
+        checked: id.startsWith('db-cb-') ? true : false,
+        trim: () => 'SGLT2 inhibitors in heart failure',
+        classList: { add: () => {}, remove: () => {}, contains: () => false },
+        textContent: '',
+        innerHTML: '',
+        style: {},
+        querySelector: () => ({ textContent: '', replace: () => '' })
+      };
+    }
+    return mockElementStore[id];
+  },
   querySelectorAll: () => [],
   createElement: (tag) => ({
     href: '',
@@ -125,6 +134,36 @@ assert(typeof cleanQueryKeywords === 'function', 'cleanQueryKeywords helper exis
 const cleanTopic = cleanQueryKeywords(topic);
 assert(cleanTopic.includes('SGLT2 inhibitors') && cleanTopic.includes('heart failure'), 'cleanQueryKeywords normalizes topic terms');
 assert(typeof selectSearchEngine === 'function', 'selectSearchEngine function active');
+assert(typeof selectAllSearchDatabases === 'function', 'selectAllSearchDatabases function active');
+assert(typeof toggleSearchDatabase === 'function', 'toggleSearchDatabase function active');
+
+// Test 4 Literature Search Database individual & multi-selection
+selectAllSearchDatabases(true);
+assert(STATE.selectedDatabases.epmc === true && STATE.selectedDatabases.s2 === true && STATE.selectedDatabases.openalex === true && STATE.selectedDatabases.crossref === true, 'All 4 literature search databases selected simultaneously');
+assert(STATE.searchSource === 'all', 'searchSource correctly synchronized to all 4 databases');
+
+// Test individual toggle for every one of the 4 databases
+toggleSearchDatabase('crossref');
+assert(STATE.selectedDatabases.crossref === false && STATE.selectedDatabases.openalex === true, 'Crossref toggled off individually while retaining other 3 choices');
+
+toggleSearchDatabase('openalex');
+assert(STATE.selectedDatabases.openalex === false && STATE.selectedDatabases.epmc === true && STATE.selectedDatabases.s2 === true, 'OpenAlex toggled off individually, leaving dual core');
+
+toggleSearchDatabase('crossref');
+assert(STATE.selectedDatabases.crossref === true && STATE.selectedDatabases.epmc === true && STATE.selectedDatabases.s2 === true, 'Crossref re-enabled individually in custom 3-database combination');
+
+// Test single database selection
+selectSearchEngine(null, 'openalex');
+assert(STATE.selectedDatabases.openalex === true && STATE.selectedDatabases.epmc === false && STATE.selectedDatabases.s2 === false && STATE.selectedDatabases.crossref === false, 'Individual database OpenAlex selected exclusively');
+
+selectSearchEngine(null, 'crossref');
+assert(STATE.selectedDatabases.crossref === true && STATE.selectedDatabases.openalex === false, 'Individual database Crossref selected exclusively');
+
+selectSearchEngine(null, 'both');
+assert(STATE.selectedDatabases.epmc === true && STATE.selectedDatabases.s2 === true && STATE.selectedDatabases.openalex === false, 'Dual Core mode selects Europe PMC + Semantic Scholar');
+
+selectAllSearchDatabases(true);
+assert(Object.values(STATE.selectedDatabases).every(Boolean), 'All 4 literature databases re-selected together via selectAllSearchDatabases(true)');
 
 // ─────────────────────────────────────────────────────────────
 // STEP 2: Retrieval, Deduplication & Classification
