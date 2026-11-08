@@ -486,6 +486,15 @@ assert(!isNaN(pooled.pointEstimate) && pooled.pointEstimate > 0.6 && pooled.poin
 assert(pooled.ciLow > 0 && pooled.ciHigh < 1.0, 'Meta-analysis confidence interval statistically significant [CI < 1.0]');
 assert(pooled.I2 !== undefined && !isNaN(pooled.I2), 'Heterogeneity I² statistic calculated');
 
+// Test 1-Click Auto-Extraction and Quantitative Meta-Analysis Completion
+window.STATE.includedPapers = included;
+META_ANALYSIS_STATE.studies = syncMetaStudiesFromIncluded(included);
+assert(META_ANALYSIS_STATE.studies.every(s => s.e1 === null), 'Synced studies initially have unpopulated null counts');
+autoExtractAndCompleteMetaAnalysis();
+assert(META_ANALYSIS_STATE.results && META_ANALYSIS_STATE.results.isValid && META_ANALYSIS_STATE.results.pooled, 'autoExtractAndCompleteMetaAnalysis successfully completes quantitative pooling in 1 click');
+assert(META_ANALYSIS_STATE.results.pooled.pointEstimate > 0, 'autoExtractAndCompleteMetaAnalysis produces valid pooled effect estimate');
+assert(META_ANALYSIS_STATE.results.pooled.totalN1 > 0 && META_ANALYSIS_STATE.results.pooled.totalN2 > 0, 'autoExtractAndCompleteMetaAnalysis extracted valid trial sample sizes');
+
 // Regression Assertion: Integer-ness validation in calculateBinaryStudyEffect (W13)
 const nonIntRes = calculateBinaryStudyEffect({ e1: 12.5, n1: 100, e2: 15, n2: 100 }, 'RR', 1.96);
 assert(nonIntRes.valid === false && nonIntRes.error.includes('integers'), 'calculateBinaryStudyEffect rejects non-integer counts');

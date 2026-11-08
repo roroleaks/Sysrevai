@@ -1614,13 +1614,8 @@ sup.cite-num:hover, .cite-num:hover, .cite-apa:hover, .cite-harvard:hover {
 
     <!-- Tab 7: Quantitative Synthesis (Meta-Analysis) Tab -->
     <div id="tab-meta" class="hidden">
-      <div id="tab-meta-placeholder" style="padding:10px 0;"></div>
+      <div id="meta-analysis-stage"></div>
     </div>
-
-    <!-- ══════════════════════════════════════════════════════════
-         OPTIONAL POST-REVIEW STAGE: QUANTITATIVE SYNTHESIS (META-ANALYSIS)
-    ══════════════════════════════════════════════════════════ -->
-    <div id="meta-analysis-stage"></div>
 
     <!-- Sticky Action Bar for Step 4 -->
     <div class="sticky-bottom-bar" id="step4-actions">
@@ -1646,7 +1641,7 @@ sup.cite-num:hover, .cite-num:hover, .cite-apa:hover, .cite-harvard:hover {
       <div style="display:flex;align-items:center;gap:10px;">
         <span style="font-size:1.6rem">📁</span>
         <div>
-          <h3 style="font-size:1.15rem;font-weight:700;margin:0;color:var(--accent,#0f6b6b)">Import Study Document from PC</h3>
+          <h3 id="meta-import-modal-title" style="font-size:1.15rem;font-weight:700;margin:0;color:var(--accent,#0f6b6b)">Import Study Document from PC</h3>
           <p class="hint" style="margin:2px 0 0;font-size:0.80rem;color:#64748b">Upload a trial paper (PDF, Word DOC/DOCX, TXT) from your PC to add to this quantitative meta-analysis</p>
         </div>
       </div>
@@ -1695,7 +1690,7 @@ sup.cite-num:hover, .cite-num:hover, .cite-apa:hover, .cite-harvard:hover {
 
       <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px;border-top:1px solid #e2e8f0;padding-top:14px;">
         <button type="button" class="secondary" onclick="closeImportStudyModal()" style="padding:8px 18px;font-size:0.88rem;border-radius:6px;">Cancel</button>
-        <button type="button" class="primary" onclick="confirmImportMetaStudy()" style="padding:8px 20px;font-size:0.88rem;border-radius:6px;background:#0f6b6b;color:#fff;font-weight:700;border:none;cursor:pointer;">
+        <button type="button" class="primary" id="meta-import-submit-btn" onclick="confirmImportMetaStudy()" style="padding:8px 20px;font-size:0.88rem;border-radius:6px;background:#0f6b6b;color:#fff;font-weight:700;border:none;cursor:pointer;">
           ✔ Add to Meta-Analysis Pool
         </button>
       </div>
@@ -4540,6 +4535,13 @@ function switchTab(tabId, btn) {
 
   if (tabId === 'meta') {
     setStep(5);
+    if (typeof renderMetaAnalysisInitialBanner === 'function') {
+      if (window.META_ANALYSIS_STATE && window.META_ANALYSIS_STATE.initiated) {
+        renderMetaAnalysisActiveWorkspace();
+      } else {
+        renderMetaAnalysisInitialBanner();
+      }
+    }
     const stageEl = document.getElementById('meta-analysis-stage');
     if (stageEl) {
       stageEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
