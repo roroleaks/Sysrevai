@@ -486,6 +486,11 @@
    */
   function clusterRecords(rawRecords, opts = {}) {
     const cannotLink = Array.isArray(opts.cannotLink) ? opts.cannotLink : [];
+    const forbidden = (recA, recB) => {
+      const ra = new Set(recA.memberRids || [recA._rid]);
+      const rb = new Set(recB.memberRids || [recB._rid]);
+      return cannotLink.some(([x, y]) => (ra.has(x) && rb.has(y)) || (ra.has(y) && rb.has(x)));
+    };
     const log = [];
     let duplicates = 0;
     let linked = 0;
@@ -516,7 +521,7 @@
       const maxV = Math.max(...group.map(r => r.cochraneVersion || 1));
       const keep = group.find(r => (r.cochraneVersion || 1) === maxV);
       group.forEach(r => {
-        if ((r.cochraneVersion || 1) < maxV) {
+        if ((r.cochraneVersion || 1) < maxV && !forbidden(keep, r)) {
           superseded.add(r);
           keep.supersededVersions = Array.from(new Set([...(keep.supersededVersions || []), r.doi]));
           r.sources.forEach(s => { if (!keep.sources.includes(s)) keep.sources.push(s); });
@@ -616,7 +621,7 @@
     const regUnique = [];
     registry.forEach(r => {
       const nct = r.nctIds[0];
-      if (nct && regGroups.has(nct)) {
+      if (nct && regGroups.has(nct) && !forbidden(regGroups.get(nct), r)) {
         const keep = regGroups.get(nct);
         mergeInto(keep, r);
         log.push(logEntry(keep, r, 'nct', 1));
@@ -631,7 +636,7 @@
       const refPmids = new Set((reg.referencePmids || []).map(normalizePMID).filter(Boolean));
       let target = null;
       let matchedOn = null;
-      const candidates = unique.filter(u => !u._isPreprint && !u._isRegistry);
+      const candidates = unique.filter(u => !u._isPreprint && !u._isRegistry && !forbidden(u, reg));
       target = candidates.find(u => u.pmid && refPmids.has(u.pmid));
       if (target) matchedOn = 'registry-ref-pmid';
       if (!target) {
@@ -673,12 +678,12 @@
     notices.forEach(n => {
       const parentNorm = normalizeTitle(n._notice.parentTitle);
       const parentTokens = getTitleTokens(n._notice.parentTitle);
-      let parent = unique.find(u => !u._notice && u._normTitle && u._normTitle === parentNorm);
+      const allowed = unique.filter(u => !u._notice && !forbidden(u, n));
+      let parent = allowed.find(u => u._normTitle && u._normTitle === parentNorm);
       let sim = 1;
       if (!parent && parentTokens.size) {
         let best = null; let bestSim = 0;
-        unique.forEach(u => {
-          if (u._notice) return;
+        allowed.forEach(u => {
           const s = titleJaccard(parentTokens, u._tokens);
           if (s > bestSim) { bestSim = s; best = u; }
         });

@@ -1310,6 +1310,8 @@ function syncMetaStudiesFromIncluded(includedPapers) {
 
     return {
       id: p.id || `study-${idx + 1}`,
+      paperRid: p._rid || null,
+      memberRids: Array.isArray(p.memberRids) ? p.memberRids.slice() : [],
       studyId,
       design,
       e1: null,
@@ -2282,6 +2284,43 @@ function toggleMetaStudyInclusion(idx) {
 
 let currentImportedStudyFile = null;
 let currentEditingStudyIndex = null;
+let currentImportedStudyIdentifiers = null;
+
+/** Identifiers found in an imported full-text report (used only for de-duplication against the record pool). */
+function extractReportIdentifiers(text) {
+  const t = String(text || '');
+  const doiM = t.match(/\b(10\.\d{4,9}\/[^\s"<>]+?)(?=[\s"<>),;]|\.(?:\s|$)|$)/i);
+  const pmidM = t.match(/\bPMID:?\s*(\d{6,9})\b/i);
+  const ncts = Array.from(new Set((t.toUpperCase().match(/NCT\d{8}/g) || [])));
+  return { doi: doiM ? doiM[1].replace(/[.,;]+$/, '') : '', pmid: pmidM ? pmidM[1] : '', nctIds: ncts };
+}
+
+/**
+ * Route a reviewer-imported report through the single record-pool entry point (addRecordsToPool).
+ * Returns { duplicateOfMetaStudy: bool, paper } so the same study is never pooled twice.
+ */
+function registerImportedReportInPool(studyId, fileName) {
+  if (typeof window === 'undefined' || typeof window.addRecordsToPool !== 'function') return { duplicateOfMetaStudy: false, paper: null, rid: null };
+  const ids = currentImportedStudyIdentifiers || {};
+  const localId = `custom-pc-${Date.now()}`;
+  const rid = `manual_import:${localId}`;
+  const yearM = String(studyId || '').match(/\b(19|20)\d{2}\b/);
+  const record = {
+    sourceKey: 'manual_import', source: 'manual_import', sources: ['Manual import'], id: localId, _rid: rid,
+    title: studyId || fileName || 'Imported report', authors: String(studyId || '').replace(/\(.*$/, '').trim() || 'Unknown Authors',
+    year: yearM ? Number(yearM[0]) : null, journal: 'Full-text report added by reviewer', fileName: fileName || null,
+    doi: ids.doi || '', pmid: ids.pmid || '', nctIds: ids.nctIds || [], abstract: '', abstractSource: 'none', pubType: [],
+    screening: { status: 'INCLUDED', manual: true, primaryReason: 'Added manually by reviewer from a full-text report (Step 5)', matchedInclusions: ['Reviewer-added full-text report'], violatedExclusions: [] }
+  };
+  const res = window.addRecordsToPool([record], { sourceKey: 'manual_import' });
+  if (typeof window.afterPoolChanged === 'function') window.afterPoolChanged();
+  const paper = res && res.mergedInto ? res.mergedInto[0] : null;
+  if (!paper) return { duplicateOfMetaStudy: false, paper: null, rid };
+  const rids = new Set(paper.memberRids || [paper._rid]);
+  const duplicateOfMetaStudy = paper._rid !== rid && (META_ANALYSIS_STATE.studies || []).some(st =>
+    (st.paperRid && rids.has(st.paperRid)) || (Array.isArray(st.memberRids) && st.memberRids.some(r => rids.has(r))));
+  return { duplicateOfMetaStudy, paper, rid };
+}
 
 function renderImportDataFields(state, prefilled = {}) {
   const container = document.getElementById('meta-import-data-container');
@@ -2571,6 +2610,7 @@ async function processSelectedStudyFile(file) {
 }
 
 function scanStudyDocumentText(text, filename) {
+  currentImportedStudyIdentifiers = extractReportIdentifiers(text);
   if (!text || text.length < 20) {
     showImportMessage(`✔ Loaded "${filename}" from PC. Please review and enter numerical counts below.`, 'success');
     return;
@@ -2705,8 +2745,16 @@ function confirmImportMetaStudy() {
     if (currentImportedStudyFile) s.fileName = currentImportedStudyFile.name;
     currentEditingStudyIndex = null;
   } else {
+    // Every imported report goes through the record pool first, so the same study is never pooled twice
+    const poolInfo = registerImportedReportInPool(studyId, currentImportedStudyFile ? currentImportedStudyFile.name : null);
+    if (poolInfo.duplicateOfMetaStudy) {
+      showImportMessage(`This report matches a study already in the meta-analysis pool ("${(poolInfo.paper.title || '').slice(0, 80)}"). It was linked to that record and not added a second time.`, 'error');
+      return;
+    }
     // Add verified study to state
     META_ANALYSIS_STATE.studies.push({
+      paperRid: poolInfo.paper ? poolInfo.paper._rid : poolInfo.rid,
+      memberRids: poolInfo.paper ? (poolInfo.paper.memberRids || []).slice() : [],
       id: `custom-pc-${Date.now()}`,
       studyId: studyId,
       design: design,

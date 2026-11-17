@@ -28,6 +28,8 @@ global.document = {
 
 const metaModule = require('./meta-analysis-engine.js');
 Object.assign(global, metaModule);
+// Browser loads these via <script src>; mirror that here
+Object.assign(global, require('./dedup.js'), require('./sources.js'));
 
 // Extract inline scripts from index.html
 const indexHtml = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
@@ -333,6 +335,8 @@ vm.createContext(browserSandbox);
 try {
   vm.runInContext(prismaCode, browserSandbox);
   vm.runInContext(metaCode, browserSandbox);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, 'dedup.js'), 'utf8'), browserSandbox);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, 'sources.js'), 'utf8'), browserSandbox);
   if (!inlineScriptMatch) throw new Error('Inline script not found in index.html');
   vm.runInContext(inlineScriptMatch[1], browserSandbox);
 } catch (e) {

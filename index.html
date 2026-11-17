@@ -47,6 +47,8 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
   <script src="prisma-generator.js"></script>
   <script src="meta-analysis-engine.js"></script>
+  <script src="dedup.js"></script>
+  <script src="sources.js"></script>
   <style>
 /* ═══════════════════════════════════════════════════
    ROOT & TOKENS  (Matching AIMed / SciDraft Design System & Interface Polish)
@@ -1435,47 +1437,28 @@ sup.cite-num:hover, .cite-num:hover, .cite-apa:hover, .cite-harvard:hover {
     </div>
     <input type="hidden" id="page-size" value="35"/>
 
-    <!-- Search engine sources -->
-    <div style="margin-top:20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
-      <div>
-        <h2 class="sec-h" style="margin:0">🌐 Literature Search Databases</h2>
-        <p class="hint" style="margin:4px 0 0">Select individual databases or query all 4 concurrently (meets PRISMA 2020 Item 6 requirements):</p>
-      </div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;">
-        <button type="button" class="mini-btn" id="btn-select-all-dbs" onclick="selectAllSearchDatabases(true)" style="font-weight:700;font-size:0.78rem;background:var(--accent);color:#fff;border-color:var(--accent);">✓ Select All 4 Databases</button>
-        <button type="button" class="mini-btn" onclick="selectSearchEngine(null, 'both')" style="font-size:0.78rem;">Dual Core (EPMC + S2)</button>
-        <button type="button" class="mini-btn" onclick="selectAllSearchDatabases(false)" style="font-size:0.78rem;">Clear All</button>
-      </div>
+    <!-- Mandatory literature sources (read-only: every source is searched on every run) -->
+    <div style="margin-top:20px">
+      <h2 class="sec-h" style="margin:0">🌐 Mandatory literature sources</h2>
+      <p class="hint" style="margin:4px 0 0">All 10 sources below are searched on every run with one shared search strategy (PRISMA 2020 item 6 / PRISMA-S). Sources cannot be deselected; any source that is not searched is reported as such in PRISMA, Methods and Limitations.</p>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));gap:10px;margin:12px 0 16px;" id="engine-options">
-      <label class="engine-option selected" id="db-opt-epmc">
-        <input type="checkbox" name="search_db" id="db-cb-epmc" value="epmc" checked onchange="onSearchDatabaseChange('epmc')">
-        <div style="display:flex;flex-direction:column;gap:2px;">
-          <span style="font-weight:700;color:var(--accent);">🇪🇺 Europe PMC ✓</span>
-          <span style="font-size:0.76rem;color:var(--muted);font-weight:normal;">PubMed Central, MEDLINE &amp; Life Sciences</span>
-        </div>
-      </label>
-      <label class="engine-option selected" id="db-opt-s2">
-        <input type="checkbox" name="search_db" id="db-cb-s2" value="s2" checked onchange="onSearchDatabaseChange('s2')">
-        <div style="display:flex;flex-direction:column;gap:2px;">
-          <span style="font-weight:700;color:var(--accent);">🎓 Semantic Scholar ✓</span>
-          <span style="font-size:0.76rem;color:var(--muted);font-weight:normal;">AI Academic Graph, Citation &amp; Velocity Network</span>
-        </div>
-      </label>
-      <label class="engine-option selected" id="db-opt-openalex">
-        <input type="checkbox" name="search_db" id="db-cb-openalex" value="openalex" checked onchange="onSearchDatabaseChange('openalex')">
-        <div style="display:flex;flex-direction:column;gap:2px;">
-          <span style="font-weight:700;color:var(--accent);">🏛️ OpenAlex ✓</span>
-          <span style="font-size:0.76rem;color:var(--muted);font-weight:normal;">250M+ Works, Open Global Scholarly Graph</span>
-        </div>
-      </label>
-      <label class="engine-option selected" id="db-opt-crossref">
-        <input type="checkbox" name="search_db" id="db-cb-crossref" value="crossref" checked onchange="onSearchDatabaseChange('crossref')">
-        <div style="display:flex;flex-direction:column;gap:2px;">
-          <span style="font-weight:700;color:var(--accent);">🔍 Crossref ✓</span>
-          <span style="font-size:0.76rem;color:var(--muted);font-weight:normal;">150M+ Official DOI Publisher Metadata Registry</span>
-        </div>
-      </label>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));gap:10px;margin:12px 0 16px;" id="source-board" aria-label="Mandatory literature sources and live search status"></div>
+
+    <!-- Cochrane CENTRAL manual export (mandatory, always shown) -->
+    <div id="central-panel" class="card" style="margin:0 0 16px;padding:14px 16px;border:1px dashed var(--accent)">
+      <h3 class="sec-h" style="margin:0 0 4px;font-size:0.95rem">📗 Cochrane CENTRAL — required manual export</h3>
+      <p class="hint" style="margin:0 0 8px">Cochrane has no public search API, so CENTRAL cannot be queried automatically. Run the generated strategy in the <a href="https://www.cochranelibrary.com/advanced-search" target="_blank" rel="noopener">Cochrane Library Advanced Search</a> (Search manager → Trials), export the results as RIS, and upload the file here. Until then CENTRAL is reported as <strong>not searched</strong>.</p>
+      <label for="central-search-string" style="font-size:0.78rem;font-weight:700">Cochrane Library search strategy (copy-ready)</label>
+      <textarea id="central-search-string" readonly rows="4" style="width:100%;font-family:monospace;font-size:0.78rem;margin:4px 0 6px"></textarea>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <button type="button" class="mini-btn" id="btn-copy-cochrane" onclick="copyCochraneSearch()">📋 Copy</button>
+        <button type="button" class="mini-btn" onclick="renderCentralPanel()">↻ Refresh from current query</button>
+        <a class="mini-btn" href="https://www.cochranelibrary.com/advanced-search" target="_blank" rel="noopener">↗ Open Cochrane Library</a>
+        <label class="mini-btn" style="cursor:pointer;font-weight:700">⬆ Cochrane CENTRAL export (.ris)
+          <input type="file" id="central-ris-input" accept=".ris,.txt,application/x-research-info-systems" onchange="handleCentralRisUpload(event)" style="display:none">
+        </label>
+      </div>
+      <div id="central-import-status" style="font-size:0.8rem;margin-top:6px"></div>
     </div>
 
     <!-- Alert Box -->
@@ -1565,6 +1548,28 @@ sup.cite-num:hover, .cite-num:hover, .cite-apa:hover, .cite-harvard:hover {
   <section id="step-3" class="hidden">
     <!-- Retrieval Status / Partial Results Notice Banner -->
     <div id="step3-source-notice" class="hidden" style="margin-bottom:14px;background:#f0f9ff;border:1px solid #bae6fd;color:#0369a1;padding:10px 14px;border-radius:8px;font-size:0.84rem;display:flex;align-items:center;gap:8px;"></div>
+    <div id="pool-integrity-error" class="alert-box alert-error hidden" role="alert"></div>
+    <div id="cochrane-match-banner" class="hidden" role="status" style="margin-bottom:14px;background:#eff6ff;border:1px solid #93c5fd;color:#1e3a8a;padding:10px 14px;border-radius:8px;font-size:0.86rem"></div>
+
+    <!-- Existing Cochrane evidence (CDSR): identified, never screened as primary studies -->
+    <details class="card" id="cochrane-evidence-panel" style="margin-bottom:14px">
+      <summary style="cursor:pointer;font-weight:700">📘 Existing Cochrane evidence (<span id="cochrane-evidence-count">0</span>)</summary>
+      <p class="hint" style="margin:6px 0">Cochrane systematic reviews found via the CDSR journal filter. They are counted as identified in PRISMA and excluded as primary studies (background / citation searching).</p>
+      <div id="cochrane-evidence-list"></div>
+    </details>
+
+    <!-- Deduplication audit trail -->
+    <details class="card" id="dedup-panel" style="margin-bottom:14px">
+      <summary style="cursor:pointer;font-weight:700">🧬 Duplicates &amp; linked reports (<span id="dedup-log-count">0</span>)</summary>
+      <div id="dedup-summary" class="hint" style="margin:6px 0"></div>
+      <div style="display:flex;gap:8px;margin-bottom:8px"><button type="button" class="mini-btn" onclick="exportDedupLogCSV()">⬇ Export dedup log (CSV)</button></div>
+      <div style="overflow-x:auto">
+        <table class="data-table" style="width:100%;font-size:0.78rem">
+          <thead><tr><th>Matched on</th><th>Kept record</th><th>Removed / linked record</th><th>Sources of removed</th><th>Type</th><th>Reviewer</th></tr></thead>
+          <tbody id="dedup-log-body"></tbody>
+        </table>
+      </div>
+    </details>
     <!-- PRISMA 2020 Flow Diagram Interactive Card -->
     <div class="card prisma-container">
       <div class="prisma-header">
@@ -1742,6 +1747,14 @@ sup.cite-num:hover, .cite-num:hover, .cite-apa:hover, .cite-harvard:hover {
 
       <!-- Paper cards container -->
       <div id="paper-cards"></div>
+
+      <!-- Manuscript gate: CENTRAL must be imported or explicitly acknowledged (not dismissable) -->
+      <div id="central-gate-warning" class="alert-box alert-error hidden" role="alert" style="margin:12px 0">
+        <div class="alert-title"><span>⚠️ Cochrane CENTRAL was not searched</span></div>
+        <div class="alert-reason">CENTRAL is a mandatory source but no CENTRAL export (.ris) has been provided. Upload it in Step 1 (“Cochrane CENTRAL export”), or acknowledge the omission. The acknowledgement is printed in the manuscript’s Limitations.
+          <label style="display:flex;gap:8px;align-items:center;margin-top:8px;font-weight:700"><input type="checkbox" id="central-ack-checkbox" onchange="onCentralAckChange(this)"> I acknowledge CENTRAL was not searched</label>
+        </div>
+      </div>
 
       <!-- Sticky Action Bar for Step 3 -->
       <div class="sticky-bottom-bar" id="step3-actions">
@@ -2220,13 +2233,8 @@ sup.cite-num:hover, .cite-num:hover, .cite-apa:hover, .cite-harvard:hover {
 // ═══════════════════════════════════════════════════════════════
 // CONSTANTS & BUILT-IN S2 / EPMC API CONFIGURATION
 // ═══════════════════════════════════════════════════════════════
-const EPMC_API_BASE = 'https://www.ebi.ac.uk/europepmc/webservices/rest/search';
-const S2_API_BASE = 'https://api.semanticscholar.org/graph/v1';
-
-// Upstream API proxies & endpoints (keys secured in server-side environment variables)
-let S2_USER_KEY = '';
-const OPENALEX_API_BASE = 'https://api.openalex.org/works';
-const CROSSREF_API_BASE = 'https://api.crossref.org/works';
+// Literature sources, endpoints and query translation live in sources.js (SOURCE_REGISTRY).
+// API keys are held server-side only, in the /api/* proxies.
 
 const VALIDATION_CACHE = new Map();
 
@@ -2244,13 +2252,18 @@ let STATE = {
   exclusionCriteria: [],
   yearRange: 5,
   pageSize: 35,
-  selectedDatabases: {
-    epmc: true,
-    s2: true,
-    openalex: true,
-    crossref: true
-  },
-  searchSource: 'all',
+  // Mandatory sources: every SOURCE_REGISTRY entry is searched on every run (no user selection).
+  searchStrategy: null,
+  searchLog: [],
+  sourceStatus: {},
+  sourceRecords: {},
+  centralImport: null,
+  centralAck: null,
+  dedupLog: [],
+  dedupOverrides: [],
+  dedupBreakdown: { duplicates: 0, linked: 0, byKey: {} },
+  poolInvariantErrors: [],
+  databaseHitCounts: {},
   
   // Raw & processed studies
   rawCandidateCount: 0,
@@ -2268,8 +2281,8 @@ let STATE = {
   // Generated Review Object
   review: null,
   
-  // Source counters
-  sourceCounts: { epmc: 0, s2: 0, openalex: 0, crossref: 0, merged: 0 }
+  // Records retrieved per source key (filled from SOURCE_REGISTRY during a run)
+  sourceCounts: {}
 };
 
 // Bind to window for cross-module integration (Meta-Analysis & PRISMA Editor)
@@ -2468,116 +2481,6 @@ function selectPaperCount(el, val) {
   document.getElementById('page-size').value = val;
 }
 
-function onSearchDatabaseChange(dbKey) {
-  if (!STATE.selectedDatabases) {
-    STATE.selectedDatabases = { epmc: true, s2: true, openalex: true, crossref: true };
-  }
-  const cb = document.getElementById(`db-cb-${dbKey}`);
-  if (cb) {
-    STATE.selectedDatabases[dbKey] = !!cb.checked;
-  }
-  updateDatabaseOptionUI(dbKey);
-  syncSearchSourceState();
-}
-
-function toggleSearchDatabase(dbKey) {
-  if (!STATE.selectedDatabases) {
-    STATE.selectedDatabases = { epmc: true, s2: true, openalex: true, crossref: true };
-  }
-  const cb = document.getElementById(`db-cb-${dbKey}`);
-  if (cb) {
-    cb.checked = !cb.checked;
-    STATE.selectedDatabases[dbKey] = cb.checked;
-  } else {
-    STATE.selectedDatabases[dbKey] = !STATE.selectedDatabases[dbKey];
-  }
-  updateDatabaseOptionUI(dbKey);
-  syncSearchSourceState();
-}
-
-function updateDatabaseOptionUI(dbKey) {
-  const cb = document.getElementById(`db-cb-${dbKey}`);
-  const card = document.getElementById(`db-opt-${dbKey}`);
-  const isChecked = cb ? !!cb.checked : (STATE.selectedDatabases && !!STATE.selectedDatabases[dbKey]);
-
-  if (card) {
-    if (card.classList && typeof card.classList.add === 'function') {
-      if (isChecked) {
-        card.classList.add('selected');
-      } else {
-        card.classList.remove('selected');
-      }
-    }
-
-    if (typeof card.querySelector === 'function') {
-      const nameSpan = card.querySelector('div > span:first-child') || card.querySelector('span');
-      if (nameSpan && typeof nameSpan.textContent === 'string') {
-        const rawName = nameSpan.textContent.replace(' ✓', '').trim();
-        nameSpan.textContent = isChecked ? `${rawName} ✓` : rawName;
-      }
-    }
-  }
-}
-
-function selectAllSearchDatabases(selected = true) {
-  if (!STATE.selectedDatabases) {
-    STATE.selectedDatabases = { epmc: true, s2: true, openalex: true, crossref: true };
-  }
-  ['epmc', 's2', 'openalex', 'crossref'].forEach(dbKey => {
-    STATE.selectedDatabases[dbKey] = !!selected;
-    const cb = document.getElementById(`db-cb-${dbKey}`);
-    if (cb) cb.checked = !!selected;
-    updateDatabaseOptionUI(dbKey);
-  });
-  syncSearchSourceState();
-}
-
-function syncSearchSourceState() {
-  if (!STATE.selectedDatabases) {
-    STATE.selectedDatabases = { epmc: true, s2: true, openalex: true, crossref: true };
-  }
-  const dbs = STATE.selectedDatabases;
-  const active = Object.keys(dbs).filter(k => dbs[k]);
-  if (active.length === 4) {
-    STATE.searchSource = 'all';
-  } else if (active.length === 2 && dbs.epmc && dbs.s2) {
-    STATE.searchSource = 'both';
-  } else if (active.length === 1) {
-    STATE.searchSource = active[0];
-  } else {
-    STATE.searchSource = active.join('+') || 'none';
-  }
-}
-
-function selectSearchEngine(el, mode) {
-  if (!STATE.selectedDatabases) {
-    STATE.selectedDatabases = { epmc: true, s2: true, openalex: true, crossref: true };
-  }
-  if (mode === 'all') {
-    selectAllSearchDatabases(true);
-  } else if (mode === 'both') {
-    STATE.selectedDatabases.epmc = true;
-    STATE.selectedDatabases.s2 = true;
-    STATE.selectedDatabases.openalex = false;
-    STATE.selectedDatabases.crossref = false;
-    ['epmc', 's2', 'openalex', 'crossref'].forEach(k => {
-      const cb = document.getElementById(`db-cb-${k}`);
-      if (cb) cb.checked = STATE.selectedDatabases[k];
-      updateDatabaseOptionUI(k);
-    });
-    syncSearchSourceState();
-  } else if (['epmc', 's2', 'openalex', 'crossref'].includes(mode)) {
-    ['epmc', 's2', 'openalex', 'crossref'].forEach(k => {
-      const match = (k === mode);
-      STATE.selectedDatabases[k] = match;
-      const cb = document.getElementById(`db-cb-${k}`);
-      if (cb) cb.checked = match;
-      updateDatabaseOptionUI(k);
-    });
-    syncSearchSourceState();
-  }
-}
-
 function clearStep1Alert() {
   const el = document.getElementById('step1-alert');
   el.classList.add('hidden');
@@ -2659,13 +2562,14 @@ function resetApp() {
       window.renderMetaAnalysisInitialBanner();
     }
   }
-  selectAllSearchDatabases(true);
+  resetSourceState();
+  renderSourceBoard();
   showSection('step-1');
   setStep(1);
 }
 
 // ═══════════════════════════════════════════════════════════════
-// DUAL RETRIEVAL ENGINES (Europe PMC & Semantic Scholar)
+// SHARED SEARCH STRATEGY INPUTS (translated per source in sources.js)
 // ═══════════════════════════════════════════════════════════════
 function cleanQueryKeywords(topic) {
   if (!topic) return '';
@@ -2746,618 +2650,534 @@ function buildPicoSearchQuery(topic, pico) {
   return cleanQueryKeywords(topic || '');
 }
 
-function anySignal(signals) {
-  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.any === 'function') {
-    return AbortSignal.any(signals.filter(Boolean));
-  }
-  const controller = new AbortController();
-  signals.filter(Boolean).forEach(sig => {
-    if (sig.aborted) controller.abort();
-    else sig.addEventListener('abort', () => controller.abort(), { once: true });
+// ═══════════════════════════════════════════════════════════════
+// MANDATORY SOURCE REGISTRY · SINGLE RECORD POOL · DEDUP AUDIT
+// (registry, adapters & translators live in sources.js; clustering in dedup.js)
+// ═══════════════════════════════════════════════════════════════
+const POOL_EXTRA_SOURCE_LABELS = { manual_import: 'Manual full-text import (Step 5)', project_load: 'Loaded project (legacy format)' };
+
+function registryList() {
+  return (typeof SOURCE_REGISTRY !== 'undefined' && Array.isArray(SOURCE_REGISTRY)) ? SOURCE_REGISTRY : [];
+}
+
+function sourceDisplayName(key) {
+  const src = registryList().find(s => s.key === key);
+  return src ? src.displayName : (POOL_EXTRA_SOURCE_LABELS[key] || key);
+}
+
+function resetSourceState() {
+  STATE.sourceRecords = {};
+  STATE.sourceStatus = {};
+  registryList().forEach(src => {
+    STATE.sourceStatus[src.key] = { status: 'queued', hitCount: 0, retrievedCount: 0, error: null, reason: null, warnings: [] };
   });
-  return controller.signal;
+  STATE.searchLog = [];
+  STATE.dedupLog = [];
+  STATE.dedupOverrides = [];
+  STATE.dedupBreakdown = { duplicates: 0, linked: 0, byKey: {} };
+  STATE.poolInvariantErrors = [];
+  STATE.papers = [];
+  STATE.rawCandidateCount = 0;
+  STATE.duplicatesRemoved = 0;
+  STATE.sourceCounts = {};
+  STATE.databaseHitCounts = {};
 }
 
-async function fetchEuropePMC(topic, pageSize, yearRange, signal) {
-  const currentYear = new Date().getFullYear();
-  let query = cleanQueryKeywords(topic);
-
-  if (yearRange < 99) {
-    const fromYear = currentYear - yearRange;
-    query += ` AND (PUB_YEAR:[${fromYear} TO ${currentYear}])`;
-  }
-  // Ensure we retrieve primary peer-reviewed empirical records and exclude reviews, editorials, comments
-  query += ' AND (SRC:MED OR SRC:PMC) NOT (PUB_TYPE:"Review" OR PUB_TYPE:"Editorial" OR PUB_TYPE:"Letter" OR PUB_TYPE:"Comment")';
-
-  const params = new URLSearchParams({
-    query: query,
-    resultType: 'core',
-    pageSize: String(pageSize),
-    format: 'json'
+function readStrategyInputs() {
+  const topic = document.getElementById('topic-input')?.value?.trim() || STATE.topic || '';
+  const pico = {
+    p: document.getElementById('pico-p')?.value?.trim() || STATE.pico?.p || '',
+    i: document.getElementById('pico-i')?.value?.trim() || STATE.pico?.i || '',
+    c: document.getElementById('pico-c')?.value?.trim() || STATE.pico?.c || '',
+    o: document.getElementById('pico-o')?.value?.trim() || STATE.pico?.o || '',
+    s: document.getElementById('pico-s')?.value?.trim() || STATE.pico?.s || ''
+  };
+  const baseQuery = buildPicoSearchQuery(topic, pico);
+  return buildSearchStrategy({
+    baseQuery, topic, pico,
+    yearRange: STATE.yearRange,
+    perSourceLimit: Math.min(MAX_PER_SOURCE, Number(STATE.pageSize) || 35),
+    searchDate: STATE.searchDate
   });
+}
 
-  const timeoutCtrl = new AbortController();
-  const timeoutId = setTimeout(() => timeoutCtrl.abort(), 7000);
-  const combinedSignal = signal ? anySignal([signal, timeoutCtrl.signal]) : timeoutCtrl.signal;
+function sourceStatusText(st) {
+  if (!st) return '⏸ queued';
+  switch (st.status) {
+    case 'searching': return '⏳ searching…';
+    case 'ok': return `✓ ${Number(st.retrievedCount || 0).toLocaleString()} retrieved of ${Number(st.hitCount || 0).toLocaleString()} hits`;
+    case 'failed': return `⚠ failed: ${st.error || 'unknown error'}`;
+    case 'not_configured': return `⛔ not configured: ${st.reason || 'API key missing'}`;
+    case 'not_searched': return st.reason === 'CENTRAL export not provided' ? '⏳ awaiting CENTRAL export' : `⛔ not searched: ${st.reason || ''}`;
+    default: return '⏸ queued';
+  }
+}
 
-  try {
-    const res = await fetch(`${EPMC_API_BASE}?${params.toString()}`, { signal: combinedSignal });
-    clearTimeout(timeoutId);
+function renderSourceBoard() {
+  const board = document.getElementById('source-board');
+  if (!board) return;
+  const statusColor = { ok: '#15803d', failed: '#b45309', not_configured: '#b91c1c', not_searched: '#b45309', searching: 'var(--accent)' };
+  board.innerHTML = registryList().map(src => {
+    const st = (STATE.sourceStatus || {})[src.key] || { status: 'queued' };
+    const isCentralWaiting = src.key === 'cochrane_central' && !STATE.centralImport && st.status === 'queued';
+    const label = isCentralWaiting ? '⏳ awaiting CENTRAL export' : sourceStatusText(st);
+    const retry = (st.status === 'failed' && STATE.searchStrategy)
+      ? `<button type="button" class="mini-btn" style="margin-top:6px;font-size:0.72rem" onclick="retrySource('${src.key}')">🔄 Retry</button>` : '';
+    const warn = (st.warnings && st.warnings.length) ? `<span style="font-size:0.7rem;color:#b45309">⚠ ${escapeHtml(st.warnings.join('; '))}</span>` : '';
+    const cat = { database: 'Database', register: 'Register', other: 'Other methods' }[src.prismaCategory] || '';
+    return `
+      <div class="engine-option selected source-card" id="src-card-${src.key}" data-source="${src.key}" role="status" aria-live="polite" style="cursor:default">
+        <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
+          <span style="font-weight:700;color:var(--accent);">${src.icon || '📚'} ${escapeHtml(src.displayName)} <span style="font-size:0.68rem;font-weight:600;color:var(--muted);border:1px solid var(--border);border-radius:10px;padding:0 6px;margin-left:4px">${cat} · mandatory</span></span>
+          <span style="font-size:0.74rem;color:var(--muted);font-weight:normal;">${escapeHtml(src.interfaceLabel)}</span>
+          <span class="source-status" style="font-size:0.78rem;font-weight:700;color:${statusColor[st.status] || 'var(--muted)'}">${escapeHtml(label)}</span>
+          ${warn}
+          ${retry}
+        </div>
+      </div>`;
+  }).join('');
+  renderCentralPanel();
+}
 
-    if (!res.ok) {
-      const err = new Error(`Europe PMC HTTP ${res.status}`);
-      err.status = res.status;
-      err.engine = 'Europe PMC';
-      throw err;
-    }
-    const json = await res.json();
-    const results = json.resultList?.result || [];
-    const hitCount = json.hitCount || results.length;
+function setSourceStatus(key, patch) {
+  STATE.sourceStatus = STATE.sourceStatus || {};
+  STATE.sourceStatus[key] = Object.assign({}, STATE.sourceStatus[key] || {}, patch);
+  renderSourceBoard();
+}
 
-    const parsed = results.map(item => ({
-      source: 'epmc',
-      sources: ['Europe PMC'],
-      id: item.id || item.pmid || item.doi || Math.random().toString(36).substring(7),
-      pmid: item.pmid || '',
-      doi: item.doi || '',
-      pmcid: item.pmcid || '',
-      title: cleanHtmlText(item.title) || 'Untitled Publication',
-      authors: parseAuthors(item),
-      authorObjects: Array.isArray(item.authorList?.author) ? item.authorList.author.map(a => ({
-        family: a.lastName || '',
-        given: a.firstName || '',
-        initials: a.initials || '',
-        displayName: a.fullName || `${a.lastName || ''} ${a.firstName || ''}`.trim()
-      })) : [],
-      journal: cleanHtmlText(item.journalInfo?.journal?.title || item.journalTitle || 'Scholarly Journal'),
-      journalAbbr: cleanHtmlText(item.journalInfo?.journal?.medlineAbbreviation || item.journalInfo?.journal?.isoabbreviation || ''),
-      volume: item.journalInfo?.volume || '',
-      issue: item.journalInfo?.issue || '',
-      pages: item.pageInfo || item.journalInfo?.pageInfo || '',
-      year: Number(item.pubYear) || (item.journalInfo?.yearOfPublication ? Number(item.journalInfo.yearOfPublication) : null),
-      abstract: cleanHtmlText(item.abstractText || ''),
-      citationCount: Number(item.citedByCount || 0),
-      isOpenAccess: item.isOpenAccess === 'Y',
-      meshHeadings: Array.isArray(item.meshHeadingList?.meshHeading) 
-        ? item.meshHeadingList.meshHeading.map(m => m.descriptorName).filter(Boolean) 
-        : [],
-      keywords: Array.isArray(item.keywordList?.keyword)
-        ? item.keywordList.keyword.filter(Boolean)
-        : (item.keywordList?.keyword ? [item.keywordList.keyword] : []),
-      pubType: item.pubType ? item.pubType.split(';').map(s => s.trim().toLowerCase()) : (Array.isArray(item.pubTypeList?.pubType) ? item.pubTypeList.pubType : [])
-    }));
-
-    return { results: parsed, hitCount };
-  } catch (err) {
-    clearTimeout(timeoutId);
-    if (signal?.aborted) throw err;
-    console.warn(`[SysRevAI Fallback] Europe PMC query failed (${err.message}). Activating OpenAlex fallback retrieval...`);
+// ── Cochrane CENTRAL (manual RIS import) ──────────────────────
+function renderCentralPanel() {
+  const box = document.getElementById('central-search-string');
+  if (box) {
     try {
-      const alexRes = await fetchOpenAlex(topic, pageSize, yearRange, signal);
-      if (alexRes && alexRes.results && alexRes.results.length > 0) {
-        return {
-          results: alexRes.results,
-          hitCount: alexRes.hitCount,
-          isFallback: true,
-          fallbackSource: 'OpenAlex',
-          originalError: err.message
-        };
-      }
-    } catch (fbErr) {
-      if (signal?.aborted) throw fbErr;
-    }
-    throw err;
+      const cl = buildCochraneLibrarySearch(STATE.searchStrategy || readStrategyInputs());
+      box.value = `${cl.searchManager}\n\n${cl.limitsNote}`;
+    } catch (e) { /* inputs not ready yet */ }
   }
-}
-
-function parseAuthors(item) {
-  if (item.authorString) return cleanHtmlText(item.authorString);
-  if (Array.isArray(item.authorList?.author)) {
-    const names = item.authorList.author.map(a => a.fullName || `${a.lastName || ''} ${a.firstName || ''}`.trim()).filter(Boolean);
-    if (names.length > 0) return names.join(', ');
-  }
-  return 'Unknown Authors';
-}
-
-// ═══════════════════════════════════════════════════════════════
-// OPENALEX RETRIEVAL ENGINE
-// ═══════════════════════════════════════════════════════════════
-function reconstructOpenAlexAbstract(invertedIndex) {
-  if (!invertedIndex || typeof invertedIndex !== 'object') return '';
-  const words = [];
-  for (const [w, pos] of Object.entries(invertedIndex)) {
-    if (Array.isArray(pos)) {
-      for (const i of pos) words[i] = w;
-    }
-  }
-  return cleanHtmlText(words.filter(Boolean).join(' '));
-}
-
-async function fetchOpenAlex(topic, pageSize, yearRange, signal) {
-  const currentYear = new Date().getFullYear();
-  const cleanTopic = cleanQueryKeywords(topic);
-
-  const queryParams = new URLSearchParams({
-    query: cleanTopic,
-    limit: String(pageSize)
-  });
-
-  let fromYear = null;
-  if (yearRange < 99) {
-    fromYear = currentYear - yearRange;
-    queryParams.set('year', `${fromYear}-${currentYear}`);
-  }
-
-  const timeoutCtrl = new AbortController();
-  const timeoutId = setTimeout(() => timeoutCtrl.abort(), 7500);
-  const combinedSignal = signal ? anySignal([signal, timeoutCtrl.signal]) : timeoutCtrl.signal;
-
-  try {
-    let res = null;
-    try {
-      res = await fetch(`/api/openalex?${queryParams.toString()}`, { signal: combinedSignal });
-    } catch (proxyErr) {
-      if (proxyErr.name === 'AbortError' && signal?.aborted) throw proxyErr;
-    }
-
-    clearTimeout(timeoutId);
-
-    if (!res || !res.ok) {
-      console.warn(`OpenAlex query returned HTTP ${res ? res.status : 'No response'}`);
-      return { results: [], hitCount: 0, error: 'OpenAlex proxy unavailable' };
-    }
-
-    const json = await res.json();
-    const items = json.data || json.papers || json.results || [];
-    const hitCount = json.total || json.meta?.count || items.length;
-
-    const parsed = items.map(item => {
-      let title = item.title || 'Untitled Study';
-      let authors = 'Unknown Authors';
-      if (typeof item.authors === 'string') {
-        authors = item.authors;
-      } else if (Array.isArray(item.authors)) {
-        authors = item.authors.join(', ');
-      } else if (Array.isArray(item.authorships)) {
-        const names = item.authorships.map(a => a.author?.display_name).filter(Boolean);
-        authors = names.length > 0 ? names.join(', ') : 'Unknown Authors';
-      }
-
-      const journal = item.journal || item.primary_location?.source?.display_name || 'Academic Journal';
-      const year = (item.year != null && !isNaN(item.year)) ? Number(item.year) : (item.publication_year ? Number(item.publication_year) : null);
-      let abstract = item.abstract || '';
-      if (!abstract && item.abstract_inverted_index) {
-        abstract = reconstructOpenAlexAbstract(item.abstract_inverted_index);
-      }
-      const doi = item.doi ? String(item.doi).replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, '').trim() : '';
-      const pmid = item.pmid ? String(item.pmid).replace(/^https?:\/\/pubmed\.ncbi\.nlm\.nih\.gov\//i, '').replace(/^pmid:\s*/i, '').replace(/\/$/, '') : (item.ids?.pmid ? String(item.ids.pmid).replace(/^https?:\/\/pubmed\.ncbi\.nlm\.nih\.gov\//i, '').replace(/^pmid:\s*/i, '').replace(/\/$/, '') : '');
-      const pmcid = item.pmcid || (item.ids?.pmcid ? String(item.ids.pmcid).replace(/^https?:\/\/www\.ncbi\.nlm\.nih\.gov\/pmc\/articles\//i, '').replace(/\/$/, '') : '');
-      const citations = Number(item.citationCount || item.cited_by_count || 0);
-
-      const meshList = Array.isArray(item.meshHeadings) && item.meshHeadings.length > 0
-        ? item.meshHeadings
-        : (Array.isArray(item.mesh) ? item.mesh.map(m => m.descriptor_name).filter(Boolean) : []);
-
-      return {
-        source: 'openalex',
-        sources: ['OpenAlex'],
-        id: doi || pmid || item.id || Math.random().toString(36).substring(7),
-        paperId: item.id || doi || '',
-        pmid: pmid,
-        doi: doi,
-        pmcid: pmcid,
-        title: cleanHtmlText(title) || 'Untitled Study',
-        authors: authors,
-        journal: cleanHtmlText(journal),
-        year: year,
-        abstract: cleanHtmlText(abstract),
-        citationCount: citations,
-        isOpenAccess: Boolean(item.isOpenAccess || item.open_access?.is_oa),
-        openAccessPdfUrl: item.openAccessPdfUrl || item.open_access?.oa_url || (doi ? `https://doi.org/${doi}` : ''),
-        meshHeadings: meshList,
-        keywords: Array.isArray(item.keywords) ? item.keywords : (Array.isArray(item.concepts) ? item.concepts.map(c => c.display_name).filter(Boolean) : []),
-        pubType: Array.isArray(item.pubType) ? item.pubType : [item.type || 'journal-article']
-      };
-    });
-
-    return { results: parsed, hitCount: hitCount };
-  } catch (err) {
-    clearTimeout(timeoutId);
-    if (signal?.aborted) throw err;
-    console.warn('OpenAlex query error:', err.message);
-    return { results: [], hitCount: 0, error: err.message };
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════
-// CROSSREF RETRIEVAL ENGINE (Public REST API - No API Key Required)
-// ═══════════════════════════════════════════════════════════════
-async function fetchCrossref(topic, pageSize, yearRange, signal) {
-  const currentYear = new Date().getFullYear();
-  const cleanTopic = cleanQueryKeywords(topic);
-
-  const queryParams = new URLSearchParams({
-    query: cleanTopic,
-    rows: String(pageSize)
-  });
-
-  let fromYear = null;
-  if (yearRange < 99) {
-    fromYear = currentYear - yearRange;
-    queryParams.set('year', `${fromYear}-${currentYear}`);
-  }
-
-  const timeoutCtrl = new AbortController();
-  const timeoutId = setTimeout(() => timeoutCtrl.abort(), 7500);
-  const combinedSignal = signal ? anySignal([signal, timeoutCtrl.signal]) : timeoutCtrl.signal;
-
-  try {
-    let res = null;
-    let proxySucceeded = false;
-    try {
-      res = await fetch(`/api/crossref?${queryParams.toString()}`, { signal: combinedSignal });
-      if (res && res.ok) proxySucceeded = true;
-    } catch (proxyErr) {
-      if (proxyErr.name === 'AbortError' && signal?.aborted) throw proxyErr;
-    }
-
-    if (!proxySucceeded) {
-      // Direct browser CORS fallback to official Crossref works API (Public REST API)
-      let directUrl = `${CROSSREF_API_BASE}?query=${encodeURIComponent(cleanTopic)}&rows=${pageSize}&sort=relevance&order=desc`;
-      if (fromYear) {
-        directUrl += `&filter=from-pub-date:${fromYear}-01-01`;
-      }
-      res = await fetch(directUrl, { signal: combinedSignal });
-    }
-
-    clearTimeout(timeoutId);
-
-    if (!res || !res.ok) {
-      console.warn(`Crossref query returned HTTP ${res ? res.status : 'No response'}`);
-      return { results: [], hitCount: 0, error: `HTTP ${res ? res.status : 'Unavailable'}` };
-    }
-
-    const json = await res.json();
-    const items = json.data || json.papers || json.message?.items || [];
-    const hitCount = json.total || json.message?.['total-results'] || items.length;
-
-    const parsed = items.map(item => {
-      let title = 'Untitled Study';
-      if (typeof item.title === 'string') {
-        title = item.title;
-      } else if (Array.isArray(item.title) && item.title.length > 0) {
-        title = item.title[0];
-      }
-
-      let authors = 'Unknown Authors';
-      if (typeof item.authors === 'string') {
-        authors = item.authors;
-      } else if (Array.isArray(item.author) && item.author.length > 0) {
-        authors = item.author.map(a => [a.given, a.family].filter(Boolean).join(' ') || a.name || '').filter(Boolean).join(', ') || 'Unknown Authors';
-      }
-
-      let journal = 'Academic Journal';
-      if (typeof item.journal === 'string') {
-        journal = item.journal;
-      } else if (Array.isArray(item['container-title']) && item['container-title'][0]) {
-        journal = item['container-title'][0];
-      } else if (item.publisher) {
-        journal = item.publisher;
-      }
-
-      let pubYear = null;
-      if (item.year) {
-        pubYear = Number(item.year);
-      } else {
-        const dateParts = item.published?.['date-parts']?.[0]
-          || item['published-print']?.['date-parts']?.[0]
-          || item['published-online']?.['date-parts']?.[0]
-          || item.created?.['date-parts']?.[0];
-        if (Array.isArray(dateParts) && dateParts.length > 0 && Number(dateParts[0]) > 1900) {
-          pubYear = Number(dateParts[0]);
-        }
-      }
-
-      const doi = item.DOI || item.doi ? String(item.DOI || item.doi).replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, '').trim() : '';
-      let abstract = item.abstract || '';
-      if (abstract) {
-        abstract = cleanHtmlText(abstract)
-          .replace(/<jats:[^>]+>/gi, '')
-          .replace(/<\/jats:[^>]+>/gi, '')
-          .replace(/^(?:Abstract|Summary)\s*[:.-]?\s*/i, '')
-          .trim();
-      }
-
-      const citations = Number(item['is-referenced-by-count'] || item.citationCount || 0);
-
-      return {
-        source: 'crossref',
-        sources: ['Crossref'],
-        id: doi || item.URL || item.id || Math.random().toString(36).substring(7),
-        paperId: doi || item.URL || '',
-        pmid: item.pmid || '',
-        doi: doi,
-        pmcid: item.pmcid || '',
-        title: cleanHtmlText(title) || 'Untitled Study',
-        authors: authors,
-        journal: cleanHtmlText(journal),
-        year: pubYear,
-        abstract: abstract,
-        citationCount: citations,
-        isOpenAccess: Boolean(item.isOpenAccess || item.is_oa || false),
-        openAccessPdfUrl: item.openAccessPdfUrl || item.link?.[0]?.URL || (doi ? `https://doi.org/${doi}` : ''),
-        meshHeadings: [],
-        keywords: Array.isArray(item.subject) ? item.subject : (Array.isArray(item.keywords) ? item.keywords : []),
-        pubType: Array.isArray(item.pubType) ? item.pubType : [item.type || 'journal-article']
-      };
-    });
-
-    return { results: parsed, hitCount: hitCount };
-  } catch (err) {
-    clearTimeout(timeoutId);
-    if (signal?.aborted) throw err;
-    console.warn('Crossref query error:', err.message);
-    return { results: [], hitCount: 0, error: err.message };
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════
-// SEMANTIC SCHOLAR WITH AUTOMATIC OPENALEX & CROSSREF FALLBACK
-// ═══════════════════════════════════════════════════════════════
-async function fetchSemanticScholar(topic, pageSize, yearRange, signal) {
-  const currentYear = new Date().getFullYear();
-  const fields = 'paperId,title,authors,year,abstract,venue,publicationVenue,journal,externalIds,openAccessPdf,citationCount,publicationTypes,fieldsOfStudy';
-
-  let queryParams = `query=${encodeURIComponent(cleanQueryKeywords(topic))}&limit=${pageSize}&fields=${encodeURIComponent(fields)}`;
-  if (yearRange < 99) {
-    const fromYear = currentYear - yearRange;
-    queryParams += `&year=${fromYear}-${currentYear}`;
-  }
-
-  const timeoutCtrl = new AbortController();
-  const timeoutId = setTimeout(() => timeoutCtrl.abort(), 6500);
-  const combinedSignal = signal ? anySignal([signal, timeoutCtrl.signal]) : timeoutCtrl.signal;
-
-  let s2Failed = false;
-  let failureReason = '';
-
-  try {
-    const headers = {};
-    const apiKey = S2_USER_KEY || '';
-    if (apiKey) headers['x-api-key'] = apiKey;
-
-    let res = null;
-    try {
-      res = await fetch(`/api/s2?${queryParams}`, { headers, signal: combinedSignal });
-    } catch (proxyErr) {
-      if (proxyErr.name === 'AbortError' && signal?.aborted) throw proxyErr;
-    }
-
-    clearTimeout(timeoutId);
-
-    if (!res || !res.ok) {
-      s2Failed = true;
-      failureReason = `HTTP ${res ? res.status : 'Unavailable'}`;
+  const status = document.getElementById('central-import-status');
+  if (status) {
+    if (STATE.centralImport) {
+      status.innerHTML = `✓ <strong>${escapeHtml(STATE.centralImport.fileName)}</strong> imported ${escapeHtml(String(STATE.centralImport.importedAt).slice(0, 10))} · ${STATE.centralImport.records.length} records`;
+      status.style.color = '#15803d';
     } else {
-      const json = await res.json();
-      const data = json.data || [];
-      if (data.length === 0) {
-        s2Failed = true;
-        failureReason = 'Zero records returned';
-      } else {
-        const parsed = data.map(item => ({
-          source: 's2',
-          sources: ['Semantic Scholar'],
-          id: item.paperId,
-          paperId: item.paperId,
-          pmid: item.externalIds?.PubMed || '',
-          doi: item.externalIds?.DOI || '',
-          pmcid: item.externalIds?.PubMedCentral || '',
-          title: cleanHtmlText(item.title) || 'Untitled Study',
-          authors: Array.isArray(item.authors) ? item.authors.map(a => a.name).join(', ') : 'Unknown Authors',
-          journal: cleanHtmlText(item.venue || item.publicationVenue?.name || item.journal?.name || 'Academic Journal'),
-          year: item.year || null,
-          abstract: cleanHtmlText(item.abstract || ''),
-          citationCount: Number(item.citationCount || 0),
-          isOpenAccess: Boolean(item.openAccessPdf?.url),
-          openAccessPdfUrl: item.openAccessPdf?.url || '',
-          meshHeadings: [],
-          keywords: Array.isArray(item.fieldsOfStudy) ? item.fieldsOfStudy.filter(Boolean) : [],
-          pubType: Array.isArray(item.publicationTypes) ? item.publicationTypes : []
-        }));
-
-        return { results: parsed, hitCount: json.total || parsed.length };
-      }
+      status.innerHTML = '⏳ No CENTRAL export uploaded yet — CENTRAL will be reported as <strong>not searched</strong> until you provide one.';
+      status.style.color = '#b45309';
     }
-  } catch (err) {
-    clearTimeout(timeoutId);
-    if (signal?.aborted) throw err;
-    s2Failed = true;
-    failureReason = err.message;
   }
+}
 
-  // Fallback to OpenAlex and Crossref if Semantic Scholar was unavailable or throttled
-  if (s2Failed) {
-    console.warn(`[SysRevAI Fallback] Semantic Scholar unavailable (${failureReason}). Activating OpenAlex & Crossref fallback retrieval...`);
+function copyCochraneSearch() {
+  const box = document.getElementById('central-search-string');
+  if (!box) return;
+  renderCentralPanel();
+  const text = box.value;
+  const done = () => { const b = document.getElementById('btn-copy-cochrane'); if (b) { b.textContent = '✓ Copied'; setTimeout(() => { b.textContent = '📋 Copy'; }, 1500); } };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done).catch(() => { box.select(); document.execCommand && document.execCommand('copy'); done(); });
+  else { box.select(); document.execCommand && document.execCommand('copy'); done(); }
+}
+
+function importCentralRisText(text, fileName) {
+  const records = parseRIS(text);
+  if (!records.length) throw new Error('No RIS records found (expected TY  - … ER  - blocks).');
+  const strategy = STATE.searchStrategy || readStrategyInputs();
+  STATE.centralImport = {
+    fileName: fileName || 'central-export.ris',
+    importedAt: new Date().toISOString(),
+    records,
+    query: buildCochraneLibrarySearch(strategy).searchManager
+  };
+  return records.length;
+}
+
+function handleCentralRisUpload(event) {
+  const file = event && event.target && event.target.files ? event.target.files[0] : null;
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async (e) => {
     try {
-      const [alexRes, crossRes] = await Promise.allSettled([
-        fetchOpenAlex(topic, pageSize, yearRange, signal),
-        fetchCrossref(topic, pageSize, yearRange, signal)
-      ]);
-
-      const alexPapers = (alexRes.status === 'fulfilled' && alexRes.value.results) ? alexRes.value.results : [];
-      const crossPapers = (crossRes.status === 'fulfilled' && crossRes.value.results) ? crossRes.value.results : [];
-
-      const rawFallback = [...alexPapers, ...crossPapers];
-      const { unique } = deduplicatePapers(rawFallback);
-
-      const fallbackNames = [];
-      if (alexPapers.length > 0) fallbackNames.push('OpenAlex');
-      if (crossPapers.length > 0) fallbackNames.push('Crossref');
-
-      if (unique.length > 0) {
-        return {
-          results: unique,
-          hitCount: (alexRes.status === 'fulfilled' ? alexRes.value.hitCount : 0) + (crossRes.status === 'fulfilled' ? crossRes.value.hitCount : 0) || unique.length,
-          isFallback: true,
-          fallbackSources: fallbackNames,
-          alexCount: alexPapers.length,
-          crossCount: crossPapers.length,
-          originalError: failureReason
-        };
+      const n = importCentralRisText(e.target.result, file.name);
+      renderCentralPanel();
+      if (STATE.searchStrategy) {
+        await runSourceSearch('cochrane_central', null);
+        afterPoolChanged();
+      } else {
+        setSourceStatus('cochrane_central', { status: 'queued' });
       }
-    } catch (fbErr) {
-      if (signal?.aborted) throw fbErr;
-      console.warn('Fallback retrieval non-fatal error:', fbErr.message);
+      updateManuscriptGate();
+      saveProjectState();
+      console.info(`[SysRevAI] CENTRAL RIS import: ${n} records`);
+    } catch (err) {
+      alert(`CENTRAL import failed: ${err.message}`);
+    }
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+// ── Source execution ─────────────────────────────────────────
+async function runSourceSearch(key, signal, opts = {}) {
+  const src = getSource(key);
+  if (!src) throw new Error(`Unknown source ${key}`);
+  setSourceStatus(key, { status: 'searching', error: null, reason: null, warnings: [] });
+  let res;
+  try {
+    res = await src.fetch(STATE.searchStrategy, { centralImport: STATE.centralImport }, signal);
+  } catch (err) {
+    if (err.name === 'AbortError' || (signal && signal.aborted)) throw err;
+    res = { key, status: 'failed', records: [], hitCount: 0, retrievedCount: 0, searches: [], error: err.message || 'unexpected error' };
+  }
+  STATE.searchLog = (STATE.searchLog || []).filter(e => e.sourceKey !== key).concat(res.searches || []);
+  setSourceStatus(key, {
+    status: res.status, hitCount: res.hitCount || 0, retrievedCount: res.retrievedCount || 0,
+    error: res.error || null, reason: res.reason || null, warnings: res.warnings || []
+  });
+  addRecordsToPool(res.records || [], { sourceKey: key, replace: true, deferRebuild: !!opts.deferRebuild });
+  return res;
+}
+
+async function retrySource(key) {
+  if (!STATE.searchStrategy) return;
+  try {
+    await runSourceSearch(key, currentAbortController ? currentAbortController.signal : null);
+  } catch (err) {
+    if (err.name === 'AbortError') return;
+  }
+  afterPoolChanged();
+}
+
+/**
+ * THE ONLY WAY RECORDS REACH STATE.papers.
+ * Stores the raw batch per source (replace = idempotent re-run / re-import), then re-clusters
+ * every raw record so the pool never contains the same study twice.
+ * @returns {{added:number, mergedInto:object[]}|null}
+ */
+function addRecordsToPool(records, origin = {}) {
+  const key = origin.sourceKey || 'manual_import';
+  if (!STATE.sourceRecords) STATE.sourceRecords = {};
+  const stamped = (records || []).filter(Boolean).map((r, i) => {
+    const copy = JSON.parse(JSON.stringify(r));
+    copy.sourceKey = copy.sourceKey || key;
+    copy._rid = copy._rid || `${key}:${copy.id || copy.pmid || copy.doi || copy.nctId || i}`;
+    return copy;
+  });
+  if (origin.replace || !Array.isArray(STATE.sourceRecords[key])) {
+    STATE.sourceRecords[key] = stamped;
+  } else {
+    const have = new Set(STATE.sourceRecords[key].map(r => r._rid));
+    STATE.sourceRecords[key] = STATE.sourceRecords[key].concat(stamped.filter(r => !have.has(r._rid)));
+  }
+  if (origin.deferRebuild) return null;
+  rebuildPool();
+  const rids = new Set(stamped.map(r => r._rid));
+  const mergedInto = STATE.papers.filter(p => (p.memberRids || []).some(r => rids.has(r)));
+  return { added: stamped.length, mergedInto };
+}
+
+function orderedPoolKeys() {
+  const keys = registryList().map(s => s.key);
+  Object.keys(STATE.sourceRecords || {}).forEach(k => { if (!keys.includes(k)) keys.push(k); });
+  return keys.filter(k => Array.isArray((STATE.sourceRecords || {})[k]));
+}
+
+function rebuildPool() {
+  const prev = Array.isArray(STATE.papers) ? STATE.papers : [];
+  const prevByRid = new Map();
+  prev.forEach(p => (p.memberRids || [p._rid]).filter(Boolean).forEach(r => { if (!prevByRid.has(r)) prevByRid.set(r, p); }));
+
+  const raw = [];
+  orderedPoolKeys().forEach(k => raw.push(...STATE.sourceRecords[k]));
+  const cannotLink = (STATE.dedupOverrides || []).map(o => [o.keptRid, o.removedRid]);
+  const result = clusterRecords(raw, { cannotLink });
+
+  result.unique.forEach((u, idx) => {
+    const old = prevByRid.get(u._rid) || (u.memberRids || []).map(r => prevByRid.get(r)).find(Boolean);
+    if (old) {
+      if (old.screening) u.screening = old.screening;
+      if (old.reviewerRemoved) u.reviewerRemoved = true;
+    }
+    u._globalIndex = idx;
+  });
+
+  STATE.papers = result.unique;
+  STATE.dedupLog = result.log;
+  STATE.rawCandidateCount = raw.length;
+  STATE.duplicatesRemoved = result.removed;
+  const byKey = {};
+  result.log.forEach(l => { if (l.kind !== 'conflict') byKey[l.matchedOn] = (byKey[l.matchedOn] || 0) + 1; });
+  STATE.dedupBreakdown = { duplicates: result.duplicates, linked: result.linked, byKey, blocked: result.blocked.length };
+
+  STATE.sourceCounts = {};
+  STATE.databaseHitCounts = {};
+  orderedPoolKeys().forEach(k => { STATE.sourceCounts[k] = STATE.sourceRecords[k].length; });
+  Object.entries(STATE.sourceStatus || {}).forEach(([k, st]) => { if (st && st.status === 'ok') STATE.databaseHitCounts[k] = Number(st.hitCount || 0); });
+
+  screenPool();
+  verifyPoolInvariants();
+  return result;
+}
+
+/** Hard source-level screening rules that apply on top of PICOS screening. */
+function applySourceScreeningRules(p) {
+  const s = p.screening || (p.screening = {});
+  const force = (status, reason, tag) => {
+    s.status = status;
+    s.primaryReason = reason;
+    s.violatedExclusions = status === 'EXCLUDED' ? [reason] : (s.violatedExclusions || []);
+    s.sourceRule = tag;
+  };
+  if (p.reviewerRemoved) return force('EXCLUDED', 'Removed by reviewer', 'reviewer-removed');
+  if (p.retracted) return force('EXCLUDED', 'Retracted publication', 'retracted');
+  if (p.isCochraneReview) return force('EXCLUDED', 'Systematic review (used for background/citation searching)', 'cochrane-review');
+  if (p.noticeType) return force('EXCLUDED', `Publication notice (${p.noticeType}) without a matching parent record`, 'notice');
+  if (s.manual) return;
+  const onlyScholar = (p.sourceKeys || [p.sourceKey]).every(k => k === 'scholar');
+  if (onlyScholar && (!p.abstract || p.abstractSource === 'none')) {
+    return force('BORDERLINE', 'Google Scholar record: abstract unavailable, full text required', 'scholar-no-abstract');
+  }
+  if (p.peerReviewed === false && !p.isRegistryRecord && s.status === 'INCLUDED') {
+    return force('BORDERLINE', 'Preprint: not peer reviewed', 'preprint');
+  }
+  if (p.isRegistryRecord && s.status === 'INCLUDED') {
+    return force('BORDERLINE', `Trial registration without a linked publication (${p.hasResults ? 'results posted on registry' : 'no results posted'}); verify before inclusion`, 'registry-only');
+  }
+}
+
+function screenPool() {
+  (STATE.papers || []).forEach(p => {
+    if (!p.screening || !p.screening.status) {
+      p.screening = screenPaperAgainstCriteria(p, STATE.topic, STATE.pico, STATE.inclusionCriteria || [], STATE.exclusionCriteria || []);
+    }
+    applySourceScreeningRules(p);
+  });
+}
+
+function verifyPoolInvariants() {
+  const errors = [];
+  const sumRetrieved = orderedPoolKeys().reduce((a, k) => a + STATE.sourceRecords[k].length, 0);
+  const papers = STATE.papers || [];
+  if (sumRetrieved !== STATE.rawCandidateCount) errors.push(`Σ retrieved per source (${sumRetrieved}) ≠ records identified (${STATE.rawCandidateCount})`);
+  if (STATE.rawCandidateCount !== papers.length + STATE.duplicatesRemoved) errors.push(`Records identified (${STATE.rawCandidateCount}) ≠ unique (${papers.length}) + removed (${STATE.duplicatesRemoved})`);
+  registryList().forEach(src => {
+    const st = (STATE.sourceStatus || {})[src.key];
+    const n = Array.isArray((STATE.sourceRecords || {})[src.key]) ? STATE.sourceRecords[src.key].length : 0;
+    if (st && st.status === 'ok' && Number(st.retrievedCount) !== n) errors.push(`${src.displayName}: status reports ${st.retrievedCount} retrieved but pool holds ${n}`);
+    if (st && st.status !== 'ok' && n > 0) errors.push(`${src.displayName}: ${n} records present although status is ${st.status}`);
+  });
+  const collisions = findIdentifierCollisions(papers);
+  collisions.forEach(c => errors.push(`Duplicate identifier ${c.type}:${c.value} on pool records #${c.a + 1} and #${c.b + 1}`));
+  STATE.poolInvariantErrors = errors;
+  return errors;
+}
+
+function afterPoolChanged() {
+  updatePrismaAndCounters();
+  renderPaperCards();
+  renderSourceBoard();
+  saveProjectState();
+}
+
+// ── Reviewer "Not a duplicate — split" override ─────────────
+function splitDuplicate(logIndex) {
+  const entry = (STATE.dedupLog || [])[logIndex];
+  if (!entry) return;
+  const keptRid = String(entry.keptId);
+  const removedRid = String(entry.removedId);
+  STATE.dedupOverrides = (STATE.dedupOverrides || []).concat([{ keptRid, removedRid, at: new Date().toISOString(), matchedOn: entry.matchedOn }]);
+  rebuildPool();
+  afterPoolChanged();
+}
+
+function undoSplit(idx) {
+  STATE.dedupOverrides = (STATE.dedupOverrides || []).filter((_, i) => i !== idx);
+  rebuildPool();
+  afterPoolChanged();
+}
+
+function renderDuplicatesPanel() {
+  const body = document.getElementById('dedup-log-body');
+  const count = document.getElementById('dedup-log-count');
+  const log = STATE.dedupLog || [];
+  if (count) count.textContent = String(log.length);
+  if (!body) return;
+  const splitRows = (STATE.dedupOverrides || []).map((o, i) => `
+    <tr style="background:#fff7ed"><td colspan="5">↔ Reviewer split: <code>${escapeHtml(o.keptRid)}</code> ≠ <code>${escapeHtml(o.removedRid)}</code> (${escapeHtml(o.matchedOn || '')})</td>
+    <td><button type="button" class="mini-btn" onclick="undoSplit(${i})">Undo split</button></td></tr>`).join('');
+  if (!log.length && !splitRows) {
+    body.innerHTML = '<tr><td colspan="6" style="color:var(--muted)">No duplicates or linked reports were found.</td></tr>';
+    return;
+  }
+  body.innerHTML = splitRows + log.map((l, i) => `
+    <tr>
+      <td><span class="pill" style="margin:0;font-size:0.7rem">${escapeHtml(l.matchedOn)}</span>${l.similarity != null && l.similarity < 1 ? ` <span style="font-size:0.7rem;color:var(--muted)">J=${l.similarity}</span>` : ''}</td>
+      <td style="font-size:0.76rem">${escapeHtml((l.keptTitle || '').slice(0, 90))}<br><code style="font-size:0.68rem">${escapeHtml(l.keptId)}</code></td>
+      <td style="font-size:0.76rem">${escapeHtml((l.removedTitle || '').slice(0, 90))}<br><code style="font-size:0.68rem">${escapeHtml(l.removedId)}</code></td>
+      <td style="font-size:0.74rem">${escapeHtml((l.sourcesOfRemoved || []).join(', '))}</td>
+      <td style="font-size:0.74rem">${escapeHtml(l.kind || '')}</td>
+      <td>${l.kind === 'conflict' ? '' : `<button type="button" class="mini-btn" onclick="splitDuplicate(${i})" title="Keep these two records separate and recompute PRISMA counts">Not a duplicate — split</button>`}</td>
+    </tr>`).join('');
+}
+
+function dedupLogToCSV(log) {
+  const cols = ['keptId', 'removedId', 'matchedOn', 'similarity', 'kind', 'sourcesOfRemoved', 'keptTitle', 'removedTitle'];
+  const esc = v => `"${String(Array.isArray(v) ? v.join('; ') : (v == null ? '' : v)).replace(/"/g, '""')}"`;
+  return [cols.join(',')].concat((log || []).map(l => cols.map(c => esc(l[c])).join(','))).join('\n');
+}
+
+function exportDedupLogCSV() {
+  const blob = new Blob([dedupLogToCSV(STATE.dedupLog)], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `sysrevai_dedup_log_${Date.now()}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ── Existing Cochrane evidence panel ────────────────────────
+function cochraneReviewMatchesPico(p) {
+  const strategy = STATE.searchStrategy;
+  if (!strategy) return false;
+  const text = `${p.title || ''} ${p.abstract || ''}`.toLowerCase();
+  const hit = terms => terms.some(t => text.includes(String(t).toLowerCase()));
+  if (strategy.pTerms.length && strategy.iTerms.length) return hit(strategy.pTerms) && hit(strategy.iTerms);
+  const terms = strategy.terms || [];
+  return terms.length > 0 && terms.filter(t => text.includes(String(t).toLowerCase())).length >= Math.min(2, terms.length);
+}
+
+function getCochraneReviews() {
+  return (STATE.papers || []).filter(p => p.isCochraneReview);
+}
+
+function renderCochranePanel() {
+  const panel = document.getElementById('cochrane-evidence-panel');
+  if (!panel) return;
+  const reviews = getCochraneReviews();
+  const st = (STATE.sourceStatus || {}).cochrane_cdsr;
+  const banner = document.getElementById('cochrane-match-banner');
+  const matching = reviews.filter(cochraneReviewMatchesPico);
+  if (banner) {
+    if (matching.length) {
+      banner.classList.remove('hidden');
+      banner.innerHTML = `📘 <strong>A Cochrane review on this question exists</strong>: “${escapeHtml(matching[0].title)}”${matching.length > 1 ? ` (+${matching.length - 1} more)` : ''}. Consider updating it or justifying a new review.`;
+    } else {
+      banner.classList.add('hidden');
+      banner.innerHTML = '';
     }
   }
-
-  return { results: [], hitCount: 0, error: failureReason || 'Semantic Scholar unavailable' };
-}
-
-// ═══════════════════════════════════════════════════════════════
-// DEDUPLICATION & CROSS-DATABASE RECORD MERGER
-// ═══════════════════════════════════════════════════════════════
-function normalizeDOI(doi) {
-  if (!doi || typeof doi !== 'string') return '';
-  return doi
-    .trim()
-    .toLowerCase()
-    .replace(/^(?:https?:\/\/(?:dx\.)?doi\.org\/|doi:\s*)/i, '')
-    .replace(/[.;\/]+$/, '')
-    .trim();
-}
-
-function normalizePMID(pmid) {
-  if (!pmid) return '';
-  return String(pmid).replace(/\D/g, '').trim();
-}
-
-function normalizeTitle(t) {
-  if (!t) return '';
-  let str = cleanHtmlText(t)
-    .replace(/&amp;/gi, ' and ')
-    .replace(/&/g, ' and ')
-    .replace(/&beta;/gi, 'beta')
-    .replace(/&alpha;/gi, 'alpha')
-    .replace(/&#8211;|&#x2013;|–|—/g, '-')
-    .toLowerCase();
-  // Preserve full title and subtitle for exact key matching
-  return str.replace(/[^a-z0-9]/g, '');
-}
-
-function getTitleTokens(t) {
-  if (!t) return new Set();
-  const cleaned = cleanHtmlText(t)
-    .replace(/&amp;/gi, ' and ')
-    .replace(/&/g, ' and ')
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ');
-  return new Set(cleaned.split(/\s+/).filter(w => w.length > 2));
-}
-
-function titleJaccard(tokensA, tokensB) {
-  if (!tokensA.size || !tokensB.size) return 0;
-  let intersection = 0;
-  for (const token of tokensA) {
-    if (tokensB.has(token)) intersection++;
+  const list = document.getElementById('cochrane-evidence-list');
+  const head = document.getElementById('cochrane-evidence-count');
+  if (head) head.textContent = String(reviews.length);
+  if (!list) return;
+  if (!st || st.status !== 'ok') {
+    list.innerHTML = `<p class="hint" style="margin:0">Cochrane Database of Systematic Reviews: ${escapeHtml(sourceStatusText(st))}</p>`;
+    return;
   }
-  const union = tokensA.size + tokensB.size - intersection;
-  return union > 0 ? intersection / union : 0;
+  if (!reviews.length) {
+    list.innerHTML = '<p class="hint" style="margin:0">No Cochrane reviews matched the search strategy.</p>';
+    return;
+  }
+  list.innerHTML = reviews.map(r => `
+    <div style="border:1px solid var(--border);border-radius:8px;padding:8px 12px;margin-bottom:6px;background:#fff">
+      <div style="font-weight:700;font-size:0.86rem">${escapeHtml(r.title)}</div>
+      <div style="font-size:0.76rem;color:var(--muted)">${escapeHtml(r.authors || '')} · ${escapeHtml(r.year || 'n.d.')} · ${escapeHtml(r.cochraneId || '')}${r.doi ? ` · DOI: ${escapeHtml(r.doi)}` : ''}${r.supersededVersions && r.supersededVersions.length ? ` · latest version kept (superseded: ${escapeHtml(r.supersededVersions.join(', '))})` : ''}</div>
+      ${cochraneReviewMatchesPico(r) ? '<span class="pill pill-good" style="margin:4px 0 0;font-size:0.68rem">Matches PICO</span>' : ''}
+      <div style="font-size:0.72rem;color:#475569;margin-top:2px">Counted in PRISMA as identified, excluded as “Systematic review (used for background/citation searching)”.</div>
+    </div>`).join('');
 }
 
-function deduplicatePapers(rawPapers) {
-  const pmidMap = new Map();
-  const doiMap = new Map();
-  const titleMap = new Map();
-  const unique = [];
-  let duplicates = 0;
+function renderPoolIntegrityNotice() {
+  const box = document.getElementById('pool-integrity-error');
+  if (!box) return;
+  const errors = STATE.poolInvariantErrors || [];
+  if (!errors.length) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+  box.classList.remove('hidden');
+  box.innerHTML = `<div class="alert-title"><span>⛔ Record-pool integrity check failed</span></div><div class="alert-reason"><ul style="margin:4px 0 0 18px">${errors.map(e => `<li>${escapeHtml(e)}</li>`).join('')}</ul></div>`;
+}
 
-  for (const paper of rawPapers) {
-    const normT = normalizeTitle(paper.title);
-    const pmid = normalizePMID(paper.pmid);
-    const doi = normalizeDOI(paper.doi);
-    const paperTokens = getTitleTokens(paper.title);
-    const paperYear = Number(paper.year) || null;
+// ── Truthful source reporting helpers ───────────────────────
+function getSourcesByStatus() {
+  const ok = []; const notOk = [];
+  registryList().forEach(src => {
+    const st = (STATE.sourceStatus || {})[src.key];
+    if (st && st.status === 'ok') ok.push({ src, st });
+    else notOk.push({ src, st: st || { status: 'not_searched', reason: 'search was not run' } });
+  });
+  return { ok, notOk };
+}
 
-    let existing = null;
-    if (pmid && pmidMap.has(pmid)) {
-      existing = pmidMap.get(pmid);
-    } else if (doi && doiMap.has(doi)) {
-      existing = doiMap.get(doi);
-    } else if (normT.length > 15 && titleMap.has(normT)) {
-      existing = titleMap.get(normT);
-    } else if (normT.length > 15) {
-      // Fuzzy title match via token Jaccard similarity >= 0.88 with publication year within 1 year
-      for (const u of unique) {
-        const uYear = Number(u.year) || null;
-        if (paperYear && uYear && Math.abs(paperYear - uYear) > 1) continue;
-        const uTokens = getTitleTokens(u.title);
-        if (titleJaccard(paperTokens, uTokens) >= 0.88) {
-          existing = u;
-          break;
-        }
-      }
-    }
+function sourceFailureReason(st) {
+  if (!st) return 'not run';
+  if (st.status === 'failed') return `search failed (${st.error || 'unknown error'})`;
+  if (st.status === 'not_configured') return `not configured (${st.reason || 'API key missing'})`;
+  if (st.status === 'not_searched') return `not searched (${st.reason || 'not run'})`;
+  return st.status;
+}
 
-    if (existing) {
-      duplicates++;
-      // Non-destructive metadata merge
-      const incomingSources = Array.isArray(paper.sources) && paper.sources.length
-        ? paper.sources
-        : [paper.source === 's2' ? 'Semantic Scholar' 
-          : paper.source === 'openalex' ? 'OpenAlex' 
-          : paper.source === 'crossref' ? 'Crossref' 
-          : 'Europe PMC'];
-
-      if (!Array.isArray(existing.sources)) existing.sources = [existing.source || 'Europe PMC'];
-      incomingSources.forEach(s => {
-        if (!existing.sources.includes(s)) existing.sources.push(s);
-      });
-      existing.source = existing.sources.length > 1 ? 'both' : (existing.sources[0] || 'Europe PMC');
-
-      if (!existing.pmid && pmid) {
-        existing.pmid = pmid;
-        pmidMap.set(pmid, existing);
-      } else if (existing.pmid) {
-        pmidMap.set(existing.pmid, existing);
-      }
-      if (!existing.doi && doi) {
-        existing.doi = doi;
-        doiMap.set(doi, existing);
-      } else if (existing.doi) {
-        doiMap.set(existing.doi, existing);
-      }
-      if (!existing.pmcid && paper.pmcid) existing.pmcid = paper.pmcid;
-      if (!existing.volume && paper.volume) existing.volume = paper.volume;
-      if (!existing.issue && paper.issue) existing.issue = paper.issue;
-      if (!existing.pages && paper.pages) existing.pages = paper.pages;
-      if (Array.isArray(paper.authorObjects) && paper.authorObjects.length > 0 && (!existing.authorObjects || existing.authorObjects.length === 0)) {
-        existing.authorObjects = paper.authorObjects;
-      }
-      if (paper.abstract && (!existing.abstract || paper.abstract.length > existing.abstract.length)) {
-        existing.abstract = paper.abstract;
-        existing.abstract_summary = paper.abstract;
-      }
-      const pCites = Number(paper.citationCount || paper.citation_count || 0);
-      const eCites = Number(existing.citationCount || existing.citation_count || 0);
-      existing.citationCount = Math.max(eCites, pCites);
-      existing.citation_count = existing.citationCount;
-      if (paper.isOpenAccess) existing.isOpenAccess = true;
-      if (paper.openAccessPdfUrl && !existing.openAccessPdfUrl) existing.openAccessPdfUrl = paper.openAccessPdfUrl;
-      continue;
-    }
-
-    if (pmid) pmidMap.set(pmid, paper);
-    if (doi) doiMap.set(doi, paper);
-    if (normT.length > 15) titleMap.set(normT, paper);
-    if (!Array.isArray(paper.sources)) {
-      paper.sources = [paper.source === 's2' ? 'Semantic Scholar' : paper.source === 'openalex' ? 'OpenAlex' : paper.source === 'crossref' ? 'Crossref' : 'Europe PMC'];
-    }
-    unique.push(paper);
+function getUnsearchedSourcesSentence() {
+  if (!Object.keys(STATE.sourceStatus || {}).length) {
+    return (STATE.papers || []).length
+      ? 'Per-source search status was not recorded for this project (saved with an earlier SysRevAI version), so the information sources searched cannot be verified.'
+      : '';
   }
+  const { notOk } = getSourcesByStatus();
+  if (!notOk.length) return '';
+  const parts = notOk.map(({ src, st }) => `${src.displayName}: ${sourceFailureReason(st)}`);
+  let s = `The following mandatory information sources were NOT searched and contributed no records: ${parts.join('; ')}.`;
+  if (notOk.some(x => x.src.key === 'cochrane_central') && STATE.centralAck) {
+    s += ` The review team acknowledged before manuscript generation that Cochrane CENTRAL was not searched (${String(STATE.centralAck.at || '').slice(0, 10)}).`;
+  }
+  return s;
+}
 
-  return { unique, duplicates };
+function getPrismaCategoryCounts() {
+  const counts = { database: [], register: [], other: [] };
+  registryList().forEach(src => {
+    const st = (STATE.sourceStatus || {})[src.key];
+    const n = Array.isArray((STATE.sourceRecords || {})[src.key]) ? STATE.sourceRecords[src.key].length : 0;
+    counts[src.prismaCategory].push({ key: src.key, name: src.displayName, n, status: st ? st.status : 'queued' });
+  });
+  const manual = Array.isArray((STATE.sourceRecords || {}).manual_import) ? STATE.sourceRecords.manual_import.length : 0;
+  if (manual) counts.other.push({ key: 'manual_import', name: 'Reports added manually by reviewer', n: manual, status: 'ok' });
+  const legacy = Array.isArray((STATE.sourceRecords || {}).project_load) ? STATE.sourceRecords.project_load.length : 0;
+  if (legacy) counts.database.push({ key: 'project_load', name: 'Loaded project (legacy, source breakdown unavailable)', n: legacy, status: 'ok' });
+  return counts;
+}
+
+function getInformationSourcesTable() {
+  return (STATE.searchLog || []).map(e => ({
+    source: sourceDisplayName(e.sourceKey),
+    interface: e.interface,
+    dateSearched: e.timestamp ? String(e.timestamp).slice(0, 10) : '—',
+    query: e.query,
+    hits: e.status === 'ok' ? e.hitCount : '—',
+    retrieved: e.status === 'ok' ? e.retrievedCount : '—',
+    status: e.status,
+    note: e.status !== 'ok' ? (e.error || '') : (e.fileName ? `file: ${e.fileName}` : '')
+  }));
+}
+
+// ── Manuscript gate: CENTRAL must be imported or explicitly acknowledged ──
+function centralSatisfied() {
+  const st = (STATE.sourceStatus || {}).cochrane_central;
+  return (st && st.status === 'ok') || !!STATE.centralAck;
+}
+
+function updateManuscriptGate() {
+  const gate = document.getElementById('central-gate-warning');
+  if (!gate) return;
+  const st = (STATE.sourceStatus || {}).cochrane_central;
+  if (st && st.status === 'ok') { gate.classList.add('hidden'); return; }
+  gate.classList.remove('hidden');
+  const cb = document.getElementById('central-ack-checkbox');
+  if (cb) cb.checked = !!STATE.centralAck;
+}
+
+function onCentralAckChange(cb) {
+  STATE.centralAck = cb && cb.checked ? { at: new Date().toISOString() } : null;
+  updateManuscriptGate();
+  saveProjectState();
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -4401,9 +4221,12 @@ function formatHarvard(paper) {
 function getPaperCiteData(indexOrNum) {
   const idx = typeof indexOrNum === 'number' ? indexOrNum - 1 : parseInt(indexOrNum, 10) - 1;
   const stateObj = (typeof window !== 'undefined' && window.STATE) || (typeof STATE !== 'undefined' ? STATE : null);
-  const papers = stateObj?.includedPapers?.length 
+  const basePapers = stateObj?.includedPapers?.length 
     ? stateObj.includedPapers 
-    : (stateObj?.review?.references ? stateObj.review.references.map(r => r.paper).filter(Boolean) : []);
+    : (stateObj?.review?.references ? stateObj.review.references.filter(r => !r.background).map(r => r.paper).filter(Boolean) : []);
+  const backgroundPapers = stateObj?.review?.references ? stateObj.review.references.filter(r => r.background).map(r => r.paper).filter(Boolean) : [];
+  // No reference may appear twice in any citation style
+  const papers = typeof dedupeReferenceList === 'function' ? dedupeReferenceList(basePapers.concat(backgroundPapers)) : basePapers.concat(backgroundPapers);
   if (papers && papers[idx]) return papers[idx];
   return null;
 }
@@ -4437,9 +4260,12 @@ function formatInTextAuthor(paper, style) {
 
 function getFormattedReferencesForCurrentStyle() {
   const stateObj = (typeof window !== 'undefined' && window.STATE) || (typeof STATE !== 'undefined' ? STATE : null);
-  const papers = stateObj?.includedPapers?.length 
+  const basePapers = stateObj?.includedPapers?.length 
     ? stateObj.includedPapers 
-    : (stateObj?.review?.references ? stateObj.review.references.map(r => r.paper).filter(Boolean) : []);
+    : (stateObj?.review?.references ? stateObj.review.references.filter(r => !r.background).map(r => r.paper).filter(Boolean) : []);
+  const backgroundPapers = stateObj?.review?.references ? stateObj.review.references.filter(r => r.background).map(r => r.paper).filter(Boolean) : [];
+  // No reference may appear twice in any citation style
+  const papers = typeof dedupeReferenceList === 'function' ? dedupeReferenceList(basePapers.concat(backgroundPapers)) : basePapers.concat(backgroundPapers);
   const style = (typeof window !== 'undefined' && window.CITATION_STYLE) || CITATION_STYLE;
   
   if (style === 'apa') {
@@ -4484,8 +4310,13 @@ class SystematicReviewGenerator {
   constructor(topic, pico, papers, duplicatesRemoved, totalIdentified, metaResults = null) {
     this.topic = topic || 'Systematic Review';
     this.pico = pico || {};
-    this.papers = papers || [];
+    this.papers = typeof dedupeReferenceList === 'function' ? dedupeReferenceList(papers || []) : (papers || []);
     this.duplicatesRemoved = duplicatesRemoved || 0;
+    // Existing Cochrane reviews (CDSR) are citable as background only, and only where the text refers to them
+    this.backgroundRefs = (typeof STATE !== 'undefined' && Array.isArray(STATE.papers) && typeof cochraneReviewMatchesPico === 'function')
+      ? STATE.papers.filter(p => p.isCochraneReview && cochraneReviewMatchesPico(p)).slice(0, 3)
+      : [];
+    this.citedBackground = [];
     this.totalIdentified = totalIdentified || (papers ? papers.length : 0);
     this.metaResults = metaResults || (typeof STATE !== 'undefined' && STATE.metaResults) || (typeof window !== 'undefined' && window.META_ANALYSIS_STATE?.results) || null;
     this.manuscriptAssertions = [];
@@ -4497,16 +4328,40 @@ class SystematicReviewGenerator {
   }
 
   getHarvestedSourcesString() {
-    const counts = (typeof STATE !== 'undefined' && STATE.sourceCounts) || {};
+    // Only sources whose status is "ok" are ever named as searched (zero-fabrication policy)
+    const statuses = (typeof STATE !== 'undefined' && STATE.sourceStatus) || {};
     const list = [];
-    if (counts.epmc > 0) list.push('Europe PMC (incorporating PubMed, PubMed Central, and MEDLINE)');
-    if (counts.s2 > 0) list.push('Semantic Scholar Academic Graph');
-    if (counts.openalex > 0) list.push('OpenAlex Global Scholarly Graph');
-    if (counts.crossref > 0) list.push('Crossref Official DOI Registry');
-    if (list.length === 0) return 'electronic scientific databases (incorporating Europe PMC, Semantic Scholar, OpenAlex, and Crossref)';
+    if (Object.keys(statuses).length && typeof registryList === 'function') {
+      registryList().forEach(src => { if (statuses[src.key] && statuses[src.key].status === 'ok') list.push(src.interfaceLabel); });
+    } else {
+      // Legacy project without per-source status: name only sources that actually contributed records
+      const counts = (typeof STATE !== 'undefined' && STATE.sourceCounts) || {};
+      const legacy = { pubmed: 'PubMed via NCBI E-utilities', epmc: 'Europe PMC', s2: 'Semantic Scholar', openalex: 'OpenAlex', crossref: 'Crossref' };
+      Object.keys(legacy).forEach(k => { if (counts[k] > 0) list.push(legacy[k]); });
+    }
+    if (list.length === 0) return 'no information source (no search completed successfully)';
     if (list.length === 1) return list[0];
     if (list.length === 2) return `${list[0]} and ${list[1]}`;
     return list.slice(0, -1).join(', ') + ', and ' + list[list.length - 1];
+  }
+
+  citeBackground(paper) {
+    const i = this.backgroundRefs.indexOf(paper);
+    if (i < 0) return '';
+    if (!this.citedBackground.includes(paper)) this.citedBackground.push(paper);
+    return `[${this.papers.length + this.citedBackground.indexOf(paper) + 1}]`;
+  }
+
+  getSourceLimitationsText() {
+    const parts = [];
+    const unsearched = typeof getUnsearchedSourcesSentence === 'function' ? getUnsearchedSourcesSentence() : '';
+    if (unsearched) parts.push(unsearched);
+    const inc = this.papers || [];
+    const scholarOnly = inc.filter(p => (p.sourceKeys || []).length && p.sourceKeys.every(k => k === 'scholar')).length;
+    if (scholarOnly) parts.push(`${scholarOnly} included record(s) were found only via Google Scholar.`);
+    const preprints = inc.filter(p => p.peerReviewed === false && !p.isRegistryRecord).length;
+    if (preprints) parts.push(`${preprints} included record(s) are preprints that have not been peer reviewed.`);
+    return parts.join(' ');
   }
 
   cite(...indices) {
@@ -4592,7 +4447,11 @@ class SystematicReviewGenerator {
         `1.2 Objectives & Formal PICOS Question\n\n• Population (P): ${this.pico.p || 'Target clinical population'}\n• Intervention (I): ${this.pico.i || 'Target intervention'}\n• Comparator (C): ${this.pico.c || 'Control'}\n• Outcomes (O): ${this.pico.o || 'Clinical outcomes'}\n• Study Design (S): ${this.pico.s || 'Empirical designs'}`;
     }
 
-    const p1 = `1.1 Rationale & Clinical Equipoise\n\n${cap(t)} represents an essential therapeutic and investigative domain within modern clinical medicine. While clinical trials have evaluated clinical outcomes, persistent variations in trial methodologies, patient risk stratification, and reported effect estimates have prevented unambiguous consensus. A systematic review is essential to synthesize disparate findings and provide an evidence-based clinical synthesis.`;
+    let p1 = `1.1 Rationale & Clinical Equipoise\n\n${cap(t)} represents an essential therapeutic and investigative domain within modern clinical medicine. While clinical trials have evaluated clinical outcomes, persistent variations in trial methodologies, patient risk stratification, and reported effect estimates have prevented unambiguous consensus. A systematic review is essential to synthesize disparate findings and provide an evidence-based clinical synthesis.`;
+    if (this.backgroundRefs.length) {
+      const r = this.backgroundRefs[0];
+      p1 += ` An existing Cochrane review addressing a related question was identified ("${r.title}"${r.year ? `, ${r.year}` : ''}) ${this.citeBackground(r)}; the present review should be read alongside it, and its findings are compared with ours in the Discussion.`;
+    }
 
     const p2 = `1.2 Objectives & Formal PICOS Question\n\nThe structured objective of this systematic review was formulated under the PICOS framework:\n` +
       `• Population (P): ${this.pico.p || 'Target clinical population'}\n` +
@@ -4617,9 +4476,27 @@ class SystematicReviewGenerator {
     const queryStr = (typeof STATE !== 'undefined' && STATE.searchQuery) ? STATE.searchQuery : this.topic;
     const yrLimit = (typeof STATE !== 'undefined' && STATE.yearRange) ? (STATE.yearRange === 99 ? 'All time' : `Last ${STATE.yearRange} years`) : 'Unrestricted';
 
-    const p3 = `2.3 Information Sources & Search Strategy\n\nComprehensive electronic database queries of ${this.getHarvestedSourcesString()} were executed on ${searchDate}. Search queries utilized free-text keywords: "${queryStr}". Filters applied: publication timeframe (${yrLimit}). Searches relied on direct database queries without controlled thesaurus indexing.`;
+    const st = (typeof STATE !== 'undefined' && STATE.sourceStatus) || {};
+    const isOk = k => st[k] && st[k].status === 'ok';
+    const perSource = (typeof STATE !== 'undefined' && STATE.searchStrategy) ? STATE.searchStrategy.perSourceLimit : null;
+    let p3 = `2.3 Information Sources & Search Strategy\n\nOne shared search strategy ("${queryStr}") was translated into the native syntax of each information source and executed on ${searchDate}. Information sources searched: ${this.getHarvestedSourcesString()}. Filters applied: publication timeframe (${yrLimit})${perSource ? `; retrieval was capped at the ${perSource} most relevant records per source` : ''}. Free-text terms were used; controlled-vocabulary thesaurus terms were not added to the strategy.`;
+    if (isOk('cochrane_cdsr')) p3 += ` Existing Cochrane reviews were identified with a journal-restricted search ("Cochrane Database Syst Rev") and were used for background and citation searching only; they were not screened as primary studies.`;
+    if (isOk('cochrane_central')) p3 += ` The Cochrane Central Register of Controlled Trials was searched by the review team in the Cochrane Library with the strategy reported below, and the results were imported from an RIS export${STATE.centralImport ? ` (${STATE.centralImport.fileName}, ${String(STATE.centralImport.importedAt).slice(0, 10)})` : ''}.`;
+    if (isOk('ctgov')) p3 += ` Trial registrations retrieved from ClinicalTrials.gov were linked to their publications by NCT number or by registry-listed PMIDs.`;
+    if (isOk('epmc_preprints')) p3 += ` Preprints were retrieved separately and were flagged as not peer reviewed; when the published version was also retrieved, the published version was retained as the primary report.`;
+    if (isOk('scholar')) p3 += ` Google Scholar results were obtained through SerpApi (Google Scholar was not scraped) and matched to Crossref by title, first author and year (title Jaccard ≥ 0.90, |Δyear| ≤ 1) to obtain DOIs, with abstracts taken from Europe PMC or OpenAlex; unmatched records were retained without an abstract and flagged for full-text review.`;
+    const sourceRows = (typeof getInformationSourcesTable === 'function' ? getInformationSourcesTable() : []).filter(r => r.status === 'ok');
+    if (sourceRows.length) {
+      p3 += `\n\nTable S1. Information sources and search strategies (PRISMA 2020 items 6–7; PRISMA-S)\n` + sourceRows.map(r =>
+        `• ${r.source} — ${r.interface}; date searched ${r.dateSearched}; hits ${r.hits}; retrieved ${r.retrieved}${r.note ? `; ${r.note}` : ''}\n   Search: ${r.query}`
+      ).join('\n');
+    }
+    if (typeof getSourcesByStatus === 'function' && getSourcesByStatus().notOk.length) {
+      p3 += `\n\nMandatory information sources that could not be searched are reported in the Limitations (§4.3).`;
+    }
 
-    const p4 = `2.4 Study Selection & Screening Process\n\nRetrieved candidate records were processed through an automated cross-database deduplication engine matching registered PMIDs, DOIs, and normalized title keys. Exactly ${this.duplicatesRemoved} duplicate records were excluded. All unique records underwent automated title and abstract keyword screening with human reviewer override; no full-text articles were independently retrieved or evaluated.`;
+    const bkd = (typeof STATE !== 'undefined' && STATE.dedupBreakdown) || {};
+    const p4 = `2.4 Study Selection & Screening Process\n\nRetrieved records were de-duplicated with a cluster-based (union-find) algorithm that matches PMIDs, PMCIDs, DOIs, OpenAlex, Semantic Scholar, Google Scholar and Cochrane identifiers, identical normalised titles (|Δyear| ≤ 1) and near-identical titles (token Jaccard ≥ 0.88, |Δyear| ≤ 1, concordant first author), with a conflict guard that never merges records carrying different PMIDs or DOIs. Exactly ${this.duplicatesRemoved} records were removed before screening: ${bkd.duplicates || 0} duplicates and ${bkd.linked || 0} additional reports (preprints, trial registrations, errata or retraction notices) linked to their parent study; every merge is listed in the deduplication audit log. All unique records underwent automated title and abstract keyword screening with human reviewer override; no full-text articles were independently retrieved or evaluated.`;
 
     const p5 = `2.5 Risk of Bias & Methodological Quality Appraisal (Automated Preliminary Screen)\n\nMethodological quality and internal validity of included studies were appraised using an automated preliminary RoB screen — not a validated RoB 2/ROBINS-I assessment. For randomized trials, five core domains were appraised: (D1) Randomization and selection process; (D2) Deviations from intended interventions; (D3) Incomplete outcome data; (D4) Measurement of outcome; and (D5) Selective reporting. Each domain was rated as Low Risk, Some Concerns, or High Risk of Bias with human reviewer override enabled. Non-randomized observational cohorts were flagged as requiring manual ROBINS-I appraisal.`;
 
@@ -4647,7 +4524,10 @@ class SystematicReviewGenerator {
     });
     const designSummary = Object.entries(designs).map(([k, v]) => `${k} (n=${v})`).join(', ');
 
-    const p1 = `3.1 Study Selection (PRISMA Flow Dynamics)\n\nThe electronic search identified ${this.totalIdentified} total candidate records across ${this.getHarvestedSourcesString()}. Removal of ${this.duplicatesRemoved} duplicates yielded ${this.totalIdentified - this.duplicatesRemoved} unique records screened based on title and abstract. Following algorithmic filtering to restrict eligibility strictly to 9 empirical clinical designs and eliminate pre-clinical or review publications, exactly ${n} primary studies met all criteria and were included in the final qualitative and quantitative evidence synthesis.`;
+    const cat = typeof getPrismaCategoryCounts === 'function' ? getPrismaCategoryCounts() : null;
+    const sumCat = list => list.filter(x => x.status === 'ok').reduce((a, x) => a + x.n, 0);
+    const catText = cat ? ` (databases: ${sumCat(cat.database)}; registers: ${sumCat(cat.register)}; other methods: ${sumCat(cat.other)})` : '';
+    const p1 = `3.1 Study Selection (PRISMA Flow Dynamics)\n\nThe search identified ${this.totalIdentified} total candidate records${catText} across ${this.getHarvestedSourcesString()}. Removal of ${this.duplicatesRemoved} duplicate or linked records yielded ${this.totalIdentified - this.duplicatesRemoved} unique records screened based on title and abstract. Following algorithmic filtering to restrict eligibility strictly to 9 empirical clinical designs and eliminate pre-clinical or review publications, exactly ${n} primary studies met all criteria and were included in the final qualitative and quantitative evidence synthesis.`;
 
     const p2 = `3.2 Study Characteristics\n\nThe ${n} included studies spanned publication dates between ${minYStr} and ${maxYStr} (mean year: ${avgYear}). Study designs comprised: ${designSummary}.`;
 
@@ -4759,7 +4639,7 @@ class SystematicReviewGenerator {
     if (n === 0) {
       return `4.1 Summary of Main Findings\n\nNo eligible clinical studies were identified evaluating ${t}.\n\n` +
         `4.2 Overall Completeness & Clinical Applicability\n\nClinical applicability cannot be established due to the absence of included studies.\n\n` +
-        `4.3 Quality of Evidence & Limitations\n\nThe primary limitation of this review is the absence of eligible peer-reviewed literature meeting pre-specified criteria. Comprehensive database queries confirmed a lack of eligible published empirical data.`;
+        `4.3 Quality of Evidence & Limitations\n\nThe primary limitation of this review is the absence of eligible peer-reviewed literature meeting pre-specified criteria in the sources that were searched.${this.getSourceLimitationsText() ? ' ' + this.getSourceLimitationsText() : ''}`;
     }
 
     const pooled = this.metaResults?.pooled || null;
@@ -4789,7 +4669,7 @@ class SystematicReviewGenerator {
 
     const p2 = `4.2 Overall Completeness & Clinical Applicability\n\nThe synthesized evidence base reflects the clinical characteristics and eligibility criteria of the ${n} included investigations. Clinical applicability should be evaluated in the context of the study populations and trial settings described in Table 1. Variations in baseline patient risk and clinical settings warrant consideration during guideline interpretation.`;
 
-    const p3 = `4.3 Quality of Evidence & Limitations\n\nReview-level limitations must be acknowledged: (1) screening was restricted to automated title and abstract evaluation without independent full-text appraisal; (2) data extraction was based solely on published abstract summaries rather than full-text study reports; (3) database retrieval was capped at top relevance-ranked candidate records per source; and (4) methodological risk of bias was appraised via automated heuristic screening requiring clinical reviewer verification.`;
+    const p3 = `4.3 Quality of Evidence & Limitations\n\nReview-level limitations must be acknowledged: (1) screening was restricted to automated title and abstract evaluation without independent full-text appraisal; (2) data extraction was based solely on published abstract summaries rather than full-text study reports; (3) database retrieval was capped at top relevance-ranked candidate records per source; and (4) methodological risk of bias was appraised via automated heuristic screening requiring clinical reviewer verification.${this.getSourceLimitationsText() ? ' ' + this.getSourceLimitationsText() : ''}`;
 
     return [p1, p2, p3].join('\n\n');
   }
@@ -4833,11 +4713,16 @@ class SystematicReviewGenerator {
   }
 
   generateReferences() {
-    return this.papers.map((p, idx) => ({
+    const refs = this.papers.map((p, idx) => ({
       num: idx + 1,
       text: formatVancouver(p, idx + 1),
       paper: p
     }));
+    this.citedBackground.forEach((p, i) => {
+      const num = this.papers.length + i + 1;
+      refs.push({ num, text: formatVancouver(p, num), paper: p, background: true });
+    });
+    return refs;
   }
 
   generate() {
@@ -4878,7 +4763,13 @@ function renderPaperCards() {
   const searchQ = (document.getElementById('paper-search-input')?.value || '').toLowerCase().trim();
   const typeFilter = (document.getElementById('filter-study-type')?.value || 'all');
 
+  renderCochranePanel();
+  renderDuplicatesPanel();
+  renderPoolIntegrityNotice();
+
   let displayed = STATE.papers.filter(p => {
+    // Cochrane reviews are shown in the "Existing Cochrane evidence" panel, never as primary-study cards
+    if (p.isCochraneReview || p.reviewerRemoved) return false;
     if (filter === 'included' && p.screening?.status !== 'INCLUDED') return false;
     if (filter === 'excluded' && p.screening?.status !== 'EXCLUDED') return false;
     if (filter === 'borderline' && p.screening?.status !== 'BORDERLINE') return false;
@@ -4906,17 +4797,22 @@ function renderPaperCards() {
     const cardClass = status === 'INCLUDED' ? 'is-included' : status === 'EXCLUDED' ? 'is-excluded' : 'is-borderline';
     card.className = `paper-card ${cardClass}`;
 
-    let sourceBadge = '';
-    if (paper.sources && paper.sources.length > 1) {
-      sourceBadge = `<span class="source-badge source-both">🌐 ${paper.sources.join(' + ')}</span>`;
-    } else if (paper.source === 's2' || (paper.sources && paper.sources.includes('Semantic Scholar'))) {
-      sourceBadge = '<span class="source-badge source-s2">🎓 Semantic Scholar</span>';
-    } else if (paper.source === 'openalex' || (paper.sources && paper.sources.includes('OpenAlex'))) {
-      sourceBadge = '<span class="source-badge source-openalex">🏛️ OpenAlex</span>';
-    } else if (paper.source === 'crossref' || (paper.sources && paper.sources.includes('Crossref'))) {
-      sourceBadge = '<span class="source-badge source-crossref">🔍 Crossref</span>';
-    } else {
-      sourceBadge = '<span class="source-badge source-epmc">🇪🇺 Europe PMC</span>';
+    // One badge per source that found this study (sources[] is the single source of truth)
+    const paperSources = Array.isArray(paper.sources) && paper.sources.length ? paper.sources : [sourceDisplayName(paper.sourceKey || paper.source)];
+    let sourceBadge = `<span class="source-badge ${paperSources.length > 1 ? 'source-both' : 'source-epmc'}" title="Found in ${paperSources.length} source(s)">🌐 ${paperSources.map(escapeHtml).join(' · ')}</span>`;
+    const alsoChips = [];
+    (paper.relatedReports || []).forEach(r => alsoChips.push(`preprint ${r.doi || ''}`.trim()));
+    (paper.registryRecords || []).forEach(r => alsoChips.push(`registry ${r.nctId}${r.hasResults ? ' (results posted)' : ''}`));
+    if (paper.studyId && !(paper.registryRecords || []).length) alsoChips.push(`same registered study ${paper.studyId}`);
+    (paper.linkedNotices || []).forEach(n => alsoChips.push(`${n.type} notice`));
+    if (paper.retracted) alsoChips.push('RETRACTED');
+    if (paper.peerReviewed === false && !paper.isRegistryRecord) alsoChips.push('preprint — not peer reviewed');
+    if (paper.isRegistryRecord) alsoChips.push(`trial registration ${(paper.nctIds || [])[0] || ''}`.trim());
+    if (alsoChips.length) {
+      sourceBadge += alsoChips.map(c => `<span class="source-badge" style="background:#f1f5f9;color:#334155;border:1px solid #cbd5e1">Also reported as: ${escapeHtml(c)}</span>`).join('');
+    }
+    if (paper.scholarSnippet && (!paper.abstract || paper.abstractSource === 'none')) {
+      sourceBadge += '<span class="source-badge" style="background:#fffbeb;color:#92400e;border:1px solid #fde68a">Google Scholar snippet only — abstract unavailable</span>';
     }
 
     const design = paper.screening?.design || classifyStudyDesign(paper);
@@ -5034,7 +4930,7 @@ function updatePrismaAndCounters() {
   const dups = STATE.duplicatesRemoved || 0;
   const screened = STATE.papers.length;
   
-  STATE.includedPapers = STATE.papers.filter(p => p.screening?.status === 'INCLUDED');
+  STATE.includedPapers = STATE.papers.filter(p => p.screening?.status === 'INCLUDED' && !p.isCochraneReview);
   STATE.excludedPapers = STATE.papers.filter(p => p.screening?.status === 'EXCLUDED');
   STATE.borderlinePapers = STATE.papers.filter(p => p.screening?.status === 'BORDERLINE');
 
@@ -5042,11 +4938,20 @@ function updatePrismaAndCounters() {
   document.getElementById('prisma-n-identified').textContent = total;
   const srcItems = [];
   const hitCounts = STATE.databaseHitCounts || {};
-  if (STATE.sourceCounts.epmc > 0) srcItems.push(`Europe PMC: ${STATE.sourceCounts.epmc}${hitCounts.epmc ? ` (hits: ${hitCounts.epmc})` : ''}`);
-  if (STATE.sourceCounts.s2 > 0) srcItems.push(`Semantic Scholar: ${STATE.sourceCounts.s2}${hitCounts.s2 ? ` (hits: ${hitCounts.s2})` : ''}`);
-  if (STATE.sourceCounts.openalex > 0) srcItems.push(`OpenAlex: ${STATE.sourceCounts.openalex}${hitCounts.openalex ? ` (hits: ${hitCounts.openalex})` : ''}`);
-  if (STATE.sourceCounts.crossref > 0) srcItems.push(`Crossref: ${STATE.sourceCounts.crossref}${hitCounts.crossref ? ` (hits: ${hitCounts.crossref})` : ''}`);
-  document.getElementById('prisma-sub-identified').textContent = `${srcItems.join(' · ')} (Top-N screened by relevance)`;
+  registryList().forEach(src => {
+    const st = (STATE.sourceStatus || {})[src.key];
+    const n = (STATE.sourceCounts || {})[src.key] || 0;
+    if (st && st.status === 'ok') srcItems.push(`${src.displayName}: ${n}${hitCounts[src.key] ? ` (hits: ${hitCounts[src.key]})` : ''}`);
+    else if (st && st.status !== 'queued') srcItems.push(`${src.displayName}: ${sourceFailureReason(st)}`);
+  });
+  if ((STATE.sourceCounts || {}).manual_import) srcItems.push(`Manual imports: ${STATE.sourceCounts.manual_import}`);
+  if ((STATE.sourceCounts || {}).project_load) srcItems.push(`Loaded project: ${STATE.sourceCounts.project_load}`);
+  document.getElementById('prisma-sub-identified').textContent = `${srcItems.join(' · ')} (Top-N per source by relevance)`;
+  const dupSummary = document.getElementById('dedup-summary');
+  if (dupSummary) {
+    const b = STATE.dedupBreakdown || {};
+    dupSummary.textContent = `${STATE.rawCandidateCount} records identified → ${STATE.papers.length} unique records (${b.duplicates || 0} duplicates merged, ${b.linked || 0} reports linked to their study). By key: ${Object.entries(b.byKey || {}).map(([k, v]) => `${k} ${v}`).join(', ') || 'none'}.`;
+  }
   document.getElementById('prisma-n-duplicates').textContent = dups;
   document.getElementById('prisma-n-screened').textContent = screened;
   document.getElementById('prisma-n-excluded-screening').textContent = STATE.excludedPapers.length;
@@ -5140,7 +5045,12 @@ function togglePaperEligibility(globalIndex, newStatus) {
   const paper = STATE.papers[globalIndex];
   if (!paper) return;
   if (!paper.screening) paper.screening = {};
+  if (paper.retracted && newStatus !== 'EXCLUDED') {
+    alert('This record is linked to a retraction notice and cannot be included.');
+    return;
+  }
   paper.screening.status = newStatus;
+  paper.screening.manual = true;
   if (newStatus === 'INCLUDED') {
     paper.screening.primaryReason = 'Meets pre-specified PICOS eligibility criteria (investigator verified)';
     paper.screening.violatedExclusions = [];
@@ -5168,9 +5078,12 @@ function removePaperCompletely(globalIndex) {
   }
   lastRemovedPaper = STATE.papers[globalIndex];
   lastRemovedIndex = globalIndex;
-
-  STATE.papers.splice(globalIndex, 1);
-  STATE.papers.forEach((p, i) => p._globalIndex = i);
+  if (!lastRemovedPaper) return;
+  // Records are never spliced out of the pool (that would break PRISMA reconciliation);
+  // they are flagged and counted as excluded with reason "Removed by reviewer".
+  lastRemovedPaper._prevScreening = lastRemovedPaper.screening ? JSON.parse(JSON.stringify(lastRemovedPaper.screening)) : null;
+  lastRemovedPaper.reviewerRemoved = true;
+  applySourceScreeningRules(lastRemovedPaper);
 
   updatePrismaAndCounters();
   renderPaperCards();
@@ -5187,8 +5100,10 @@ function removePaperCompletely(globalIndex) {
 
 function undoRemovePaper() {
   if (!lastRemovedPaper) return;
-  STATE.papers.splice(lastRemovedIndex, 0, lastRemovedPaper);
-  STATE.papers.forEach((p, i) => p._globalIndex = i);
+  lastRemovedPaper.reviewerRemoved = false;
+  lastRemovedPaper.screening = lastRemovedPaper._prevScreening || null;
+  delete lastRemovedPaper._prevScreening;
+  screenPool();
   lastRemovedPaper = null;
   lastRemovedIndex = -1;
   document.getElementById('step3-notice').classList.add('hidden');
@@ -5212,7 +5127,14 @@ function togglePrismaDetails() {
 // STEP 4: REVIEW MANUSCRIPT & TABS
 // ═══════════════════════════════════════════════════════════════
 function goToStep4() {
-  const included = STATE.papers.filter(p => p.screening?.status === 'INCLUDED');
+  if (!centralSatisfied()) {
+    updateManuscriptGate();
+    const gate = document.getElementById('central-gate-warning');
+    if (gate) gate.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    alert('Cochrane CENTRAL has not been searched. Upload the CENTRAL RIS export in Step 1, or tick "I acknowledge CENTRAL was not searched" before generating the manuscript.');
+    return;
+  }
+  const included = STATE.papers.filter(p => p.screening?.status === 'INCLUDED' && !p.isCochraneReview);
   if (included.length === 0) {
     alert('You have 0 studies included in the systematic review. Please include at least 1 study.');
     return;
@@ -6740,17 +6662,69 @@ async function exportPRISMAReportPDF() {
   doc.setTextColor(30);
 
   const pdfSources = [];
-  if (STATE.sourceCounts.epmc > 0) pdfSources.push(`Europe PMC: ${STATE.sourceCounts.epmc}`);
-  if (STATE.sourceCounts.s2 > 0) pdfSources.push(`Semantic Scholar: ${STATE.sourceCounts.s2}`);
-  if (STATE.sourceCounts.openalex > 0) pdfSources.push(`OpenAlex: ${STATE.sourceCounts.openalex}`);
-  if (STATE.sourceCounts.crossref > 0) pdfSources.push(`Crossref: ${STATE.sourceCounts.crossref}`);
-  const pdfSourceStr = pdfSources.join(', ') || `Europe PMC: ${STATE.sourceCounts.epmc}, Semantic Scholar: ${STATE.sourceCounts.s2}`;
-  doc.text(`• Total Database Records Identified: ${STATE.rawCandidateCount} (${pdfSourceStr})`, margin + 12, y + 36);
-  doc.text(`• Duplicate Records Excluded: ${STATE.duplicatesRemoved}`, margin + 12, y + 52);
+  registryList().forEach(src => {
+    const st = (STATE.sourceStatus || {})[src.key];
+    if (st && st.status === 'ok') pdfSources.push(`${src.displayName}: ${(STATE.sourceCounts || {})[src.key] || 0}`);
+  });
+  const pdfSourceStr = pdfSources.join(', ') || 'no source searched successfully';
+  doc.text(`• Total Records Identified: ${STATE.rawCandidateCount} across ${pdfSources.length} successfully searched sources (per-source breakdown below)`, margin + 12, y + 36);
+  const bkd = STATE.dedupBreakdown || {};
+  doc.text(`• Duplicate Records Removed: ${bkd.duplicates || 0} · Reports linked to their study: ${bkd.linked || 0} (total removed before screening: ${STATE.duplicatesRemoved})`, margin + 12, y + 52);
   doc.text(`• Unique Records Screened (Title/Abstract): ${STATE.papers.length}`, margin + 12, y + 68);
   doc.text(`• Records Excluded during Screening: ${STATE.excludedPapers.length}`, margin + 12, y + 84);
   doc.text(`• Studies Included in Final Evidence Synthesis: ${STATE.includedPapers.length}`, margin + 12, y + 100);
   y += 128;
+
+  // Information sources & search strategies (PRISMA items 6/7, PRISMA-S)
+  doc.setFont('times', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(15, 23, 42);
+  doc.text('INFORMATION SOURCES & SEARCH STRATEGIES (PRISMA-S)', margin, y);
+  y += 14;
+  doc.setFontSize(8.5);
+  getInformationSourcesTable().forEach(row => {
+    doc.setFont('times', 'bold');
+    const head = `${row.source} — ${row.interface} · ${row.dateSearched} · ${row.status === 'ok' ? `hits ${row.hits}, retrieved ${row.retrieved}` : `${row.status.toUpperCase()}: ${row.note}`}`;
+    const headLines = doc.splitTextToSize(head, textWidth);
+    checkPageBreak(12 * headLines.length + 12);
+    doc.text(headLines, margin, y);
+    y += 11 * headLines.length;
+    doc.setFont('courier', 'normal');
+    const qLines = doc.splitTextToSize(String(row.query || ''), textWidth - 10).slice(0, 8);
+    checkPageBreak(10 * qLines.length + 6);
+    doc.text(qLines, margin + 10, y);
+    y += 10 * qLines.length + 6;
+  });
+  const unsearched = getUnsearchedSourcesSentence();
+  if (unsearched) {
+    doc.setFont('times', 'italic');
+    const uLines = doc.splitTextToSize(unsearched, textWidth);
+    checkPageBreak(11 * uLines.length + 8);
+    doc.text(uLines, margin, y);
+    y += 11 * uLines.length + 8;
+  }
+
+  // Deduplication audit (by matching key) + full log
+  checkPageBreak(40);
+  doc.setFont('times', 'bold');
+  doc.setFontSize(11);
+  doc.text('DEDUPLICATION & STUDY-LINKING AUDIT', margin, y);
+  y += 14;
+  doc.setFont('times', 'normal');
+  doc.setFontSize(8.5);
+  const bk = STATE.dedupBreakdown || {};
+  const byKeyStr = Object.entries(bk.byKey || {}).map(([k, v]) => `${k}: ${v}`).join(' · ') || 'none';
+  doc.text(doc.splitTextToSize(`Duplicates merged: ${bk.duplicates || 0} · Linked reports: ${bk.linked || 0} · By key: ${byKeyStr} · Reviewer split overrides: ${(STATE.dedupOverrides || []).length}`, textWidth), margin, y);
+  y += 22;
+  (STATE.dedupLog || []).forEach(l => {
+    const line = `[${l.matchedOn}${l.similarity != null && l.similarity < 1 ? ` J=${l.similarity}` : ''}] kept ${l.keptId} ← ${l.kind === 'link' ? 'linked' : 'removed'} ${l.removedId} (${(l.sourcesOfRemoved || []).join(', ')}): ${String(l.removedTitle || '').slice(0, 90)}`;
+    const lines = doc.splitTextToSize(line, textWidth);
+    checkPageBreak(10 * lines.length + 2);
+    doc.text(lines, margin, y);
+    y += 10 * lines.length + 2;
+  });
+  y += 12;
+  checkPageBreak(60);
 
   // Risk of Bias Summary Table
   doc.setFont('times', 'bold');
@@ -6948,16 +6922,11 @@ async function runPipeline() {
   STATE.outcomeDirection = document.getElementById('outcome-direction-select')?.value || 'lower_is_better';
   STATE.searchDate = new Date().toISOString().split('T')[0];
 
-  if (!STATE.selectedDatabases || Object.values(STATE.selectedDatabases).every(v => !v)) {
-    STATE.selectedDatabases = { epmc: true, s2: true, openalex: true, crossref: true };
-    ['epmc', 's2', 'openalex', 'crossref'].forEach(k => {
-      const cb = document.getElementById(`db-cb-${k}`);
-      if (cb) cb.checked = true;
-      if (typeof updateDatabaseOptionUI === 'function') updateDatabaseOptionUI(k);
-    });
-    if (typeof syncSearchSourceState === 'function') syncSearchSourceState();
-  }
-  const activeDbs = Object.keys(STATE.selectedDatabases).filter(k => STATE.selectedDatabases[k]);
+  // Build the ONE shared search strategy that every mandatory source translates (spec 2.7)
+  STATE.searchStrategy = readStrategyInputs();
+  STATE.searchQuery = STATE.searchStrategy.baseQuery;
+  resetSourceState();
+  renderSourceBoard();
 
   currentAbortController = new AbortController();
   const signal = currentAbortController.signal;
@@ -6983,117 +6952,51 @@ async function runPipeline() {
   setStep(2);
 
   try {
-    // Stage 1: Concurrent Retrieval across Selected Scientific Literature Databases
-    setProc('Querying electronic literature databases…', `Executing concurrent retrieval across ${activeDbs.length} selected databases`, 15);
-    await abortableSleep(350, signal);
+    // Stage 1: every mandatory source, concurrently (Promise.allSettled), each reporting only its own records
+    const sources = registryList();
+    setProc('Querying all mandatory literature sources…', `Executing the shared search strategy across ${sources.length} mandatory sources`, 15);
+    await abortableSleep(200, signal);
 
-    const activeDbCount = activeDbs.length;
-    const targetSize = Math.max(15, Math.ceil(STATE.pageSize / activeDbCount));
-
-    let epmcPromise = Promise.resolve({ results: [], hitCount: 0 });
-    let s2Promise = Promise.resolve({ results: [], hitCount: 0 });
-    let alexPromise = Promise.resolve({ results: [], hitCount: 0 });
-    let crossPromise = Promise.resolve({ results: [], hitCount: 0 });
-
-    if (STATE.selectedDatabases.epmc) {
-      epmcPromise = fetchEuropePMC(topic, targetSize, STATE.yearRange, signal).catch(err => ({ results: [], hitCount: 0, error: err.message }));
-    }
-    if (STATE.selectedDatabases.s2) {
-      s2Promise = fetchSemanticScholar(topic, targetSize, STATE.yearRange, signal).catch(err => ({ results: [], hitCount: 0, error: err.message }));
-    }
-    if (STATE.selectedDatabases.openalex) {
-      alexPromise = fetchOpenAlex(topic, targetSize, STATE.yearRange, signal).catch(err => ({ results: [], hitCount: 0, error: err.message }));
-    }
-    if (STATE.selectedDatabases.crossref) {
-      crossPromise = fetchCrossref(topic, targetSize, STATE.yearRange, signal).catch(err => ({ results: [], hitCount: 0, error: err.message }));
-    }
-
-    const [epmcRes, s2Res, alexRes, crossRes] = await Promise.all([epmcPromise, s2Promise, alexPromise, crossPromise]);
-
-    const rawPapers = [];
-    let epmcActual = 0;
-    let s2Actual = 0;
-    let alexActual = 0;
-    let crossActual = 0;
-    const notices = [];
-
-    // Europe PMC Results Processing
-    if (epmcRes.results && epmcRes.results.length > 0) {
-      rawPapers.push(...epmcRes.results);
-      if (epmcRes.isFallback) {
-        alexActual += epmcRes.results.length;
-        notices.push('Europe PMC is unavailable; results sourced from OpenAlex.');
-      } else {
-        epmcActual += epmcRes.results.length;
+    let finished = 0;
+    const settled = await Promise.allSettled(sources.map(src =>
+      runSourceSearch(src.key, signal, { deferRebuild: true }).finally(() => {
+        finished++;
+        setProc('Querying all mandatory literature sources…', `${finished} of ${sources.length} sources finished · ${src.displayName}: ${sourceStatusText(STATE.sourceStatus[src.key])}`, 15 + Math.round(25 * finished / sources.length));
+      })
+    ));
+    if (signal.aborted) return;
+    settled.forEach((r, idx) => {
+      if (r.status === 'rejected' && r.reason && r.reason.name === 'AbortError') throw r.reason;
+      if (r.status === 'rejected') {
+        setSourceStatus(sources[idx].key, { status: 'failed', error: r.reason ? r.reason.message : 'unexpected error' });
       }
-    } else if (epmcRes.error && STATE.selectedDatabases.epmc) {
-      notices.push(`Europe PMC was temporarily unavailable (${epmcRes.error}).`);
-    }
-
-    // Semantic Scholar Results Processing
-    if (s2Res.results && s2Res.results.length > 0) {
-      rawPapers.push(...s2Res.results);
-      if (s2Res.isFallback) {
-        alexActual += (s2Res.alexCount || 0);
-        crossActual += (s2Res.crossCount || 0);
-        notices.push('Semantic Scholar is rate-limited; results sourced from OpenAlex + Crossref.');
-      } else {
-        s2Actual += s2Res.results.length;
-      }
-    } else if (s2Res.error && STATE.selectedDatabases.s2) {
-      notices.push(`Semantic Scholar: ${s2Res.error}.`);
-    }
-
-    // OpenAlex Direct Results Processing
-    if (alexRes.results && alexRes.results.length > 0) {
-      rawPapers.push(...alexRes.results);
-      alexActual += alexRes.results.length;
-    } else if (alexRes.error && STATE.selectedDatabases.openalex) {
-      notices.push(`OpenAlex: ${alexRes.error}.`);
-    }
-
-    // Crossref Direct Results Processing
-    if (crossRes.results && crossRes.results.length > 0) {
-      rawPapers.push(...crossRes.results);
-      crossActual += crossRes.results.length;
-    } else if (crossRes.error && STATE.selectedDatabases.crossref) {
-      notices.push(`Crossref: ${crossRes.error}.`);
-    }
-
-    if (rawPapers.length === 0) {
-      let specificReason = 'Zero candidate records retrieved from the selected databases.';
-      if (notices.length > 0) {
-        specificReason = notices.join(' ');
-      }
-      throw new Error(`${specificReason} Please broaden your search terms, expand publication year range, or retry.`);
-    }
-
-    STATE.partialNotice = notices.length > 0 ? notices.join(' ') : null;
-    STATE.rawCandidateCount = rawPapers.length;
-    STATE.sourceCounts = { epmc: epmcActual, s2: s2Actual, openalex: alexActual, crossref: crossActual, merged: 0 };
-
-    // Stage 2: Deduplication
-    setProc('Resolving duplicates across databases…', `Analyzing PMIDs, DOIs, and alphanumeric title fingerprints`, 40);
-    await abortableSleep(350, signal);
-
-    const { unique, duplicates } = deduplicatePapers(rawPapers);
-    STATE.duplicatesRemoved = duplicates;
-    STATE.papers = unique;
-
-    // Stage 3: Algorithmic Eligibility Screening & RoB
-    setProc('Screening records against PICOS eligibility criteria…', 'Evaluating title/abstract, methodology, and risk of bias', 70);
-    await abortableSleep(500, signal);
-
-    STATE.papers.forEach((p, idx) => {
-      p._globalIndex = idx;
-      p.screening = screenPaperAgainstCriteria(p, STATE.topic, STATE.pico, STATE.inclusionCriteria, STATE.exclusionCriteria);
     });
 
+    const { notOk } = getSourcesByStatus();
+    STATE.partialNotice = notOk.length
+      ? `Not searched / failed: ${notOk.map(({ src, st }) => `${src.displayName} — ${sourceFailureReason(st)}`).join(' · ')}.`
+      : null;
+
+    const totalRaw = orderedPoolKeys().reduce((a, k) => a + STATE.sourceRecords[k].length, 0);
+    if (totalRaw === 0) {
+      throw new Error(`Zero candidate records were retrieved. ${STATE.partialNotice || ''} Please broaden your search terms, expand the publication year range, or retry.`);
+    }
+
+    // Stage 2: cluster-based deduplication + study-level linking (dedup.js) and screening
+    setProc('Resolving duplicates across sources…', 'Union-find over PMIDs, PMCIDs, DOIs, OpenAlex/S2/Scholar/Cochrane IDs and titles, with a conflict guard', 45);
+    await abortableSleep(250, signal);
+    setProc('Screening records against PICOS eligibility criteria…', 'Evaluating title/abstract, methodology, and risk of bias', 70);
+    await abortableSleep(250, signal);
+    rebuildPool();
+
     setProc('Finalizing systematic review screening metrics…', 'Compiling interactive PRISMA 2020 flow architecture', 95);
-    await abortableSleep(350, signal);
+    await abortableSleep(200, signal);
 
     updatePrismaAndCounters();
     renderPaperCards();
+    renderSourceBoard();
+    updateManuscriptGate();
+    saveProjectState();
 
     showSection('step-3');
     setStep(3);
@@ -7151,6 +7054,17 @@ function saveProjectState() {
         rawCandidateCount: STATE.rawCandidateCount,
         sourceCounts: STATE.sourceCounts,
         databaseHitCounts: STATE.databaseHitCounts,
+        searchDate: STATE.searchDate,
+        searchQuery: STATE.searchQuery,
+        searchStrategy: STATE.searchStrategy,
+        searchLog: STATE.searchLog,
+        sourceStatus: STATE.sourceStatus,
+        sourceRecords: STATE.sourceRecords,
+        dedupLog: STATE.dedupLog,
+        dedupOverrides: STATE.dedupOverrides,
+        dedupBreakdown: STATE.dedupBreakdown,
+        centralImport: STATE.centralImport,
+        centralAck: STATE.centralAck,
         authors: STATE.authors,
         affiliation: STATE.affiliation,
         prosperoId: STATE.prosperoId,
@@ -7188,12 +7102,30 @@ function applyProjectData(data) {
   if (s.affiliation) { STATE.affiliation = s.affiliation; const afEl = document.getElementById('ms-affiliation'); if (afEl) afEl.value = s.affiliation; }
   if (s.prosperoId) { STATE.prosperoId = s.prosperoId; const prEl = document.getElementById('ms-prospero'); if (prEl) prEl.value = s.prosperoId; }
 
+  if (s.centralImport) STATE.centralImport = s.centralImport;
+  if (s.centralAck) STATE.centralAck = s.centralAck;
+  if (s.searchDate) STATE.searchDate = s.searchDate;
+  if (s.searchQuery) STATE.searchQuery = s.searchQuery;
+
   if (Array.isArray(s.papers) && s.papers.length > 0) {
-    STATE.papers = s.papers;
-    STATE.rawCandidateCount = s.rawCandidateCount || s.papers.length;
-    STATE.duplicatesRemoved = s.duplicatesRemoved || 0;
-    STATE.sourceCounts = s.sourceCounts || STATE.sourceCounts;
-    STATE.databaseHitCounts = s.databaseHitCounts || {};
+    if (s.sourceRecords && typeof s.sourceRecords === 'object' && Object.keys(s.sourceRecords).length) {
+      // Current format: rebuild the pool from the raw per-source records (idempotent; carries screening over)
+      STATE.searchStrategy = s.searchStrategy || null;
+      STATE.searchLog = s.searchLog || [];
+      STATE.sourceStatus = s.sourceStatus || {};
+      STATE.sourceRecords = s.sourceRecords;
+      STATE.dedupOverrides = s.dedupOverrides || [];
+      STATE.papers = s.papers;
+      rebuildPool();
+    } else {
+      // Legacy project: per-source records were not saved; re-cluster the saved records through the pool
+      STATE.sourceStatus = {};
+      STATE.sourceRecords = {};
+      STATE.searchLog = [];
+      STATE.dedupOverrides = [];
+      STATE.papers = [];
+      addRecordsToPool(s.papers, { sourceKey: 'project_load', replace: true });
+    }
     updatePrismaAndCounters();
     renderPaperCards();
     const step3 = document.getElementById('step-3');
@@ -7336,7 +7268,10 @@ function initSysRevDisclaimer() {
 window.addEventListener('DOMContentLoaded', () => {
   initSysRevDisclaimer();
   updateCriteriaCounts();
+  resetSourceState();
   const restored = loadProjectState();
+  renderSourceBoard();
+  updateManuscriptGate();
   if (!restored) {
     setExampleTopic('GLP1');
   }

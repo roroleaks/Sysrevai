@@ -102,7 +102,7 @@ function validatePrismaDiagramCounts(s) {
   const warnings = [];
 
   const totalDb = Number(s.db_epmc || 0) + Number(s.db_s2 || 0) + Number(s.db_other_count || 0);
-  const totalId = totalDb + Number(s.registers_count || 0);
+  const totalId = totalDb + Number(s.registers_count || 0) + Number(s.other_joint_count || 0);
   const totalRemovedBefore = Number(s.duplicates_removed || 0) + Number(s.automation_ineligible || 0) + Number(s.other_removed_before_screening || 0);
 
   // 1. Identification Check
@@ -264,25 +264,62 @@ function syncPrismaStateFromWorkflow(force = false) {
   PRISMA_DIAGRAM_STATE.reviewTitle = STATE.topic || 'Systematic Review and Evidence Synthesis';
   PRISMA_DIAGRAM_STATE.isModifiedFromWorkflow = false;
 
-  // Databases & Registers
-  PRISMA_DIAGRAM_STATE.db_epmc = Number(STATE.sourceCounts?.epmc || 0);
-  PRISMA_DIAGRAM_STATE.db_s2 = Number(STATE.sourceCounts?.s2 || 0);
-  const otherCount = Number(STATE.sourceCounts?.openalex || 0) + Number(STATE.sourceCounts?.crossref || 0);
-  if (otherCount > 0) {
-    const names = [];
-    if (STATE.sourceCounts?.openalex > 0) names.push('OpenAlex');
-    if (STATE.sourceCounts?.crossref > 0) names.push('Crossref');
-    PRISMA_DIAGRAM_STATE.db_other_name = names.join(' & ');
-    PRISMA_DIAGRAM_STATE.db_other_count = otherCount;
+  // Databases, Registers & Other methods — driven by the mandatory source registry
+  const hasRegistryStatus = STATE.sourceStatus && Object.keys(STATE.sourceStatus).length > 0;
+  const cats = (hasRegistryStatus && typeof getPrismaCategoryCounts === 'function') ? getPrismaCategoryCounts() : null;
+  if (cats) {
+    const okOnly = list => list.filter(x => x.status === 'ok');
+    PRISMA_DIAGRAM_STATE.db_list = okOnly(cats.database).map(x => ({ name: x.name, count: x.n }));
+    PRISMA_DIAGRAM_STATE.db_not_searched = cats.database.filter(x => x.status !== 'ok').map(x => x.name);
+    PRISMA_DIAGRAM_STATE.registers_list = okOnly(cats.register).map(x => ({ name: x.name, count: x.n }));
+    PRISMA_DIAGRAM_STATE.registers_count = PRISMA_DIAGRAM_STATE.registers_list.reduce((a, x) => a + x.count, 0);
+    const other = okOnly(cats.other);
+    PRISMA_DIAGRAM_STATE.other_sources = Object.assign({}, PRISMA_DIAGRAM_STATE.other_sources, {
+      search_engines: other.filter(x => x.key === 'scholar').reduce((a, x) => a + x.n, 0),
+      search_engines_name: 'Google Scholar',
+      websites: 0, organisations: 0, citation_searching: 0,
+      other: other.filter(x => x.key !== 'scholar').reduce((a, x) => a + x.n, 0),
+      // Other-methods records are de-duplicated and screened together with database/register records
+      reports_sought: 0, reports_not_retrieved: 0, reports_assessed: 0, reports_excluded: 0,
+      studies_included: 0, reports_included: 0,
+      joint_processing_note: 'Records from other methods were de-duplicated and screened together with database and register records.'
+    });
+    PRISMA_DIAGRAM_STATE.other_joint_count = other.reduce((a, x) => a + x.n, 0);
+    // Legacy two-database fields kept at 0 when db_list drives the diagram
+    PRISMA_DIAGRAM_STATE.db_epmc = 0;
+    PRISMA_DIAGRAM_STATE.db_s2 = 0;
+    PRISMA_DIAGRAM_STATE.db_other_count = PRISMA_DIAGRAM_STATE.db_list.reduce((a, x) => a + x.count, 0);
+    PRISMA_DIAGRAM_STATE.db_other_name = 'Databases';
+    PRISMA_DIAGRAM_STATE.template = 'B';
   } else {
-    PRISMA_DIAGRAM_STATE.db_other_count = 0;
+    PRISMA_DIAGRAM_STATE.db_list = null;
+    PRISMA_DIAGRAM_STATE.db_epmc = Number(STATE.sourceCounts?.epmc || 0);
+    PRISMA_DIAGRAM_STATE.db_s2 = Number(STATE.sourceCounts?.s2 || 0);
+    const otherCount = Number(STATE.sourceCounts?.openalex || 0) + Number(STATE.sourceCounts?.crossref || 0);
+    if (otherCount > 0) {
+      const names = [];
+      if (STATE.sourceCounts?.openalex > 0) names.push('OpenAlex');
+      if (STATE.sourceCounts?.crossref > 0) names.push('Crossref');
+      PRISMA_DIAGRAM_STATE.db_other_name = names.join(' & ');
+      PRISMA_DIAGRAM_STATE.db_other_count = otherCount;
+    } else {
+      PRISMA_DIAGRAM_STATE.db_other_count = 0;
+    }
+    PRISMA_DIAGRAM_STATE.registers_count = 0;
+    PRISMA_DIAGRAM_STATE.other_joint_count = 0;
   }
-  PRISMA_DIAGRAM_STATE.registers_count = 0;
 
-  // Pre-screening
-  PRISMA_DIAGRAM_STATE.duplicates_removed = Number(STATE.duplicatesRemoved || 0);
+  // Pre-screening: true duplicates vs. reports linked to their study (preprints, registrations, notices)
+  const bkd = STATE.dedupBreakdown || null;
+  const totalRemoved = Number(STATE.duplicatesRemoved || 0);
+  if (bkd && (Number(bkd.duplicates || 0) + Number(bkd.linked || 0)) === totalRemoved) {
+    PRISMA_DIAGRAM_STATE.duplicates_removed = Number(bkd.duplicates || 0);
+    PRISMA_DIAGRAM_STATE.other_removed_before_screening = Number(bkd.linked || 0);
+  } else {
+    PRISMA_DIAGRAM_STATE.duplicates_removed = totalRemoved;
+    PRISMA_DIAGRAM_STATE.other_removed_before_screening = 0;
+  }
   PRISMA_DIAGRAM_STATE.automation_ineligible = 0;
-  PRISMA_DIAGRAM_STATE.other_removed_before_screening = 0;
 
   // Screening
   const screenedCount = Array.isArray(STATE.papers) ? STATE.papers.length : 0;
@@ -330,7 +367,7 @@ function syncPrismaStateFromWorkflow(force = false) {
 function autoReconcilePrismaCounts() {
   const s = PRISMA_DIAGRAM_STATE;
   const totalDb = Number(s.db_epmc || 0) + Number(s.db_s2 || 0) + Number(s.db_other_count || 0);
-  const totalId = totalDb + Number(s.registers_count || 0);
+  const totalId = totalDb + Number(s.registers_count || 0) + Number(s.other_joint_count || 0);
   const totalRemovedBefore = Number(s.duplicates_removed || 0) + Number(s.automation_ineligible || 0) + Number(s.other_removed_before_screening || 0);
 
   s.records_screened = Math.max(0, totalId - totalRemovedBefore);
@@ -411,7 +448,7 @@ function renderPrismaSVG(s) {
 
   // Totals calculation
   const totalDb = Number(s.db_epmc || 0) + Number(s.db_s2 || 0) + Number(s.db_other_count || 0);
-  const totalId = totalDb + Number(s.registers_count || 0);
+  const totalId = totalDb + Number(s.registers_count || 0) + Number(s.other_joint_count || 0);
   const totalRemovedBefore = Number(s.duplicates_removed || 0) + Number(s.automation_ineligible || 0) + Number(s.other_removed_before_screening || 0);
 
   // SVG Markup Header
@@ -489,10 +526,15 @@ function renderPrismaSVG(s) {
     <text x="${b1X + 14}" y="${b1Y + 20}" class="p-header">Identification of studies via databases and registers</text>
     <text x="${b1X + 14}" y="${b1Y + 38}" class="p-text">Records identified from*:</text>
     <text x="${b1X + 14}" y="${b1Y + 56}" class="p-num">Databases (n = ${totalDb}):</text>
+    ${Array.isArray(s.db_list) ? (() => {
+      const lines = wrapPrismaText(s.db_list.map(d => `${d.name.replace(/^Cochrane Library: /, '')} ${d.count}`).join(' · ') || 'none searched', 58).slice(0, 3);
+      return lines.map((ln, i) => `<text x="${b1X + 24}" y="${b1Y + 72 + i * 13}" class="p-subtext">${escapeXml(ln)}</text>`).join('');
+    })() : `
     <text x="${b1X + 24}" y="${b1Y + 74}" class="p-subtext">• Europe PMC (n = ${s.db_epmc})</text>
     <text x="${b1X + 24}" y="${b1Y + 92}" class="p-subtext">• Semantic Scholar (n = ${s.db_s2})</text>
-    ${s.db_other_count > 0 ? `<text x="${b1X + 24}" y="${b1Y + 110}" class="p-subtext">• ${escapeXml(s.db_other_name)} (n = ${s.db_other_count})</text>` : ''}
-    <text x="${b1X + 14}" y="${b1Y + (s.db_other_count > 0 ? 128 : 114)}" class="p-num">Registers (n = ${s.registers_count}):</text>
+    ${s.db_other_count > 0 ? `<text x="${b1X + 24}" y="${b1Y + 110}" class="p-subtext">• ${escapeXml(s.db_other_name)} (n = ${s.db_other_count})</text>` : ''}`}
+    <text x="${b1X + 14}" y="${b1Y + (Array.isArray(s.db_list) ? 118 : (s.db_other_count > 0 ? 128 : 114))}" class="p-num">Registers (n = ${s.registers_count})${Array.isArray(s.registers_list) && s.registers_list.length ? `: ${escapeXml(s.registers_list.map(r => r.name).join(', '))}` : ':'}</text>
+    ${Number(s.other_joint_count || 0) > 0 ? `<text x="${b1X + 14}" y="${b1Y + 136}" class="p-subtext">+ Other methods, de-duplicated jointly (n = ${s.other_joint_count})</text>` : ''}
   </g>
   `;
 
@@ -668,10 +710,12 @@ function renderPrismaSVG(s) {
       <rect x="${oX}" y="${b1Y}" width="${oW}" height="${b1H}" class="p-box"/>
       <text x="${oX + 14}" y="${b1Y + 20}" class="p-header">Identification of studies via other methods</text>
       <text x="${oX + 14}" y="${b1Y + 38}" class="p-text">Records identified from:</text>
-      <text x="${oX + 24}" y="${b1Y + 56}" class="p-subtext">• Websites (n = ${o.websites || 0})</text>
-      <text x="${oX + 24}" y="${b1Y + 74}" class="p-subtext">• Organisations (n = ${o.organisations || 0})</text>
-      <text x="${oX + 24}" y="${b1Y + 92}" class="p-subtext">• Citation searching (n = ${o.citation_searching || 0})</text>
+      ${o.search_engines_name ? `<text x="${oX + 24}" y="${b1Y + 52}" class="p-subtext">• Search engines: ${escapeXml(o.search_engines_name)} (n = ${o.search_engines || 0})</text>` : ''}
+      <text x="${oX + 24}" y="${b1Y + (o.search_engines_name ? 68 : 56)}" class="p-subtext">• Websites (n = ${o.websites || 0})</text>
+      <text x="${oX + 24}" y="${b1Y + (o.search_engines_name ? 82 : 74)}" class="p-subtext">• Organisations (n = ${o.organisations || 0})</text>
+      <text x="${oX + 24}" y="${b1Y + (o.search_engines_name ? 96 : 92)}" class="p-subtext">• Citation searching (n = ${o.citation_searching || 0})</text>
       <text x="${oX + 24}" y="${b1Y + 110}" class="p-subtext">• Other sources (n = ${o.other || 0})</text>
+      ${o.joint_processing_note ? `<text x="${oX + 14}" y="${b1Y + 132}" class="p-subtext">De-duplicated &amp; screened jointly with the left pathway</text>` : ''}
     </g>
     `;
 

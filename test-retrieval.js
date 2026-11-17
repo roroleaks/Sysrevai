@@ -5,7 +5,7 @@
  *  2. Semantic Scholar alone
  *  3. OpenAlex alone (API Key + Polite Pool)
  *  4. Crossref alone (Standard Public Access, No API Key)
- *  5. Semantic Scholar Failure -> OpenAlex + Crossref Automatic Fallback
+ *  5. Failure isolation: a failing source reports failure, nothing is substituted
  *  6. Multi-database cross-deduplication & PRISMA count reconciliation
  */
 const https = require('https');
@@ -342,33 +342,29 @@ async function runAudit() {
     console.error('  ❌ TEST 4 FAILED:', err.message);
   }
 
-  // TEST 5: Fallback Mechanism (Simulating Semantic Scholar 429 / Offline)
-  console.log('▶️ TEST 5: Testing Semantic Scholar Failure Fallback to OpenAlex & Crossref');
+  // TEST 5/6: Failure isolation — a failing source reports its own failure; no other source is substituted
+  console.log('▶️ TEST 5: Semantic Scholar / Europe PMC failure is reported as failure (no cross-source substitution)');
   try {
-    console.log('  Simulating: Semantic Scholar returns HTTP 429 Too Many Requests...');
-    // Trigger OpenAlex + Crossref fallback
-    const [alexFall, crossFall] = await Promise.all([
-      fetchOpenAlex(TOPIC, 5),
-      fetchCrossref(TOPIC, 5)
-    ]);
-    const fallbackCorpus = [...alexFall, ...crossFall];
-    const uniqueFallback = deduplicate(fallbackCorpus);
+    const S = require('./sources.js');
+    const realFetch = global.fetch;
+    const calls = [];
+    global.fetch = async (url) => { calls.push(String(url)); return { ok: false, status: 503, headers: { get: () => null }, json: async () => ({ error: 'Service Unavailable' }) }; };
+    const strategy = S.buildSearchStrategy({ baseQuery: TOPIC, yearRange: 5, perSourceLimit: 5 });
+    const s2Res = await S.getSource('s2').fetch(strategy, {}, null);
+    const epmcRes = await S.getSource('epmc').fetch(strategy, {}, null);
+    global.fetch = realFetch;
+    const ok5 = s2Res.status === 'failed' && s2Res.records.length === 0 && epmcRes.status === 'failed' && epmcRes.records.length === 0
+      && calls.every(u => !/openalex|crossref/i.test(u));
+    console.log(`  ✓ S2 status: ${s2Res.status} (${s2Res.error}); EPMC status: ${epmcRes.status} (${epmcRes.error})`);
+    console.log(`  ✓ Upstream calls made: ${calls.length}; OpenAlex/Crossref substituted: ${calls.some(u => /openalex|crossref/i.test(u)) ? 'YES' : 'no'}`);
+    console.log(ok5 ? '  ✅ TEST 5 PASSED: failures are isolated and reported truthfully.\n' : '  ❌ TEST 5 FAILED: a failing source returned substituted records.\n');
+    if (!ok5) process.exitCode = 1;
+  } catch (err) {
+    console.error('  ❌ TEST 5 FAILED:', err.message);
+    process.exitCode = 1;
+  }
 
-    console.log(`  ✓ OpenAlex harvested: ${alexFall.length} records`);
-    console.log(`  ✓ Crossref harvested: ${crossFall.length} records`);
-    console.log(`  ✓ Combined fallback candidate pool: ${fallbackCorpus.length} records`);
-    console.log(`  ✓ Multi-key deduplication: ${uniqueFallback.length} unique candidates`);
-    console.log(`  ✓ Preserved sources: ${[...new Set(uniqueFallback.map(p => p.source))].join(', ')}`);
-    console.log('  ✅ TEST 5 PASSED: Resilient OpenAlex + Crossref fallback operates flawlessly on S2 failure!\n');
-
-    // TEST 6: Testing Europe PMC Outage Fallback to OpenAlex
-    console.log('▶️ TEST 6: Testing Europe PMC Outage Fallback to OpenAlex');
-    const alexRes = await Promise.reject(new Error('Simulated Europe PMC 503 Outage')).catch(() => fetchOpenAlex(TOPIC, 5));
-    const alexDedup = deduplicate(alexRes || []);
-    console.log(`  ✓ OpenAlex fallback harvested: ${alexDedup.length} records`);
-    console.log(`  ✓ Preserved source metadata: ${(alexDedup[0]?.sources || ['OpenAlex']).join(', ')}`);
-    console.log('  ✅ TEST 6 PASSED: Resilient OpenAlex fallback operates flawlessly on Europe PMC outage!\n');
-
+  try {
     // TEST 7: Multi-Source Harmonization (All 4 Databases)
     console.log('▶️ TEST 7: Testing Multi-Source Synthesis (All 4 Databases Concurrent Harvesting)');
     const [epmcAll, alexAll, crossAll, s2All] = await Promise.allSettled([
@@ -383,7 +379,7 @@ async function runAudit() {
       ...(crossAll.status === 'fulfilled' ? crossAll.value : []),
       ...(s2All.status === 'fulfilled' ? s2All.value : [])
     ];
-    const uniqueAll = deduplicate(allCandidates);
+    const uniqueAll = require('./dedup.js').clusterRecords(allCandidates).unique;
     console.log(`  ✓ Harvested candidate pool: ${allCandidates.length} records`);
     console.log(`  ✓ Cross-database deduplication: ${uniqueAll.length} unique records`);
     console.log(`  ✓ Contributing sources: ${[...new Set(uniqueAll.map(p => p.source))].join(', ')}`);

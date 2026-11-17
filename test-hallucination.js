@@ -27,6 +27,8 @@ global.document = {
 
 const metaModule = require('./meta-analysis-engine.js');
 Object.assign(global, metaModule);
+// Browser loads these via <script src>; mirror that here
+Object.assign(global, require('./dedup.js'), require('./sources.js'));
 
 // Extract inline script from index.html
 const indexHtml = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');

@@ -89,6 +89,8 @@ const prismaModule = require('./prisma-generator.js');
 const metaModule = require('./meta-analysis-engine.js');
 Object.assign(global, prismaModule);
 Object.assign(global, metaModule);
+// Browser loads these via <script src>; mirror that here
+Object.assign(global, require('./dedup.js'), require('./sources.js'));
 
 // Extract inline scripts from index.html
 const indexHtml = fs.readFileSync('index.html', 'utf8');
@@ -133,37 +135,23 @@ const pico = {
 assert(typeof cleanQueryKeywords === 'function', 'cleanQueryKeywords helper exists');
 const cleanTopic = cleanQueryKeywords(topic);
 assert(cleanTopic.includes('SGLT2 inhibitors') && cleanTopic.includes('heart failure'), 'cleanQueryKeywords normalizes topic terms');
-assert(typeof selectSearchEngine === 'function', 'selectSearchEngine function active');
-assert(typeof selectAllSearchDatabases === 'function', 'selectAllSearchDatabases function active');
-assert(typeof toggleSearchDatabase === 'function', 'toggleSearchDatabase function active');
-
-// Test 4 Literature Search Database individual & multi-selection
-selectAllSearchDatabases(true);
-assert(STATE.selectedDatabases.epmc === true && STATE.selectedDatabases.s2 === true && STATE.selectedDatabases.openalex === true && STATE.selectedDatabases.crossref === true, 'All 4 literature search databases selected simultaneously');
-assert(STATE.searchSource === 'all', 'searchSource correctly synchronized to all 4 databases');
-
-// Test individual toggle for every one of the 4 databases
-toggleSearchDatabase('crossref');
-assert(STATE.selectedDatabases.crossref === false && STATE.selectedDatabases.openalex === true, 'Crossref toggled off individually while retaining other 3 choices');
-
-toggleSearchDatabase('openalex');
-assert(STATE.selectedDatabases.openalex === false && STATE.selectedDatabases.epmc === true && STATE.selectedDatabases.s2 === true, 'OpenAlex toggled off individually, leaving dual core');
-
-toggleSearchDatabase('crossref');
-assert(STATE.selectedDatabases.crossref === true && STATE.selectedDatabases.epmc === true && STATE.selectedDatabases.s2 === true, 'Crossref re-enabled individually in custom 3-database combination');
-
-// Test single database selection
-selectSearchEngine(null, 'openalex');
-assert(STATE.selectedDatabases.openalex === true && STATE.selectedDatabases.epmc === false && STATE.selectedDatabases.s2 === false && STATE.selectedDatabases.crossref === false, 'Individual database OpenAlex selected exclusively');
-
-selectSearchEngine(null, 'crossref');
-assert(STATE.selectedDatabases.crossref === true && STATE.selectedDatabases.openalex === false, 'Individual database Crossref selected exclusively');
-
-selectSearchEngine(null, 'both');
-assert(STATE.selectedDatabases.epmc === true && STATE.selectedDatabases.s2 === true && STATE.selectedDatabases.openalex === false, 'Dual Core mode selects Europe PMC + Semantic Scholar');
-
-selectAllSearchDatabases(true);
-assert(Object.values(STATE.selectedDatabases).every(Boolean), 'All 4 literature databases re-selected together via selectAllSearchDatabases(true)');
+// Mandatory sources: the registry is fixed and no UI path can disable a source
+const MANDATORY_KEYS = ['pubmed', 'scholar', 'cochrane_cdsr', 'cochrane_central', 'ctgov', 'epmc', 'epmc_preprints', 's2', 'openalex', 'crossref'];
+assert(Array.isArray(SOURCE_REGISTRY) && SOURCE_REGISTRY.length === 10, 'SOURCE_REGISTRY lists exactly 10 mandatory sources');
+assert(MANDATORY_KEYS.every(k => SOURCE_REGISTRY.some(s => s.key === k)), 'Registry contains PubMed, Google Scholar, Cochrane CDSR, Cochrane CENTRAL, ClinicalTrials.gov, Europe PMC, preprints, S2, OpenAlex and Crossref');
+assert(SOURCE_REGISTRY.every(s => typeof s.fetch === 'function' && typeof s.translateQuery === 'function' && ['database', 'register', 'other'].includes(s.prismaCategory) && s.interfaceLabel && 'requiresKey' in s && typeof s.peerReviewed === 'boolean'), 'Every registry entry has fetch, translateQuery, prismaCategory, interfaceLabel, requiresKey and peerReviewed');
+assert(Object.isFrozen(SOURCE_REGISTRY) && SOURCE_REGISTRY.every(Object.isFrozen), 'Registry and its entries are frozen (cannot be removed or disabled at runtime)');
+let pushThrew = false;
+try { SOURCE_REGISTRY.push({ key: 'x' }); } catch (e) { pushThrew = true; }
+assert(pushThrew && SOURCE_REGISTRY.length === 10, 'Registry cannot be mutated');
+['selectSearchEngine', 'selectAllSearchDatabases', 'toggleSearchDatabase', 'onSearchDatabaseChange', 'syncSearchSourceState', 'updateDatabaseOptionUI'].forEach(fn => {
+  assert(typeof global[fn] === 'undefined', `Source toggle function ${fn}() has been removed`);
+});
+assert(!/selectedDatabases|searchSource\b/.test(indexHtml), 'index.html no longer references STATE.selectedDatabases / STATE.searchSource');
+assert(!/<input[^>]+name="search_db"/.test(indexHtml) && !/Select All 4 Databases|Dual Core|Clear All<\/button>/.test(indexHtml), 'No source checkboxes, "Select all", "Dual core" or "Clear all" controls remain');
+assert(/id="source-board"/.test(indexHtml) && /id="central-ris-input"/.test(indexHtml), 'Read-only mandatory source board and CENTRAL RIS upload slot are present');
+const runPipelineSrc = indexHtml.slice(indexHtml.indexOf('async function runPipeline'), indexHtml.indexOf('function saveProjectState'));
+assert(/registryList\(\)/.test(runPipelineSrc) && /Promise\.allSettled/.test(runPipelineSrc), 'runPipeline iterates the whole registry with Promise.allSettled');
 
 // ─────────────────────────────────────────────────────────────
 // STEP 2: Retrieval, Deduplication & Classification
