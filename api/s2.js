@@ -3,6 +3,18 @@ const https = require('https');
 // Pre-configured Semantic Scholar API Key on server (Environment variable prioritized)
 const S2_DEFAULT_KEY = process.env.S2_API_KEY || '';
 
+// Per-IP rate limiting (in-memory sliding window, max 60 req/min)
+const ipRequests = new Map();
+function checkRateLimit(ip, maxPerMinute = 60) {
+  const now = Date.now();
+  const record = ipRequests.get(ip) || [];
+  const recent = record.filter(t => now - t < 60000);
+  if (recent.length >= maxPerMinute) return false;
+  recent.push(now);
+  ipRequests.set(ip, recent);
+  return true;
+}
+
 function queryS2(targetPath, apiKey) {
   return new Promise((resolve, reject) => {
     const options = {
@@ -49,7 +61,9 @@ function queryS2(targetPath, apiKey) {
 }
 
 module.exports = async (req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  const origin = req.headers.origin || '';
+  const isAllowedOrigin = !origin || origin.includes('sysrevai.vercel.app') || origin.includes('localhost') || origin.includes('127.0.0.1');
+  res.setHeader('Access-Control-Allow-Origin', isAllowedOrigin ? (origin || '*') : 'https://sysrevai.vercel.app');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-api-key');
 
@@ -58,14 +72,23 @@ module.exports = async (req, res) => {
     return res.end();
   }
 
+  const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
+  if (!checkRateLimit(clientIp, 60)) {
+    res.statusCode = 429;
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    return res.end(JSON.stringify({ error: 'Too Many Requests: rate limit exceeded (60 req/min)' }));
+  }
+
   try {
     const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const query = urlObj.searchParams.get('query') || '';
-    const limit = urlObj.searchParams.get('limit') || '30';
+    const rawLimit = parseInt(urlObj.searchParams.get('limit') || '30', 10);
+    const limit = Math.min(100, Math.max(1, isNaN(rawLimit) ? 30 : rawLimit));
     const fields = urlObj.searchParams.get('fields') || 'paperId,title,authors,year,abstract,venue,publicationVenue,journal,externalIds,openAccessPdf,citationCount,publicationTypes,fieldsOfStudy';
     const year = urlObj.searchParams.get('year') || '';
     const paperId = urlObj.searchParams.get('paperId') || '';
-    const userKey = req.headers['x-api-key'] || urlObj.searchParams.get('key') || S2_DEFAULT_KEY;
+    // Security: Only accept key from header, never from URL query string
+    const userKey = req.headers['x-api-key'] || S2_DEFAULT_KEY;
 
     let targetPath = '';
     if (paperId) {

@@ -268,33 +268,71 @@ function calculateContinuousStudyEffect(s, measure, zCrit) {
 // ═══════════════════════════════════════════════════════════════
 // RIGOROUS STATISTICAL POOLING ENGINE (Fixed & Random Effects)
 // ═══════════════════════════════════════════════════════════════
+// INCOMPLETE BETA & STUDENT'S T EXACT DISTRIBUTIONS
+// ═══════════════════════════════════════════════════════════════
+
+function metaBetacf(a, b, x) {
+  const MAXIT = 100, EPS = 1e-10, FPMIN = 1e-30;
+  const qab = a + b, qap = a + 1, qam = a - 1;
+  let c = 1, d = 1 - qab * x / qap;
+  if (Math.abs(d) < FPMIN) d = FPMIN;
+  d = 1 / d;
+  let h = d;
+  for (let m = 1; m <= MAXIT; m++) {
+    const m2 = 2 * m;
+    let aa = m * (b - m) * x / ((qam + m2) * (a + m2));
+    d = 1 + aa * d;
+    if (Math.abs(d) < FPMIN) d = FPMIN;
+    c = 1 + aa / c;
+    if (Math.abs(c) < FPMIN) c = FPMIN;
+    d = 1 / d;
+    h *= d * c;
+    aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2));
+    d = 1 + aa * d;
+    if (Math.abs(d) < FPMIN) d = FPMIN;
+    c = 1 + aa / c;
+    if (Math.abs(c) < FPMIN) c = FPMIN;
+    d = 1 / d;
+    const del = d * c;
+    h *= del;
+    if (Math.abs(del - 1) < EPS) break;
+  }
+  return h;
+}
+
+function metaIbeta(a, b, x) {
+  if (x <= 0) return 0;
+  if (x >= 1) return 1;
+  const bt = Math.exp(metaLogGamma(a + b) - metaLogGamma(a) - metaLogGamma(b) + a * Math.log(x) + b * Math.log(1 - x));
+  if (x < (a + 1) / (a + b + 2)) return bt * metaBetacf(a, b, x) / a;
+  return 1 - bt * metaBetacf(b, a, 1 - x) / b;
+}
+
+function metaTCdfTwoTailed(t, df) {
+  if (df <= 0) return 1.0;
+  const x = df / (df + t * t);
+  return Math.max(0, Math.min(1.0, metaIbeta(df / 2, 0.5, x)));
+}
 
 /**
- * Two-tailed critical t-value for 95% confidence level (alpha = 0.05).
+ * Two-tailed critical t-value computed accurately for any df and alpha.
  */
 function getTCritical(df, alpha = 0.05) {
-  const tTable = {
-    1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571,
-    6: 2.447, 7: 2.365, 8: 2.306, 9: 2.262, 10: 2.228,
-    12: 2.179, 15: 2.131, 20: 2.086, 25: 2.060, 30: 2.042,
-    40: 2.021, 60: 2.000, 120: 1.980
-  };
   if (df <= 0) return 1.96;
-  if (tTable[df]) return tTable[df];
-  if (df > 120) return 1.96;
-  const keys = Object.keys(tTable).map(Number).sort((a,b) => a - b);
-  for (let i = 0; i < keys.length - 1; i++) {
-    if (df > keys[i] && df < keys[i+1]) {
-      const frac = (df - keys[i]) / (keys[i+1] - keys[i]);
-      return tTable[keys[i]] + frac * (tTable[keys[i+1]] - tTable[keys[i]]);
-    }
+  if (alpha <= 0 || alpha >= 1) alpha = 0.05;
+  let low = 0, high = 100;
+  for (let i = 0; i < 40; i++) {
+    const mid = (low + high) / 2;
+    if (metaTCdfTwoTailed(mid, df) > alpha) low = mid;
+    else high = mid;
   }
-  return 1.96;
+  return Number(low.toFixed(4));
 }
 
 /**
  * Egger's linear regression test for funnel plot asymmetry.
  * Standard normal deviate (logEffect / SE) vs precision (1 / SE).
+ * Strictly evaluated using Student's t distribution with df = k - 2.
  */
 function calculateEggerTest(studiesEvaluated) {
   if (!studiesEvaluated || studiesEvaluated.length < 3) {
@@ -305,13 +343,15 @@ function calculateEggerTest(studiesEvaluated) {
       se: null,
       tStat: null,
       pValue: null,
+      hasAsymmetry: false,
+      warning: 'Egger regression requires k >= 3 studies',
       message: 'Egger regression requires k >= 3 studies'
     };
   }
   const n = studiesEvaluated.length;
   let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
   for (const s of studiesEvaluated) {
-    const se = s.calc.se;
+    const se = s.calc.se || (s.calc.variance ? Math.sqrt(s.calc.variance) : 0);
     const eff = s.calc.logEffect;
     const x = 1.0 / se; // precision
     const y = eff / se; // standard normal deviate
@@ -325,7 +365,7 @@ function calculateEggerTest(studiesEvaluated) {
   const ssXX = sumXX - n * meanX * meanX;
   const ssXY = sumXY - n * meanX * meanY;
   if (Math.abs(ssXX) < 1e-12) {
-    return { applicable: false, k: n, intercept: null, message: 'Variance across precision is zero' };
+    return { applicable: false, k: n, intercept: null, message: 'Variance across precision is zero', hasAsymmetry: false };
   }
   const slope = ssXY / ssXX;
   const intercept = meanY - slope * meanX;
@@ -340,7 +380,9 @@ function calculateEggerTest(studiesEvaluated) {
   const s2 = rss / df;
   const seIntercept = Math.sqrt(s2 * (1.0 / n + (meanX * meanX) / ssXX));
   const tStat = seIntercept > 0 ? intercept / seIntercept : 0;
-  const pVal = 2.0 * (1.0 - metaNormalCdf(Math.abs(tStat)));
+  // Student's t distribution with df = k - 2 per Sterne & Egger
+  const pVal = metaTCdfTwoTailed(Math.abs(tStat), df);
+  const kUnder10Warning = n < 10 ? "Egger's test not recommended for k < 10" : null;
 
   return {
     applicable: true,
@@ -349,8 +391,51 @@ function calculateEggerTest(studiesEvaluated) {
     se: seIntercept,
     tStat,
     pValue: pVal,
-    hasAsymmetry: pVal < 0.10
+    // Cochrane guidelines: testing for funnel plot asymmetry is only recommended for k >= 10
+    hasAsymmetry: n >= 10 && pVal < 0.10,
+    warning: kUnder10Warning,
+    message: kUnder10Warning || (pVal < 0.10 ? 'Significant funnel plot asymmetry detected (P < 0.10)' : 'No significant asymmetry detected')
   };
+}
+
+/**
+ * REML estimation of between-study variance (tau^2) via Fisher scoring
+ */
+function calculateREMLTau2(evaluated, initialTau2 = 0) {
+  let tau2 = Math.max(0, initialTau2);
+  const maxIter = 100;
+  const tol = 1e-6;
+  for (let iter = 0; iter < maxIter; iter++) {
+    let sumW = 0, sumW2 = 0, sumW3 = 0, sumWY = 0;
+    const k = evaluated.length;
+    for (let i = 0; i < k; i++) {
+      const v = evaluated[i].calc.variance;
+      const w = 1.0 / (v + tau2);
+      sumW += w;
+      sumW2 += w * w;
+      sumW3 += w * w * w;
+      sumWY += w * evaluated[i].calc.logEffect;
+    }
+    const mu = sumWY / sumW;
+    let sumW2Dev2 = 0;
+    for (let i = 0; i < k; i++) {
+      const v = evaluated[i].calc.variance;
+      const w = 1.0 / (v + tau2);
+      const dev = evaluated[i].calc.logEffect - mu;
+      sumW2Dev2 += w * w * dev * dev;
+    }
+    const score = 0.5 * (sumW2Dev2 - sumW + (sumW2 / sumW));
+    const info = 0.5 * (sumW2 - (2.0 * sumW3 / sumW) + ((sumW2 * sumW2) / (sumW * sumW)));
+    if (info <= 1e-12) break;
+    const delta = score / info;
+    const nextTau2 = Math.max(0, tau2 + delta);
+    if (Math.abs(nextTau2 - tau2) < tol || Math.abs(score) < tol) {
+      tau2 = nextTau2;
+      break;
+    }
+    tau2 = nextTau2;
+  }
+  return tau2;
 }
 
 /**
@@ -361,7 +446,8 @@ function executeMetaAnalysis(state) {
     throw new Error('executeMetaAnalysis: use field "model", not "modelType". Got modelType=' + state.modelType);
   }
 
-  const zCrit = state.confLevel === 0.99 ? 2.576 : 1.96;
+  const confLevel = state.confLevel || 0.95;
+  const zCrit = confLevel === 0.99 ? 2.576 : 1.96;
   const isRatio = (state.outcomeType === 'binary' && (state.effectMeasure === 'RR' || state.effectMeasure === 'OR'));
 
   const evaluated = [];
@@ -396,15 +482,19 @@ function executeMetaAnalysis(state) {
     if (state.outcomeType === 'binary') {
       calc = calculateBinaryStudyEffect(s, state.effectMeasure, zCrit);
       if (calc.valid) {
-        totalN1 += Number(s.n1) || 0;
-        totalN2 += Number(s.n2) || 0;
-        totalE1 += Number(s.e1) || 0;
-        totalE2 += Number(s.e2) || 0;
         if (calc.isDoubleZero) {
+          if (state.excludeDoubleZeros !== false && (state.effectMeasure === 'RR' || state.effectMeasure === 'OR')) {
+            warnings.push(`Study "${s.studyId}": 0 events in both treatment and control arms; excluded from ${state.effectMeasure} pooling per Cochrane Handbook §10.4.4.1.`);
+            continue;
+          }
           warnings.push(`Study "${s.studyId}" had 0 events in both treatment and control arms; 0.5 continuity correction applied per protocol.`);
         } else if (calc.hasZero) {
           warnings.push(`Study "${s.studyId}" had zero events in at least one arm; continuity correction (0.5) applied.`);
         }
+        totalN1 += Number(s.n1) || 0;
+        totalN2 += Number(s.n2) || 0;
+        totalE1 += Number(s.e1) || 0;
+        totalE2 += Number(s.e2) || 0;
       }
     } else {
       calc = calculateContinuousStudyEffect(s, state.effectMeasure, zCrit);
@@ -442,7 +532,7 @@ function executeMetaAnalysis(state) {
   const pooledTheta_FE = evaluated.reduce((acc, s) => acc + s.wFE * s.calc.logEffect, 0) / sumW_FE;
   const se_FE = 1.0 / Math.sqrt(sumW_FE);
 
-  // 2. Heterogeneity Statistics (Cochran's Q, df, I², DerSimonian-Laird tau²)
+  // 2. Heterogeneity Statistics (Cochran's Q, df, I², DerSimonian-Laird or REML tau²)
   const Q = evaluated.reduce((acc, s) => acc + s.wFE * Math.pow(s.calc.logEffect - pooledTheta_FE, 2), 0);
   const df = evaluated.length - 1;
   const pChi2 = metaChiSquarePValue(Q, df);
@@ -450,7 +540,10 @@ function executeMetaAnalysis(state) {
 
   const sumW_FE_sq = evaluated.reduce((acc, s) => acc + s.wFE * s.wFE, 0);
   const C = sumW_FE - (sumW_FE_sq / sumW_FE);
-  const tau2 = C > 0 ? Math.max(0, (Q - df) / C) : 0;
+  const tau2_DL = C > 0 ? Math.max(0, (Q - df) / C) : 0;
+
+  const isReml = (state.tau2Method === 'reml' || state.tauMethod === 'reml');
+  const tau2 = isReml ? calculateREMLTau2(evaluated, tau2_DL) : tau2_DL;
   const tau = Math.sqrt(tau2);
 
   let heterogeneitySeverity = 'Low';
@@ -461,9 +554,10 @@ function executeMetaAnalysis(state) {
     heterogeneitySeverity = 'Moderate';
   }
 
-  // 3. Random-Effects Pooling (DerSimonian-Laird)
+  // 3. Pooling (Fixed or Random Effects, with optional Hartung-Knapp-Sidik-Jonkman adjustment)
   let pooledTheta = pooledTheta_FE;
   let pooledSe = se_FE;
+  const isHksj = state.model === 'random' && (state.method === 'hksj' || state.useHksj === true || state.hksj === true);
 
   if (state.model === 'random') {
     evaluated.forEach(s => {
@@ -472,6 +566,12 @@ function executeMetaAnalysis(state) {
     const sumW_RE = evaluated.reduce((acc, s) => acc + s.wRE, 0);
     pooledTheta = evaluated.reduce((acc, s) => acc + s.wRE * s.calc.logEffect, 0) / sumW_RE;
     pooledSe = 1.0 / Math.sqrt(sumW_RE);
+
+    if (isHksj && evaluated.length >= 2) {
+      const qHKSJ = (1.0 / (evaluated.length - 1)) * evaluated.reduce((acc, s) => acc + s.wRE * Math.pow(s.calc.logEffect - pooledTheta, 2), 0);
+      const qHKSJ_adj = Math.max(1.0, qHKSJ);
+      pooledSe = Math.sqrt(qHKSJ_adj) * pooledSe;
+    }
 
     evaluated.forEach(s => {
       s.weightPct = (s.wRE / sumW_RE) * 100;
@@ -482,26 +582,34 @@ function executeMetaAnalysis(state) {
     });
   }
 
-  // 4. Test of Overall Effect (Z and P-value)
+  // 4. Test of Overall Effect (Z or t and P-value)
   const zScore = Math.abs(pooledTheta) / pooledSe;
-  const pValue = 2.0 * (1.0 - metaNormalCdf(zScore));
+  let pValue;
+  let effectiveCrit = zCrit;
+  if (isHksj && evaluated.length >= 2) {
+    const dfHKSJ = evaluated.length - 1;
+    effectiveCrit = getTCritical(dfHKSJ, 1 - confLevel);
+    pValue = metaTCdfTwoTailed(zScore, dfHKSJ);
+  } else {
+    pValue = 2.0 * (1.0 - metaNormalCdf(zScore));
+  }
 
   // 5. Bounds on Natural vs Log scale
   let pointEstimate = pooledTheta;
-  let ciLow = pooledTheta - zCrit * pooledSe;
-  let ciHigh = pooledTheta + zCrit * pooledSe;
+  let ciLow = pooledTheta - effectiveCrit * pooledSe;
+  let ciHigh = pooledTheta + effectiveCrit * pooledSe;
 
   if (isRatio) {
     pointEstimate = Math.exp(pooledTheta);
-    ciLow = Math.exp(pooledTheta - zCrit * pooledSe);
-    ciHigh = Math.exp(pooledTheta + zCrit * pooledSe);
+    ciLow = Math.exp(pooledTheta - effectiveCrit * pooledSe);
+    ciHigh = Math.exp(pooledTheta + effectiveCrit * pooledSe);
   }
 
   // 6. Prediction Interval (using Student's t distribution with df = k - 2 for k >= 3)
   let piLow = null;
   let piHigh = null;
   if (evaluated.length >= 3 && typeof tau2 === 'number' && tau2 >= 0) {
-    const tCrit = getTCritical(evaluated.length - 2, 0.05);
+    const tCrit = getTCritical(evaluated.length - 2, 1 - confLevel);
     const piSe = Math.sqrt(pooledSe * pooledSe + tau2);
     piLow = pooledTheta - tCrit * piSe;
     piHigh = pooledTheta + tCrit * piSe;
@@ -538,6 +646,9 @@ function executeMetaAnalysis(state) {
       I2,
       tau2,
       tau,
+      tau2Method: isReml ? 'reml' : 'dl',
+      isHksj: !!isHksj,
+      kStudies: evaluated.length,
       heterogeneitySeverity,
       totalN1,
       totalN2,
@@ -550,9 +661,12 @@ function executeMetaAnalysis(state) {
 
 /**
  * Executes Leave-One-Out Sensitivity Analysis: calculates pooled results omitting each study in turn.
+ * Restricts strictly to confirmed, verified pooled studies.
  */
 function executeLeaveOneOutAnalysis(state) {
-  const eligibleStudies = state.studies.filter(s => s.includedInPool !== false);
+  const eligibleStudies = (state.studies || []).filter(s =>
+    s.includedInPool === true && s.verified === true && s.status !== 'suggested'
+  );
   if (eligibleStudies.length < 3) return null;
 
   const runs = [];
@@ -776,8 +890,8 @@ function renderForestPlotSVG(state, results) {
 
   <!-- Footnotes & Statistics -->
   <line x1="20" y1="${summaryY + 54}" x2="${totalWidth - 20}" y2="${summaryY + 54}" class="fp-line" stroke-width="1.2" stroke="#94a3b8"/>
-  <text x="24" y="${summaryY + 70}" class="fp-text"><tspan font-weight="700">Heterogeneity:</tspan> Tau² = ${pooled.tau2.toFixed(4)}; Chi² = ${pooled.Q.toFixed(2)}, df = ${pooled.df} (P = ${pooled.pChi2 < 0.001 ? '&lt; 0.001' : pooled.pChi2.toFixed(3)}); I² = ${pooled.I2.toFixed(1)}%</text>
-  <text x="24" y="${summaryY + 88}" class="fp-text"><tspan font-weight="700">Test for overall effect:</tspan> Z = ${pooled.zScore.toFixed(2)} (P = ${pooled.pValue < 0.001 ? '&lt; 0.001' : pooled.pValue.toFixed(4)}) · Model: ${escapeXml(pooled.model === 'random' ? 'Random effects (DerSimonian-Laird)' : 'Fixed effect (Inverse-Variance)')}</text>
+  <text x="24" y="${summaryY + 70}" class="fp-text"><tspan font-weight="700">Heterogeneity:</tspan> Tau² = ${pooled.tau2.toFixed(4)}; Chi² = ${pooled.Q.toFixed(2)}, df = ${pooled.df} (${pooled.pChi2 < 0.001 ? 'P &lt; 0.001' : 'P = ' + pooled.pChi2.toFixed(3)}); I² = ${pooled.I2.toFixed(1)}%</text>
+  <text x="24" y="${summaryY + 88}" class="fp-text"><tspan font-weight="700">Test for overall effect:</tspan> ${pooled.isHksj ? 't' : 'Z'} = ${pooled.zScore.toFixed(2)} (${pooled.pValue < 0.001 ? 'P &lt; 0.001' : 'P = ' + pooled.pValue.toFixed(4)}) · Model: ${escapeXml(pooled.model === 'random' ? (pooled.isHksj ? 'Random effects (HKSJ)' : (pooled.tau2Method === 'reml' ? 'Random effects (REML)' : 'Random effects (DerSimonian-Laird)')) : 'Fixed effect (Inverse-Variance)')}</text>
   <text x="${totalWidth - 24}" y="${summaryY + 88}" class="fp-muted" text-anchor="end">SysRevAI · Publication-Quality Forest Plot</text>
 
 </svg>`;
@@ -1928,7 +2042,7 @@ function renderMetaSummaryCardsHTML(state, pooled) {
           I² = ${pooled.I2.toFixed(1)}%
         </div>
         <div style="font-size:0.82rem;color:#64748b;">
-          Tau² = ${pooled.tau2.toFixed(4)} · Q = ${pooled.Q.toFixed(2)} (P = ${pooled.pChi2 < 0.001 ? '&lt; 0.001' : pooled.pChi2.toFixed(3)})
+          Tau² = ${pooled.tau2.toFixed(4)} · Q = ${pooled.Q.toFixed(2)} (${pooled.pChi2 < 0.001 ? 'P &lt; 0.001' : 'P = ' + pooled.pChi2.toFixed(3)})
         </div>
       </div>
 
@@ -3107,6 +3221,7 @@ if (typeof module !== 'undefined' && module.exports) {
     calculateBinaryStudyEffect,
     calculateContinuousStudyEffect,
     getTCritical,
+    metaTCdfTwoTailed,
     calculateEggerTest
   };
 }

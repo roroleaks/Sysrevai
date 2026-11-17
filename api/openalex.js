@@ -2,6 +2,18 @@ const https = require('https');
 
 const OPENALEX_API_KEY = process.env.OPENALEX_API_KEY || '';
 
+// Per-IP rate limiting (in-memory sliding window, max 60 req/min)
+const ipRequests = new Map();
+function checkRateLimit(ip, maxPerMinute = 60) {
+  const now = Date.now();
+  const record = ipRequests.get(ip) || [];
+  const recent = record.filter(t => now - t < 60000);
+  if (recent.length >= maxPerMinute) return false;
+  recent.push(now);
+  ipRequests.set(ip, recent);
+  return true;
+}
+
 function reconstructAbstract(invertedIndex) {
   if (!invertedIndex || typeof invertedIndex !== 'object') return '';
   let maxPos = -1;
@@ -24,11 +36,11 @@ function reconstructAbstract(invertedIndex) {
   return words.filter(Boolean).join(' ');
 }
 
-function queryOpenAlex(query, pageSize = 30, startYear = null, endYear = new Date().getFullYear()) {
+function queryOpenAlex(query, pageSize = 30, startYear = null, endYear = null) {
   return new Promise((resolve, reject) => {
     let filter = '';
     if (startYear) {
-      filter = `publication_year:${startYear}-${endYear}`;
+      filter = endYear ? `publication_year:${startYear}-${endYear}` : `publication_year:${startYear}-${new Date().getFullYear()}`;
     }
     const params = new URLSearchParams({
       search: query,
@@ -86,7 +98,7 @@ function queryOpenAlex(query, pageSize = 30, startYear = null, endYear = new Dat
               volume: p.biblio?.volume || '',
               issue: p.biblio?.issue || '',
               pages: (p.biblio?.first_page && p.biblio?.last_page) ? `${p.biblio.first_page}-${p.biblio.last_page}` : (p.biblio?.first_page || ''),
-              year: p.publication_year || new Date().getFullYear(),
+              year: p.publication_year || null,
               publication_date: p.publication_date || String(p.publication_year || ''),
               abstract: abstract,
               abstract_summary: abstract,
@@ -132,7 +144,9 @@ function queryOpenAlex(query, pageSize = 30, startYear = null, endYear = new Dat
 }
 
 module.exports = async (req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  const origin = req.headers.origin || '';
+  const isAllowedOrigin = !origin || origin.includes('sysrevai.vercel.app') || origin.includes('localhost') || origin.includes('127.0.0.1');
+  res.setHeader('Access-Control-Allow-Origin', isAllowedOrigin ? (origin || '*') : 'https://sysrevai.vercel.app');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-api-key');
 
@@ -141,16 +155,31 @@ module.exports = async (req, res) => {
     return res.end();
   }
 
+  const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
+  if (!checkRateLimit(clientIp, 60)) {
+    res.statusCode = 429;
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    return res.end(JSON.stringify({ error: 'Too Many Requests: rate limit exceeded (60 req/min)' }));
+  }
+
   try {
     const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const query = urlObj.searchParams.get('query') || '';
-    const limit = parseInt(urlObj.searchParams.get('limit') || '30', 10);
+    const rawLimit = parseInt(urlObj.searchParams.get('limit') || '30', 10);
+    const limit = Math.min(200, Math.max(1, isNaN(rawLimit) ? 30 : rawLimit));
     const year = urlObj.searchParams.get('year') || '';
 
     let startYear = null;
+    let endYear = null;
     if (year) {
-      const match = year.match(/^(\d{4})/);
-      if (match) startYear = parseInt(match[1], 10);
+      const rangeMatch = year.match(/^(\d{4})\s*[-–—]\s*(\d{4})/);
+      if (rangeMatch) {
+        startYear = parseInt(rangeMatch[1], 10);
+        endYear = parseInt(rangeMatch[2], 10);
+      } else {
+        const match = year.match(/^(\d{4})/);
+        if (match) startYear = parseInt(match[1], 10);
+      }
     }
 
     if (!query) {
@@ -159,7 +188,7 @@ module.exports = async (req, res) => {
       return res.end(JSON.stringify({ error: 'Missing query parameter' }));
     }
 
-    const result = await queryOpenAlex(query, limit, startYear);
+    const result = await queryOpenAlex(query, limit, startYear, endYear);
     res.statusCode = result.statusCode || 200;
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.end(JSON.stringify({

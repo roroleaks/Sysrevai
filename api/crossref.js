@@ -1,5 +1,17 @@
 const https = require('https');
 
+// Per-IP rate limiting (in-memory sliding window, max 60 req/min)
+const ipRequests = new Map();
+function checkRateLimit(ip, maxPerMinute = 60) {
+  const now = Date.now();
+  const record = ipRequests.get(ip) || [];
+  const recent = record.filter(t => now - t < 60000);
+  if (recent.length >= maxPerMinute) return false;
+  recent.push(now);
+  ipRequests.set(ip, recent);
+  return true;
+}
+
 function cleanAbstract(raw) {
   if (!raw || typeof raw !== 'string') return '';
   return raw
@@ -121,7 +133,7 @@ function queryCrossref(query, pageSize = 30, startYear = null, endYear = null) {
               abstract_summary: abstract,
               citationCount: citations,
               citation_count: citations,
-              isOpenAccess: Boolean(item.license && item.license.length > 0),
+              isOpenAccess: Boolean(item.isOpenAccess || item.is_oa || false),
               openAccessPdfUrl: item.link?.[0]?.URL || (doi ? `https://doi.org/${doi}` : ''),
               source: 'crossref',
               sources: ['Crossref'],
@@ -157,7 +169,9 @@ function queryCrossref(query, pageSize = 30, startYear = null, endYear = null) {
 }
 
 module.exports = async (req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  const origin = req.headers.origin || '';
+  const isAllowedOrigin = !origin || origin.includes('sysrevai.vercel.app') || origin.includes('localhost') || origin.includes('127.0.0.1');
+  res.setHeader('Access-Control-Allow-Origin', isAllowedOrigin ? (origin || '*') : 'https://sysrevai.vercel.app');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
@@ -166,10 +180,18 @@ module.exports = async (req, res) => {
     return res.end();
   }
 
+  const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
+  if (!checkRateLimit(clientIp, 60)) {
+    res.statusCode = 429;
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    return res.end(JSON.stringify({ error: 'Too Many Requests: rate limit exceeded (60 req/min)' }));
+  }
+
   try {
     const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const query = urlObj.searchParams.get('query') || '';
-    const limit = parseInt(urlObj.searchParams.get('limit') || urlObj.searchParams.get('rows') || '30', 10);
+    const rawLimit = parseInt(urlObj.searchParams.get('limit') || urlObj.searchParams.get('rows') || '30', 10);
+    const limit = Math.min(1000, Math.max(1, isNaN(rawLimit) ? 30 : rawLimit));
     const year = urlObj.searchParams.get('year') || '';
 
     let startYear = null;

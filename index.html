@@ -1235,8 +1235,11 @@ sup.cite-num:hover, .cite-num:hover, .cite-apa:hover, .cite-harvard:hover {
       <h1>PRISMA 2020 AI-Assisted Systematic Review Platform</h1>
       <p>From Structured Clinical Question (PICOS) to Publication-Grade Evidence Synthesis</p>
     </div>
-    <!-- Right: Author -->
-    <div class="hdr-right">
+    <!-- Right: Author & Project Actions -->
+    <div class="hdr-right" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+      <button type="button" class="mini-btn" onclick="exportProjectJSON()" style="background:#0f6b6b;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:0.8rem;font-weight:600;cursor:pointer;" title="Export review workspace to JSON">💾 Export Project (.json)</button>
+      <button type="button" class="mini-btn" onclick="document.getElementById('import-project-file').click()" style="background:#e2e8f0;color:#0f172a;border:none;border-radius:6px;padding:6px 12px;font-size:0.8rem;font-weight:600;cursor:pointer;" title="Import review workspace from JSON">📂 Import Project</button>
+      <input type="file" id="import-project-file" accept=".json" onchange="handleProjectFileImport(event)" style="display:none"/>
       <span class="author-name">
         <img src="dr-raouf.jpg" alt="Dr Raouf Roshdy" class="author-photo" onerror="this.style.display='none'"/>
         Dr Raouf Roshdy
@@ -2796,8 +2799,18 @@ async function fetchEuropePMC(topic, pageSize, yearRange, signal) {
       pmcid: item.pmcid || '',
       title: cleanHtmlText(item.title) || 'Untitled Publication',
       authors: parseAuthors(item),
+      authorObjects: Array.isArray(item.authorList?.author) ? item.authorList.author.map(a => ({
+        family: a.lastName || '',
+        given: a.firstName || '',
+        initials: a.initials || '',
+        displayName: a.fullName || `${a.lastName || ''} ${a.firstName || ''}`.trim()
+      })) : [],
       journal: cleanHtmlText(item.journalInfo?.journal?.title || item.journalTitle || 'Scholarly Journal'),
-      year: Number(item.pubYear) || (item.journalInfo?.yearOfPublication ? Number(item.journalInfo.yearOfPublication) : currentYear),
+      journalAbbr: cleanHtmlText(item.journalInfo?.journal?.medlineAbbreviation || item.journalInfo?.journal?.isoabbreviation || ''),
+      volume: item.journalInfo?.volume || '',
+      issue: item.journalInfo?.issue || '',
+      pages: item.pageInfo || item.journalInfo?.pageInfo || '',
+      year: Number(item.pubYear) || (item.journalInfo?.yearOfPublication ? Number(item.journalInfo.yearOfPublication) : null),
       abstract: cleanHtmlText(item.abstractText || ''),
       citationCount: Number(item.citedByCount || 0),
       isOpenAccess: item.isOpenAccess === 'Y',
@@ -2907,7 +2920,7 @@ async function fetchOpenAlex(topic, pageSize, yearRange, signal) {
       }
 
       const journal = item.journal || item.primary_location?.source?.display_name || 'Academic Journal';
-      const year = Number(item.year || item.publication_year || currentYear);
+      const year = (item.year != null && !isNaN(item.year)) ? Number(item.year) : (item.publication_year ? Number(item.publication_year) : null);
       let abstract = item.abstract || '';
       if (!abstract && item.abstract_inverted_index) {
         abstract = reconstructOpenAlexAbstract(item.abstract_inverted_index);
@@ -3028,7 +3041,7 @@ async function fetchCrossref(topic, pageSize, yearRange, signal) {
         journal = item.publisher;
       }
 
-      let pubYear = currentYear;
+      let pubYear = null;
       if (item.year) {
         pubYear = Number(item.year);
       } else {
@@ -3067,7 +3080,7 @@ async function fetchCrossref(topic, pageSize, yearRange, signal) {
         year: pubYear,
         abstract: abstract,
         citationCount: citations,
-        isOpenAccess: Boolean(item.isOpenAccess || (item.license && item.license.length > 0)),
+        isOpenAccess: Boolean(item.isOpenAccess || item.is_oa || false),
         openAccessPdfUrl: item.openAccessPdfUrl || item.link?.[0]?.URL || (doi ? `https://doi.org/${doi}` : ''),
         meshHeadings: [],
         keywords: Array.isArray(item.subject) ? item.subject : (Array.isArray(item.keywords) ? item.keywords : []),
@@ -3139,7 +3152,7 @@ async function fetchSemanticScholar(topic, pageSize, yearRange, signal) {
           title: cleanHtmlText(item.title) || 'Untitled Study',
           authors: Array.isArray(item.authors) ? item.authors.map(a => a.name).join(', ') : 'Unknown Authors',
           journal: cleanHtmlText(item.venue || item.publicationVenue?.name || item.journal?.name || 'Academic Journal'),
-          year: item.year || currentYear,
+          year: item.year || null,
           abstract: cleanHtmlText(item.abstract || ''),
           citationCount: Number(item.citationCount || 0),
           isOpenAccess: Boolean(item.openAccessPdf?.url),
@@ -3225,8 +3238,7 @@ function normalizeTitle(t) {
     .replace(/&alpha;/gi, 'alpha')
     .replace(/&#8211;|&#x2013;|–|—/g, '-')
     .toLowerCase();
-  // Strip common clinical trial subtitle suffixes when comparing duplicate candidates
-  str = str.replace(/:\s*(?:a\s+)?(?:randomized|randomised|multicenter|controlled|blinded|clinical|prospective|phase\s+\d+).*$/i, '');
+  // Preserve full title and subtitle for exact key matching
   return str.replace(/[^a-z0-9]/g, '');
 }
 
@@ -3300,8 +3312,18 @@ function deduplicatePapers(rawPapers) {
       });
       existing.source = existing.sources.length > 1 ? 'both' : (existing.sources[0] || 'Europe PMC');
 
-      if (!existing.pmid && pmid) existing.pmid = pmid;
-      if (!existing.doi && doi) existing.doi = doi;
+      if (!existing.pmid && pmid) {
+        existing.pmid = pmid;
+        pmidMap.set(pmid, existing);
+      } else if (existing.pmid) {
+        pmidMap.set(existing.pmid, existing);
+      }
+      if (!existing.doi && doi) {
+        existing.doi = doi;
+        doiMap.set(doi, existing);
+      } else if (existing.doi) {
+        doiMap.set(existing.doi, existing);
+      }
       if (!existing.pmcid && paper.pmcid) existing.pmcid = paper.pmcid;
       if (!existing.volume && paper.volume) existing.volume = paper.volume;
       if (!existing.issue && paper.issue) existing.issue = paper.issue;
@@ -4124,11 +4146,11 @@ function parseAuthorList(authorsInput, paper) {
     const list = [];
     for (const a of paper.authorObjects) {
       if (a.family) {
-        // Crossref author object { given, family }
-        const initials = (a.given || '').split(/[\s.-]+/).filter(Boolean).map(w => w[0].toUpperCase()).join('');
-        list.push({ lastName: a.family.trim(), initials });
+        // Structured author object { given, family, initials }
+        const initials = a.initials || (a.given || '').split(/[\s.-]+/).filter(Boolean).map(w => w[0].toUpperCase()).join('');
+        list.push({ lastName: (a.family || a.lastName).trim(), initials });
       } else if (a.displayName || a.name) {
-        // OpenAlex author object { displayName }
+        // OpenAlex / Crossref author object { displayName / name }
         const rawName = (a.displayName || a.name || '')
           .replace(/\b(Prof\.?|Professor|Dr\.?|MD|PhD|FRCP|FACC|FESC|Jr\.?|Sr\.?|III|II)\b/gi, '')
           .trim();
@@ -4189,14 +4211,14 @@ function parseAuthorList(authorsInput, paper) {
     const lastWord = words[words.length - 1];
     const firstWord = words[0];
 
-    // Case 1 (PubMed / NLM: "McMurray JJV" or "Anker SD" or "von Lewinski D"):
-    if (/^[A-Z]{1,4}\.?$/.test(lastWord) && /[a-z]/.test(words.slice(0, -1).join(' '))) {
+    // Case 1 (PubMed / NLM: "McMurray JJV", "Anker SD", "Atladóttir LÓ", or "von Lewinski D"):
+    if (/^\p{Lu}{1,4}\.?$/u.test(lastWord) && /\p{Ll}/u.test(words.slice(0, -1).join(' '))) {
       authors.push({ lastName: words.slice(0, -1).join(' '), initials: lastWord.replace(/\./g, '') });
       return;
     }
 
     // Case 2 (First word is initials: "JJV McMurray"):
-    if (/^[A-Z]{1,4}\.?$/.test(firstWord) && words.length > 1) {
+    if (/^\p{Lu}{1,4}\.?$/u.test(firstWord) && words.length > 1) {
       authors.push({ lastName: words.slice(1).join(' '), initials: firstWord.replace(/\./g, '') });
       return;
     }
@@ -4257,13 +4279,13 @@ function formatVancouver(paper, num) {
     .replace(/\.$/, '');
   ref += title + '. ';
 
-  let journal = cleanHtmlText(paper.journal || 'Academic Journal')
+  let journal = cleanHtmlText(paper.journalAbbr || paper.journal || 'Academic Journal')
     .replace(/â€“|â€”|[\u2013\u2014\u2212]/g, '-')
     .trim()
     .replace(/\.$/, '');
   ref += journal + '. ';
 
-  let pubDetails = `${paper.year || 2024}`;
+  let pubDetails = `${paper.year || 'n.d.'}`;
   if (paper.volume) {
     pubDetails += `;${paper.volume}`;
     if (paper.issue) pubDetails += `(${paper.issue})`;
@@ -4970,19 +4992,19 @@ function renderPaperCards() {
         <div>${ftBadge}</div>
       </div>
 
-      <h3 class="r-title">${paper.title}</h3>
-      <div class="r-meta">${paper.authors} &bull; <em>${paper.journal}</em> (${paper.year}) ${paper.pmid ? `&bull; PMID: ${paper.pmid}` : ''} ${paper.doi ? `&bull; DOI: ${paper.doi}` : ''}</div>
+      <h3 class="r-title">${escapeHtml(paper.title)}</h3>
+      <div class="r-meta">${escapeHtml(paper.authors)} &bull; <em>${escapeHtml(paper.journal)}</em> (${escapeHtml(paper.year || 'n.d.')}) ${paper.pmid ? `&bull; PMID: ${escapeHtml(paper.pmid)}` : ''} ${paper.doi ? `&bull; DOI: ${escapeHtml(paper.doi)}` : ''}</div>
 
       <!-- Prominent Study Type Output in Search Results -->
       <div class="study-type-prominent">
-        <span>🏷️ <strong>Study Type:</strong> <strong style="color:var(--text);font-weight:700">${design.name}</strong></span>
+        <span>🏷️ <strong>Study Type:</strong> <strong style="color:var(--text);font-weight:700">${escapeHtml(design.name)}</strong></span>
       </div>
 
       <div style="margin-top:8px;font-size:.82rem;background:#f8fafb;padding:8px 12px;border-radius:6px;border:1px solid var(--border)">
-        <strong>PICOS Data Extraction Preview:</strong> ${chars.sampleSize} &bull; <strong>Finding:</strong> ${chars.outcomeFinding}
+        <strong>PICOS Data Extraction Preview:</strong> ${escapeHtml(chars.sampleSize)} &bull; <strong>Finding:</strong> ${escapeHtml(chars.outcomeFinding)}
       </div>
 
-      <p class="abstract-text">${paper.abstract || '<em>No abstract text indexed.</em>'}</p>
+      <p class="abstract-text">${paper.abstract ? escapeHtml(paper.abstract) : '<em>No abstract text indexed.</em>'}</p>
 
       ${rulesHtml}
 
@@ -5542,14 +5564,14 @@ function renderCharsTable(papers) {
 
     rows += `
       <tr>
-        <td><strong>${chars.studyId}</strong></td>
-        <td><span class="design-badge ${badgeClass}">${des}</span></td>
-        <td>${chars.sampleSize}</td>
-        <td>${chars.population}</td>
-        <td>${chars.intervention}</td>
-        <td>${chars.comparator}</td>
-        <td>${chars.outcomeFinding}</td>
-        <td><span class="rob-pill ${p.screening?.rob?.overallClass || 'rob-low'}">${rob}</span></td>
+        <td><strong>${escapeHtml(chars.studyId)}</strong></td>
+        <td><span class="design-badge ${escapeHtml(badgeClass)}">${escapeHtml(des)}</span></td>
+        <td>${escapeHtml(chars.sampleSize)}</td>
+        <td>${escapeHtml(chars.population)}</td>
+        <td>${escapeHtml(chars.intervention)}</td>
+        <td>${escapeHtml(chars.comparator)}</td>
+        <td>${escapeHtml(chars.outcomeFinding)}</td>
+        <td><span class="rob-pill ${escapeHtml(p.screening?.rob?.overallClass || 'rob-low')}">${escapeHtml(rob)}</span></td>
       </tr>
     `;
   });
@@ -5587,7 +5609,7 @@ function renderReferencesList(refs) {
     currentRefs.forEach(r => {
       const li = document.createElement('li');
       li.style.marginBottom = '8px';
-      li.innerHTML = r.text.replace(/^[0-9]+\.\s*/, '');
+      li.textContent = r.text.replace(/^[0-9]+\.\s*/, '');
       list.appendChild(li);
     });
   } else {
@@ -5598,7 +5620,7 @@ function renderReferencesList(refs) {
       const li = document.createElement('li');
       li.style.textIndent = '-28px';
       li.style.marginBottom = '12px';
-      li.innerHTML = r.text;
+      li.textContent = r.text;
       list.appendChild(li);
     });
   }
@@ -5888,8 +5910,8 @@ async function exportSystematicReviewWordDoc() {
     </tbody>
   </table>
   <p style="font-size:8.5pt; color:#475569; margin:4pt 0 12pt 0; line-height:1.35;">
-    <strong>Heterogeneity:</strong> Tau² = ${(pooled.tau2 != null ? pooled.tau2.toFixed(4) : '0.0000')}; Chi² = ${(pooled.Q != null ? pooled.Q.toFixed(2) : '-')}, df = ${pooled.df ?? '-'} (P = ${pooled.pChi2 < 0.001 ? '&lt; 0.001' : (pooled.pChi2 != null ? pooled.pChi2.toFixed(3) : '-')}); I² = ${(pooled.I2 != null ? pooled.I2.toFixed(1) : '0.0')}%.<br/>
-    <strong>Test for overall effect:</strong> Z = ${(pooled.zScore != null ? pooled.zScore.toFixed(2) : '-')} (P = ${pooled.pValue < 0.001 ? '&lt; 0.001' : (pooled.pValue != null ? pooled.pValue.toFixed(4) : '-')}). <strong>Statistical Model:</strong> ${cleanHtmlText(modelStr)}.
+    <strong>Heterogeneity:</strong> Tau² = ${(pooled.tau2 != null ? pooled.tau2.toFixed(4) : '0.0000')}; Chi² = ${(pooled.Q != null ? pooled.Q.toFixed(2) : '-')}, df = ${pooled.df ?? '-'} (${pooled.pChi2 < 0.001 ? 'P &lt; 0.001' : (pooled.pChi2 != null ? 'P = ' + pooled.pChi2.toFixed(3) : '-')}); I² = ${(pooled.I2 != null ? pooled.I2.toFixed(1) : '0.0')}%.<br/>
+    <strong>Test for overall effect:</strong> ${(pooled.isHksj ? 't' : 'Z')} = ${(pooled.zScore != null ? pooled.zScore.toFixed(2) : '-')} (${pooled.pValue < 0.001 ? 'P &lt; 0.001' : (pooled.pValue != null ? 'P = ' + pooled.pValue.toFixed(4) : '-')}). <strong>Statistical Model:</strong> ${cleanHtmlText(modelStr)}.
   </p>
     `;
   }
@@ -6561,7 +6583,7 @@ async function exportSystematicReviewPDF() {
         doc.setFont('times', 'italic');
         doc.setFontSize(7);
         doc.setTextColor(71, 85, 105);
-        const hetFootnote = sanitizePdfText(`Heterogeneity: Tau² = ${(pooled.tau2 != null ? pooled.tau2.toFixed(4) : '0.0000')}; Chi² = ${(pooled.Q != null ? pooled.Q.toFixed(2) : '-')}, df = ${pooled.df ?? '-'} (P = ${pooled.pChi2 < 0.001 ? '<0.001' : (pooled.pChi2 != null ? pooled.pChi2.toFixed(3) : '-')}); I² = ${(pooled.I2 != null ? pooled.I2.toFixed(1) : '0.0')}%. Test for overall effect: Z = ${(pooled.zScore != null ? pooled.zScore.toFixed(2) : '-')} (P = ${pooled.pValue < 0.001 ? '<0.001' : (pooled.pValue != null ? pooled.pValue.toFixed(4) : '-')}). Model: ${modelStr}.`);
+        const hetFootnote = sanitizePdfText(`Heterogeneity: Tau² = ${(pooled.tau2 != null ? pooled.tau2.toFixed(4) : '0.0000')}; Chi² = ${(pooled.Q != null ? pooled.Q.toFixed(2) : '-')}, df = ${pooled.df ?? '-'} (${pooled.pChi2 < 0.001 ? 'P < 0.001' : (pooled.pChi2 != null ? 'P = ' + pooled.pChi2.toFixed(3) : '-')}); I² = ${(pooled.I2 != null ? pooled.I2.toFixed(1) : '0.0')}%. Test for overall effect: ${(pooled.isHksj ? 't' : 'Z')} = ${(pooled.zScore != null ? pooled.zScore.toFixed(2) : '-')} (${pooled.pValue < 0.001 ? 'P < 0.001' : (pooled.pValue != null ? 'P = ' + pooled.pValue.toFixed(4) : '-')}). Model: ${modelStr}.`);
         const fnLines = doc.splitTextToSize(hetFootnote, textWidth);
         doc.text(fnLines, margin, y + 6);
         y += fnLines.length * 9 + 8;
@@ -7050,6 +7072,162 @@ async function runPipeline() {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// PROJECT PERSISTENCE & JSON IMPORT / EXPORT
+// ═══════════════════════════════════════════════════════════════
+function saveProjectState() {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    const project = {
+      timestamp: Date.now(),
+      version: '1.0',
+      state: {
+        topic: STATE.topic,
+        pico: STATE.pico,
+        incCriteria: STATE.incCriteria,
+        excCriteria: STATE.excCriteria,
+        yearRange: STATE.yearRange,
+        databases: STATE.databases,
+        papers: STATE.papers,
+        includedPapers: STATE.includedPapers,
+        borderlinePapers: STATE.borderlinePapers,
+        excludedPapers: STATE.excludedPapers,
+        duplicatesRemoved: STATE.duplicatesRemoved,
+        rawCandidateCount: STATE.rawCandidateCount,
+        sourceCounts: STATE.sourceCounts,
+        databaseHitCounts: STATE.databaseHitCounts,
+        authors: STATE.authors,
+        affiliation: STATE.affiliation,
+        prosperoId: STATE.prosperoId,
+        review: STATE.review,
+        metaResults: STATE.metaResults
+      },
+      metaState: typeof META_ANALYSIS_STATE !== 'undefined' ? META_ANALYSIS_STATE : null
+    };
+    localStorage.setItem('SYSREVAI_PROJECT_STATE', JSON.stringify(project));
+  } catch (e) {
+    console.warn('[SysRevAI] Could not save project state to localStorage:', e);
+  }
+}
+
+function applyProjectData(data) {
+  if (!data) return;
+  const s = data.state || data;
+  if (s.topic) {
+    STATE.topic = s.topic;
+    const tEl = document.getElementById('topic-input');
+    if (tEl) tEl.value = s.topic;
+  }
+  if (s.pico) {
+    STATE.pico = { ...s.pico };
+    const pEl = document.getElementById('pico-p'); if (pEl) pEl.value = s.pico.p || '';
+    const iEl = document.getElementById('pico-i'); if (iEl) iEl.value = s.pico.i || '';
+    const cEl = document.getElementById('pico-c'); if (cEl) cEl.value = s.pico.c || '';
+    const oEl = document.getElementById('pico-o'); if (oEl) oEl.value = s.pico.o || '';
+    const sEl = document.getElementById('pico-s'); if (sEl) sEl.value = s.pico.s || '';
+  }
+  if (s.incCriteria) STATE.incCriteria = [...s.incCriteria];
+  if (s.excCriteria) STATE.excCriteria = [...s.excCriteria];
+  if (s.yearRange) STATE.yearRange = s.yearRange;
+  if (s.authors) { STATE.authors = s.authors; const aEl = document.getElementById('ms-authors'); if (aEl) aEl.value = s.authors; }
+  if (s.affiliation) { STATE.affiliation = s.affiliation; const afEl = document.getElementById('ms-affiliation'); if (afEl) afEl.value = s.affiliation; }
+  if (s.prosperoId) { STATE.prosperoId = s.prosperoId; const prEl = document.getElementById('ms-prospero'); if (prEl) prEl.value = s.prosperoId; }
+
+  if (Array.isArray(s.papers) && s.papers.length > 0) {
+    STATE.papers = s.papers;
+    STATE.rawCandidateCount = s.rawCandidateCount || s.papers.length;
+    STATE.duplicatesRemoved = s.duplicatesRemoved || 0;
+    STATE.sourceCounts = s.sourceCounts || STATE.sourceCounts;
+    STATE.databaseHitCounts = s.databaseHitCounts || {};
+    updatePrismaAndCounters();
+    renderPaperCards();
+    const step3 = document.getElementById('step-3');
+    if (step3) step3.classList.remove('hidden');
+    const step2 = document.getElementById('step-2');
+    if (step2) step2.classList.add('hidden');
+  }
+
+  if (s.review) {
+    STATE.review = s.review;
+    if (typeof renderPaperPreview === 'function') renderPaperPreview(s.review);
+    if (typeof renderCharsTable === 'function') renderCharsTable(STATE.includedPapers || []);
+    if (typeof renderRobTable === 'function') renderRobTable(STATE.includedPapers || []);
+    if (typeof renderAuditReport === 'function') renderAuditReport(s.review, STATE.includedPapers || []);
+    const step4 = document.getElementById('step-4');
+    if (step4) step4.classList.remove('hidden');
+  }
+
+  if (data.metaState && typeof META_ANALYSIS_STATE !== 'undefined') {
+    Object.assign(META_ANALYSIS_STATE, data.metaState);
+    if (typeof refreshMetaAnalysisWorkspace === 'function') refreshMetaAnalysisWorkspace();
+  }
+  if (s.metaResults) {
+    STATE.metaResults = s.metaResults;
+  }
+}
+
+function loadProjectState() {
+  try {
+    if (typeof localStorage === 'undefined') return false;
+    const raw = localStorage.getItem('SYSREVAI_PROJECT_STATE');
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    if (parsed && (parsed.state || parsed.topic || parsed.papers)) {
+      applyProjectData(parsed);
+      return true;
+    }
+  } catch (e) {
+    console.warn('[SysRevAI] Error loading project state from localStorage:', e);
+  }
+  return false;
+}
+
+function exportProjectJSON() {
+  saveProjectState();
+  const project = {
+    timestamp: Date.now(),
+    version: '1.0',
+    state: STATE,
+    metaState: typeof META_ANALYSIS_STATE !== 'undefined' ? META_ANALYSIS_STATE : null
+  };
+  const blob = new Blob([JSON.stringify(project, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `sysrevai_project_${Date.now()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function handleProjectFileImport(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (data && (data.state || data.papers || data.topic)) {
+        applyProjectData(data);
+        saveProjectState();
+        alert('Project imported successfully!');
+      } else {
+        alert('Invalid SysRevAI project JSON format.');
+      }
+    } catch (err) {
+      alert('Failed to parse project file: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+window.saveProjectState = saveProjectState;
+window.loadProjectState = loadProjectState;
+window.exportProjectJSON = exportProjectJSON;
+window.handleProjectFileImport = handleProjectFileImport;
+
+// ═══════════════════════════════════════════════════════════════
 // SCIENTIFIC & CLINICAL AI ADVISORY DISCLAIMER CONTROLLER
 // ═══════════════════════════════════════════════════════════════
 function initSysRevDisclaimer() {
@@ -7100,7 +7278,10 @@ function initSysRevDisclaimer() {
 window.addEventListener('DOMContentLoaded', () => {
   initSysRevDisclaimer();
   updateCriteriaCounts();
-  setExampleTopic('GLP1');
+  const restored = loadProjectState();
+  if (!restored) {
+    setExampleTopic('GLP1');
+  }
 });
 </script>
 </body>

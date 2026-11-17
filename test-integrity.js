@@ -238,6 +238,65 @@ const nonRctPaper = {
 const nonRctRoB = evaluateRiskOfBias(nonRctPaper);
 assert(nonRctRoB.tool.includes('ROBINS-I') && nonRctRoB.domains.d1 === 'Not assessed' && nonRctRoB.overall === 'Not assessed', 'TEST 6.3: Non-randomized observational cohort gets ROBINS-I tool and domains "Not assessed"');
 
+// ─────────────────────────────────────────────────────────────
+// PHASE 3 INTEGRITY TESTS: STATISTICS, DATA QUALITY & SECURITY
+// ─────────────────────────────────────────────────────────────
+console.log('\n▶️ PHASE 3 AUDIT: STATISTICS, DATA QUALITY & DEDUPLICATION');
+
+// Test 7: Egger test evaluated strictly with Student's t distribution (df = k - 2)
+const eggerStudies = [
+  { studyId: 'S1', calc: { logEffect: -0.4, se: 0.15 } },
+  { studyId: 'S2', calc: { logEffect: -0.6, se: 0.22 } },
+  { studyId: 'S3', calc: { logEffect: -0.3, se: 0.10 } },
+  { studyId: 'S4', calc: { logEffect: -0.9, se: 0.35 } },
+  { studyId: 'S5', calc: { logEffect: -0.2, se: 0.08 } }
+];
+const eggerResult = calculateEggerTest(eggerStudies);
+const expectedTCdf = metaTCdfTwoTailed(Math.abs(eggerResult.tStat), 3);
+assert(eggerResult.applicable === true && eggerResult.k === 5, 'TEST 7.1: Egger regression applicable with k = 5');
+assert(eggerResult.pValue.toFixed(3) === expectedTCdf.toFixed(3), 'TEST 7.2: Egger p-value matches Student t (df = 3) distribution to 3 decimals (p = ' + eggerResult.pValue.toFixed(3) + ')');
+assert(metaTCdfTwoTailed(2.5, 3).toFixed(3) === '0.088', 'TEST 7.3: Benchmark t = 2.5 with df = 3 evaluates to p = 0.088 (exact Student t vs 0.012 normal)');
+
+// Test 8: Statistics regression (Cochrane benchmark worked example for RR, OR, RD, MD, SMD under FE and DL)
+const cochraneBinary = [
+  { studyId: 'Study 1', e1: 10, n1: 100, e2: 20, n2: 100 },
+  { studyId: 'Study 2', e1: 15, n1: 150, e2: 30, n2: 150 }
+];
+const pooledRR = executeMetaAnalysis({ outcomeType: 'binary', effectMeasure: 'RR', model: 'fixed', studies: cochraneBinary });
+assert(pooledRR.isValid && pooledRR.pooled.pointEstimate.toFixed(3) === '0.500', 'TEST 8.1: Binary RR Fixed-Effect benchmark matches 0.500 (got: ' + pooledRR.pooled.pointEstimate.toFixed(3) + ')');
+
+const pooledOR = executeMetaAnalysis({ outcomeType: 'binary', effectMeasure: 'OR', model: 'fixed', studies: cochraneBinary });
+assert(pooledOR.isValid && pooledOR.pooled.pointEstimate.toFixed(3) === '0.444', 'TEST 8.2: Binary OR Fixed-Effect benchmark matches 0.444 (got: ' + pooledOR.pooled.pointEstimate.toFixed(3) + ')');
+
+const pooledRD = executeMetaAnalysis({ outcomeType: 'binary', effectMeasure: 'RD', model: 'fixed', studies: cochraneBinary });
+assert(pooledRD.isValid && pooledRD.pooled.pointEstimate.toFixed(3) === '-0.100', 'TEST 8.3: Binary RD Fixed-Effect benchmark matches -0.100 (got: ' + pooledRD.pooled.pointEstimate.toFixed(3) + ')');
+
+const cochraneCont = [
+  { studyId: 'Trial 1', m1: 10, s1: 2, n1: 50, m2: 12, s2: 2, n2: 50 },
+  { studyId: 'Trial 2', m1: 15, s1: 3, n1: 60, m2: 18, s2: 3, n2: 60 }
+];
+const pooledMD = executeMetaAnalysis({ outcomeType: 'continuous', effectMeasure: 'MD', model: 'fixed', studies: cochraneCont });
+assert(pooledMD.isValid && pooledMD.pooled.pointEstimate.toFixed(3) === '-2.348', 'TEST 8.4: Continuous MD Fixed-Effect benchmark matches -2.348 (got: ' + pooledMD.pooled.pointEstimate.toFixed(3) + ')');
+
+const pooledSMD = executeMetaAnalysis({ outcomeType: 'continuous', effectMeasure: 'SMD', model: 'fixed', studies: cochraneCont });
+assert(pooledSMD.isValid && pooledSMD.pooled.pointEstimate.toFixed(3) === '-0.993', 'TEST 8.5: Continuous SMD Fixed-Effect benchmark matches -0.993 (got: ' + pooledSMD.pooled.pointEstimate.toFixed(3) + ')');
+
+// Test 9: Text cleaning preserves < before digits/spaces and handles block tags
+const cleanedText = cleanHtmlText('<h4>Results</h4>birth <34 weeks');
+assert(cleanedText === 'Results birth <34 weeks', 'TEST 9: cleanHtmlText("<h4>Results</h4>birth <34 weeks") === "Results birth <34 weeks" (got: "' + cleanedText + '")');
+
+// Test 10: XSS prevention (escapeHtml escapes tags)
+const xssPayload = '<img src=x onerror=alert(1)>';
+const escapedXss = escapeHtml(xssPayload);
+assert(!escapedXss.includes('<img') && escapedXss.includes('&lt;img'), 'TEST 10: XSS payload <img tag is safely escaped to &lt;img (got: "' + escapedXss + '")');
+
+// Test 12: Deduplication: three copies (PMID-only, PMID+DOI, DOI-only) collapse to one
+const copy1 = { title: 'Aspirin for Preeclampsia Prevention', pmid: '99887766', source: 'epmc' };
+const copy2 = { title: 'Aspirin for Preeclampsia Prevention', pmid: '99887766', doi: '10.1016/j.ajog.2024.01.001', source: 's2' };
+const copy3 = { title: 'Aspirin for Preeclampsia Prevention: Secondary Analysis', doi: '10.1016/j.ajog.2024.01.001', source: 'crossref' };
+const dedupResult = deduplicatePapers([copy1, copy2, copy3]);
+assert(dedupResult.unique.length === 1 && dedupResult.duplicates === 2, 'TEST 12: Three copies (PMID-only, PMID+DOI, DOI-only) collapse into exactly 1 unique record (got unique: ' + dedupResult.unique.length + ', dups: ' + dedupResult.duplicates + ')');
+
 console.log(`\n================================================================`);
 console.log(`🏆 INTEGRITY AUDIT SUMMARY: ${passCount} PASSED | ${failCount} FAILED`);
 console.log(`================================================================`);
