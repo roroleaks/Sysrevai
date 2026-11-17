@@ -386,7 +386,8 @@ async function runAudit() {
     console.log('  ✅ TEST 7 PASSED: Multi-Source harmonization operates flawlessly!\n');
 
     console.log('================================================================');
-    console.log('🏆 CONCLUSION: Europe PMC, Semantic Scholar, OpenAlex, and Crossref are fully operational!');
+    const live = [epmcAll, alexAll, crossAll, s2All].filter(r => r.status === 'fulfilled' && r.value.length > 0).length;
+    console.log(`🏆 CONCLUSION: ${live} of 4 live sources returned records from this network (live check is informational; mocked suites are authoritative).`);
     console.log('================================================================');
   } catch (err) {
     console.error('  ❌ TEST 5/6/7 FAILED:', err.message);

@@ -288,8 +288,9 @@
     if (types.includes('retracted publication')) rec.retracted = true;
 
     rec._isPreprint = isPreprintRecord(rec);
-    if (rec._isPreprint) rec.peerReviewed = false;
     rec._isRegistry = isRegistryRecord(rec);
+    if (rec._isPreprint || rec._isRegistry) rec.peerReviewed = false;
+    else if (rec.peerReviewed === undefined) rec.peerReviewed = true;
     rec._notice = rec._isRegistry ? null : detectNotice(rec);
     rec._normTitle = normalizeTitle(rec.title);
     rec._tokens = getTitleTokens(rec.title);
@@ -575,7 +576,16 @@
           if (!yearsCompatible(a, b, 2)) continue;
           if (!a._authors3.size || !b._authors3.size || !setsOverlap(a._authors3, b._authors3)) continue;
           const sim = titleJaccard(a._tokens, b._tokens);
-          if (sim >= 0.8) uf.union(i, j, 'preprint-published', sim);
+          // Preprints often gain/lose a subtitle (": a randomised trial"): accept full containment
+          // of the shorter title when at least two author surnames overlap.
+          let shared = 0;
+          a._tokens.forEach(t => { if (b._tokens.has(t)) shared++; });
+          const containment = shared / Math.min(a._tokens.size, b._tokens.size);
+          let authorOverlap = 0;
+          a._authors3.forEach(t => { if (b._authors3.has(t)) authorOverlap++; });
+          if (sim >= 0.8 || (containment >= 0.9 && Math.min(a._tokens.size, b._tokens.size) >= 5 && authorOverlap >= 2)) {
+            uf.union(i, j, 'preprint-published', sim);
+          }
           continue;
         }
         if (!yearsCompatible(a, b, 1)) continue;

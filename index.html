@@ -3040,10 +3040,16 @@ function cochraneReviewMatchesPico(p) {
   const strategy = STATE.searchStrategy;
   if (!strategy) return false;
   const text = `${p.title || ''} ${p.abstract || ''}`.toLowerCase();
-  const hit = terms => terms.some(t => text.includes(String(t).toLowerCase()));
+  // A concept term matches when most of its words (≥ 60%) occur in the review title/abstract
+  const termHit = t => {
+    const words = String(t).toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length >= 3);
+    if (!words.length) return false;
+    return words.filter(w => text.includes(w)).length / words.length >= 0.6;
+  };
+  const hit = terms => terms.some(termHit);
   if (strategy.pTerms.length && strategy.iTerms.length) return hit(strategy.pTerms) && hit(strategy.iTerms);
   const terms = strategy.terms || [];
-  return terms.length > 0 && terms.filter(t => text.includes(String(t).toLowerCase())).length >= Math.min(2, terms.length);
+  return terms.length > 0 && terms.filter(termHit).length >= Math.min(2, terms.length);
 }
 
 function getCochraneReviews() {
@@ -3112,7 +3118,8 @@ function sourceFailureReason(st) {
   if (st.status === 'failed') return `search failed (${st.error || 'unknown error'})`;
   if (st.status === 'not_configured') return `not configured (${st.reason || 'API key missing'})`;
   if (st.status === 'not_searched') return `not searched (${st.reason || 'not run'})`;
-  return st.status;
+  if (st.status === 'ok') return 'searched';
+  return 'not searched (search was not run)';
 }
 
 function getUnsearchedSourcesSentence() {
@@ -3136,7 +3143,7 @@ function getPrismaCategoryCounts() {
   registryList().forEach(src => {
     const st = (STATE.sourceStatus || {})[src.key];
     const n = Array.isArray((STATE.sourceRecords || {})[src.key]) ? STATE.sourceRecords[src.key].length : 0;
-    counts[src.prismaCategory].push({ key: src.key, name: src.displayName, n, status: st ? st.status : 'queued' });
+    counts[src.prismaCategory].push({ key: src.key, name: src.displayName, short: src.shortName || src.displayName, n, status: st ? st.status : 'queued' });
   });
   const manual = Array.isArray((STATE.sourceRecords || {}).manual_import) ? STATE.sourceRecords.manual_import.length : 0;
   if (manual) counts.other.push({ key: 'manual_import', name: 'Reports added manually by reviewer', n: manual, status: 'ok' });
@@ -4496,7 +4503,7 @@ class SystematicReviewGenerator {
     }
 
     const bkd = (typeof STATE !== 'undefined' && STATE.dedupBreakdown) || {};
-    const p4 = `2.4 Study Selection & Screening Process\n\nRetrieved records were de-duplicated with a cluster-based (union-find) algorithm that matches PMIDs, PMCIDs, DOIs, OpenAlex, Semantic Scholar, Google Scholar and Cochrane identifiers, identical normalised titles (|Δyear| ≤ 1) and near-identical titles (token Jaccard ≥ 0.88, |Δyear| ≤ 1, concordant first author), with a conflict guard that never merges records carrying different PMIDs or DOIs. Exactly ${this.duplicatesRemoved} records were removed before screening: ${bkd.duplicates || 0} duplicates and ${bkd.linked || 0} additional reports (preprints, trial registrations, errata or retraction notices) linked to their parent study; every merge is listed in the deduplication audit log. All unique records underwent automated title and abstract keyword screening with human reviewer override; no full-text articles were independently retrieved or evaluated.`;
+    const p4 = `2.4 Study Selection & Screening Process\n\nRetrieved records were de-duplicated with a cluster-based (union-find) algorithm that matches PMIDs, PMCIDs, DOIs, source-specific record identifiers and Cochrane review numbers, identical normalised titles (|Δyear| ≤ 1) and near-identical titles (token Jaccard ≥ 0.88, |Δyear| ≤ 1, concordant first author), with a conflict guard that never merges records carrying different PMIDs or DOIs. Exactly ${this.duplicatesRemoved} records were removed before screening: ${bkd.duplicates || 0} duplicates and ${bkd.linked || 0} additional reports (preprints, trial registrations, errata or retraction notices) linked to their parent study; every merge is listed in the deduplication audit log. All unique records underwent automated title and abstract keyword screening with human reviewer override; no full-text articles were independently retrieved or evaluated.`;
 
     const p5 = `2.5 Risk of Bias & Methodological Quality Appraisal (Automated Preliminary Screen)\n\nMethodological quality and internal validity of included studies were appraised using an automated preliminary RoB screen — not a validated RoB 2/ROBINS-I assessment. For randomized trials, five core domains were appraised: (D1) Randomization and selection process; (D2) Deviations from intended interventions; (D3) Incomplete outcome data; (D4) Measurement of outcome; and (D5) Selective reporting. Each domain was rated as Low Risk, Some Concerns, or High Risk of Bias with human reviewer override enabled. Non-randomized observational cohorts were flagged as requiring manual ROBINS-I appraisal.`;
 

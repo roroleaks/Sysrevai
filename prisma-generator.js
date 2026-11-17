@@ -269,9 +269,9 @@ function syncPrismaStateFromWorkflow(force = false) {
   const cats = (hasRegistryStatus && typeof getPrismaCategoryCounts === 'function') ? getPrismaCategoryCounts() : null;
   if (cats) {
     const okOnly = list => list.filter(x => x.status === 'ok');
-    PRISMA_DIAGRAM_STATE.db_list = okOnly(cats.database).map(x => ({ name: x.name, count: x.n }));
+    PRISMA_DIAGRAM_STATE.db_list = okOnly(cats.database).map(x => ({ name: x.short || x.name, fullName: x.name, count: x.n }));
     PRISMA_DIAGRAM_STATE.db_not_searched = cats.database.filter(x => x.status !== 'ok').map(x => x.name);
-    PRISMA_DIAGRAM_STATE.registers_list = okOnly(cats.register).map(x => ({ name: x.name, count: x.n }));
+    PRISMA_DIAGRAM_STATE.registers_list = okOnly(cats.register).map(x => ({ name: x.short || x.name, fullName: x.name, count: x.n }));
     PRISMA_DIAGRAM_STATE.registers_count = PRISMA_DIAGRAM_STATE.registers_list.reduce((a, x) => a + x.count, 0);
     const other = okOnly(cats.other);
     PRISMA_DIAGRAM_STATE.other_sources = Object.assign({}, PRISMA_DIAGRAM_STATE.other_sources, {
@@ -527,7 +527,7 @@ function renderPrismaSVG(s) {
     <text x="${b1X + 14}" y="${b1Y + 38}" class="p-text">Records identified from*:</text>
     <text x="${b1X + 14}" y="${b1Y + 56}" class="p-num">Databases (n = ${totalDb}):</text>
     ${Array.isArray(s.db_list) ? (() => {
-      const lines = wrapPrismaText(s.db_list.map(d => `${d.name.replace(/^Cochrane Library: /, '')} ${d.count}`).join(' · ') || 'none searched', 58).slice(0, 3);
+      const lines = wrapPrismaText(s.db_list.map(d => `${d.name} ${d.count}`).join(' · ') || 'none searched', 58).slice(0, 3);
       return lines.map((ln, i) => `<text x="${b1X + 24}" y="${b1Y + 72 + i * 13}" class="p-subtext">${escapeXml(ln)}</text>`).join('');
     })() : `
     <text x="${b1X + 24}" y="${b1Y + 74}" class="p-subtext">• Europe PMC (n = ${s.db_epmc})</text>

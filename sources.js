@@ -101,6 +101,8 @@
       if (t === '(' || t === ')') { out.push({ type: t }); continue; }
       if (t.startsWith('"')) {
         const inner = t.replace(/"/g, '').replace(/\[[^\]]*\]/g, '').trim();
+        // Age / numeric limits such as ">= 18 years" are eligibility limits, not search terms
+        if (/^[<>=≥≤]/.test(inner) || !/[a-z]{3,}/i.test(inner.replace(/\byears?\b|\bmonths?\b|\bdays?\b/gi, ''))) continue;
         if (inner.length >= 2) out.push({ type: 'term', value: inner, phrase: /\s/.test(inner) });
         continue;
       }
@@ -773,16 +775,16 @@
   // Mandatory source registry (spec 2)
   // ─────────────────────────────────────────────────────────────
   const SOURCE_REGISTRY = [
-    { key: 'pubmed', displayName: 'PubMed / MEDLINE', icon: '🩺', interfaceLabel: 'PubMed via NCBI E-utilities', prismaCategory: 'database', requiresKey: null, optionalKey: 'NCBI_API_KEY', peerReviewed: true, description: 'NLM biomedical citation index (MEDLINE, PMC, in-process)' },
-    { key: 'scholar', displayName: 'Google Scholar', icon: '🎓', interfaceLabel: 'Google Scholar via SerpApi', prismaCategory: 'other', requiresKey: 'SERPAPI_KEY', peerReviewed: true, description: 'Web search engine (other methods); records enriched via Crossref/Europe PMC' },
-    { key: 'cochrane_cdsr', displayName: 'Cochrane Library: Cochrane Database of Systematic Reviews', icon: '📘', interfaceLabel: 'Cochrane Database of Systematic Reviews via PubMed and Europe PMC journal filter', prismaCategory: 'database', requiresKey: null, peerReviewed: true, description: 'Existing Cochrane reviews (background / citation searching, not screened as primary studies)' },
-    { key: 'cochrane_central', displayName: 'Cochrane Library: CENTRAL', icon: '📗', interfaceLabel: 'Cochrane CENTRAL via user-exported RIS from the Cochrane Library', prismaCategory: 'database', requiresKey: null, manual: true, peerReviewed: true, description: 'Cochrane Central Register of Controlled Trials (manual RIS export required)' },
-    { key: 'ctgov', displayName: 'ClinicalTrials.gov', icon: '🧪', interfaceLabel: 'ClinicalTrials.gov API v2', prismaCategory: 'register', requiresKey: null, peerReviewed: false, description: 'Trial registrations (PRISMA "Registers")' },
-    { key: 'epmc', displayName: 'Europe PMC', icon: '🇪🇺', interfaceLabel: 'Europe PMC REST API (MEDLINE + PMC)', prismaCategory: 'database', requiresKey: null, peerReviewed: true, description: 'MEDLINE, PubMed Central & life-science literature' },
-    { key: 'epmc_preprints', displayName: 'Preprints (medRxiv / bioRxiv / Research Square)', icon: '📝', interfaceLabel: 'Europe PMC REST API, preprint source (SRC:PPR)', prismaCategory: 'database', requiresKey: null, peerReviewed: false, description: 'Not peer reviewed; borderline by default' },
-    { key: 's2', displayName: 'Semantic Scholar', icon: '🧠', interfaceLabel: 'Semantic Scholar Graph API v1', prismaCategory: 'database', requiresKey: null, optionalKey: 'S2_API_KEY', peerReviewed: true, description: 'AI academic graph' },
-    { key: 'openalex', displayName: 'OpenAlex', icon: '🏛️', interfaceLabel: 'OpenAlex Works API', prismaCategory: 'database', requiresKey: null, optionalKey: 'OPENALEX_API_KEY', peerReviewed: true, description: 'Open global scholarly graph' },
-    { key: 'crossref', displayName: 'Crossref', icon: '🔍', interfaceLabel: 'Crossref REST API', prismaCategory: 'database', requiresKey: null, peerReviewed: true, description: 'DOI registration agency metadata' }
+    { key: 'pubmed', shortName: 'PubMed', displayName: 'PubMed / MEDLINE', icon: '🩺', interfaceLabel: 'PubMed via NCBI E-utilities', prismaCategory: 'database', requiresKey: null, optionalKey: 'NCBI_API_KEY', peerReviewed: true, description: 'NLM biomedical citation index (MEDLINE, PMC, in-process)' },
+    { key: 'scholar', shortName: 'Google Scholar', displayName: 'Google Scholar', icon: '🎓', interfaceLabel: 'Google Scholar via SerpApi', prismaCategory: 'other', requiresKey: 'SERPAPI_KEY', peerReviewed: true, description: 'Web search engine (other methods); records enriched via Crossref/Europe PMC' },
+    { key: 'cochrane_cdsr', shortName: 'Cochrane CDSR', displayName: 'Cochrane Library: Cochrane Database of Systematic Reviews', icon: '📘', interfaceLabel: 'Cochrane Database of Systematic Reviews via PubMed and Europe PMC journal filter', prismaCategory: 'database', requiresKey: null, peerReviewed: true, description: 'Existing Cochrane reviews (background / citation searching, not screened as primary studies)' },
+    { key: 'cochrane_central', shortName: 'Cochrane CENTRAL', displayName: 'Cochrane Library: CENTRAL', icon: '📗', interfaceLabel: 'Cochrane CENTRAL via user-exported RIS from the Cochrane Library', prismaCategory: 'database', requiresKey: null, manual: true, peerReviewed: true, description: 'Cochrane Central Register of Controlled Trials (manual RIS export required)' },
+    { key: 'ctgov', shortName: 'ClinicalTrials.gov', displayName: 'ClinicalTrials.gov', icon: '🧪', interfaceLabel: 'ClinicalTrials.gov API v2', prismaCategory: 'register', requiresKey: null, peerReviewed: false, description: 'Trial registrations (PRISMA "Registers")' },
+    { key: 'epmc', shortName: 'Europe PMC', displayName: 'Europe PMC', icon: '🇪🇺', interfaceLabel: 'Europe PMC REST API (MEDLINE + PMC)', prismaCategory: 'database', requiresKey: null, peerReviewed: true, description: 'MEDLINE, PubMed Central & life-science literature' },
+    { key: 'epmc_preprints', shortName: 'Preprints (EPMC)', displayName: 'Preprints (medRxiv / bioRxiv / Research Square)', icon: '📝', interfaceLabel: 'Europe PMC REST API preprint source (SRC:PPR)', prismaCategory: 'database', requiresKey: null, peerReviewed: false, description: 'Not peer reviewed; borderline by default' },
+    { key: 's2', shortName: 'Semantic Scholar', displayName: 'Semantic Scholar', icon: '🧠', interfaceLabel: 'Semantic Scholar Graph API v1', prismaCategory: 'database', requiresKey: null, optionalKey: 'S2_API_KEY', peerReviewed: true, description: 'AI academic graph' },
+    { key: 'openalex', shortName: 'OpenAlex', displayName: 'OpenAlex', icon: '🏛️', interfaceLabel: 'OpenAlex Works API', prismaCategory: 'database', requiresKey: null, optionalKey: 'OPENALEX_API_KEY', peerReviewed: true, description: 'Open global scholarly graph' },
+    { key: 'crossref', shortName: 'Crossref', displayName: 'Crossref', icon: '🔍', interfaceLabel: 'Crossref REST API', prismaCategory: 'database', requiresKey: null, peerReviewed: true, description: 'DOI registration agency metadata' }
   ];
   SOURCE_REGISTRY.forEach(src => {
     src.fetch = (strategy, opts, signal) => adapters[src.key](strategy, opts || {}, signal);

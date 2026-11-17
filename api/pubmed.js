@@ -27,6 +27,7 @@ function decodeXml(s) {
     .replace(/&#x([0-9a-f]+);/gi, (m, h) => String.fromCodePoint(parseInt(h, 16)))
     .replace(/&#(\d+);/g, (m, d) => String.fromCodePoint(Number(d)))
     .replace(/&amp;/g, '&')
+    .replace(/<\/?[a-z][a-z0-9]*(?:\s[^>]*)?>/gi, '')
     .replace(/\s+/g, ' ')
     .trim();
 }

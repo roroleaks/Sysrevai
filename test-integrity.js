@@ -351,6 +351,58 @@ const emptyStorageSandbox = { ...browserSandbox, localStorage: { getItem: () => 
 const restoredEmpty = browserSandbox.loadProjectState.call(emptyStorageSandbox);
 assert(restoredEmpty === false, 'TEST 14: loadProjectState safely rejects empty state object to allow default example topic hydration');
 
+
+// ─────────────────────────────────────────────────────────────
+// PHASE 4: TRUTHFUL SOURCE REPORTING (mandatory sources)
+// ─────────────────────────────────────────────────────────────
+console.log('\n▶️ PHASE 4 AUDIT: TRUTHFUL SOURCE REPORTING & PRISMA TEMPLATE B');
+global.document = {
+  getElementById: () => ({ value: '', textContent: '', innerHTML: '', style: {}, classList: { add() {}, remove() {}, contains() { return false; } }, appendChild() {}, scrollIntoView() {} }),
+  createElement: () => ({ textContent: '', style: {}, appendChild() {} }),
+  querySelectorAll: () => []
+};
+resetSourceState();
+STATE.topic = 'SGLT2 inhibitors in heart failure';
+STATE.pico = { p: 'heart failure', i: 'empagliflozin', c: 'placebo', o: 'hospitalization', s: 'RCT' };
+STATE.searchDate = '2026-11-17';
+STATE.searchStrategy = buildSearchStrategy({ baseQuery: '"heart failure" AND empagliflozin', yearRange: 5, perSourceLimit: 35 });
+STATE.searchQuery = STATE.searchStrategy.baseQuery;
+STATE.centralImport = null;
+STATE.centralAck = null;
+const okKeys = ['pubmed', 'cochrane_cdsr', 'ctgov', 'epmc', 'epmc_preprints', 's2', 'openalex', 'crossref'];
+okKeys.forEach(k => { STATE.sourceStatus[k] = { status: 'ok', hitCount: 10, retrievedCount: k === 'ctgov' ? 1 : (k === 'pubmed' ? 1 : 0) }; });
+STATE.sourceStatus.scholar = { status: 'not_configured', reason: 'SERPAPI_KEY missing', retrievedCount: 0, hitCount: 0 };
+STATE.sourceStatus.cochrane_central = { status: 'not_searched', reason: 'CENTRAL export not provided', retrievedCount: 0, hitCount: 0 };
+STATE.searchLog = SOURCE_REGISTRY.map(s => ({ sourceKey: s.key, interface: s.interfaceLabel, query: s.translateQuery(STATE.searchStrategy), timestamp: '2026-11-17T10:00:00Z', hitCount: 10, retrievedCount: 1, status: STATE.sourceStatus[s.key].status, error: STATE.sourceStatus[s.key].reason || null }));
+addRecordsToPool([{ sourceKey: 'pubmed', id: '1', pmid: '1', title: 'Empagliflozin in heart failure: a randomized placebo-controlled trial', year: 2024, abstract: 'In this randomized, double-blind, placebo-controlled trial, 3730 patients with heart failure received empagliflozin or placebo. Hospitalization was reduced.', pubType: ['randomized controlled trial'] }], { sourceKey: 'pubmed', replace: true, deferRebuild: true });
+addRecordsToPool([{ sourceKey: 'ctgov', isRegistryRecord: true, id: 'NCT00000001', nctId: 'NCT00000001', title: 'Unlinked registry record for empagliflozin in heart failure', year: 2023 }], { sourceKey: 'ctgov', replace: true });
+const incPaper = STATE.papers.find(p => p.pmid === '1');
+incPaper.screening = Object.assign({}, incPaper.screening, { status: 'INCLUDED' });
+const gen2 = new SystematicReviewGenerator(STATE.topic, STATE.pico, [incPaper], STATE.duplicatesRemoved, STATE.rawCandidateCount);
+const rv = gen2.generate();
+const methodsText = rv.methods;
+const notOkNames = SOURCE_REGISTRY.filter(s => STATE.sourceStatus[s.key].status !== 'ok');
+const leaked = [];
+notOkNames.forEach(s => {
+  [s.displayName, s.interfaceLabel, ...(s.key === 'scholar' ? ['Google Scholar', 'SerpApi'] : []), ...(s.key === 'cochrane_central' ? ['CENTRAL', 'Central Register'] : [])].forEach(n => { if (methodsText.includes(n)) leaked.push(n); });
+});
+assert(leaked.length === 0, 'TEST 15: Methods never names a source whose status is not ok (Google Scholar not configured, CENTRAL not searched)' + (leaked.length ? ' leaked: ' + leaked.join(', ') : ''));
+assert(gen2.getHarvestedSourcesString().split(', ').length >= 2 && !/Google Scholar|CENTRAL/.test(gen2.getHarvestedSourcesString()) && rv.abstractObj && !/Google Scholar|CENTRAL/.test(JSON.stringify(rv.abstractObj)), 'TEST 16: Abstract / harvested-sources string lists only sources with status ok');
+assert(/PubMed via NCBI E-utilities/.test(methodsText) && /ClinicalTrials\.gov API v2/.test(methodsText) && /Table S1\. Information sources and search strategies/.test(methodsText) && methodsText.includes(translators.pubmed(STATE.searchStrategy)), 'TEST 17: Methods include interface labels and Table S1 with the exact executed queries');
+assert(/Google Scholar: not configured \(SERPAPI_KEY missing\)/.test(rv.discussion) && /Cochrane Library: CENTRAL: not searched \(CENTRAL export not provided\)/.test(rv.discussion), 'TEST 18: Limitations list Google Scholar and CENTRAL with their reasons');
+assert(centralSatisfied() === false, 'TEST 19: Manuscript gate blocks generation while CENTRAL is neither imported nor acknowledged');
+onCentralAckChange({ checked: true });
+assert(centralSatisfied() === true && /acknowledged before manuscript generation that Cochrane CENTRAL was not searched/.test(new SystematicReviewGenerator(STATE.topic, STATE.pico, [incPaper], 0, 1).generate().discussion), 'TEST 20: Acknowledgement unlocks the gate and is printed in Limitations');
+const reg = STATE.papers.find(p => p.isRegistryRecord);
+assert(reg && reg.screening.status !== 'INCLUDED', 'TEST 21: Unlinked trial registration is never auto-INCLUDED');
+Object.assign(global, require('./prisma-generator.js'));
+updatePrismaAndCounters();
+syncPrismaStateFromWorkflow(true);
+const pv = validatePrismaDiagramCounts(PRISMA_DIAGRAM_STATE);
+const svgB = renderPrismaSVG(PRISMA_DIAGRAM_STATE);
+assert(PRISMA_DIAGRAM_STATE.template === 'B' && PRISMA_DIAGRAM_STATE.registers_count === 1 && pv.issues.length === 0, 'TEST 22: PRISMA switches to Template B; registers = ClinicalTrials.gov count; counts reconcile', JSON.stringify(pv.issues));
+assert(svgB.includes('Registers (n = 1): ClinicalTrials.gov') && svgB.includes('Search engines: Google Scholar') && svgB.includes('PubMed 1') && !svgB.includes('Europe PMC (n ='), 'TEST 23: Template B diagram shows per-database counts, registers and other methods separately');
+
 console.log(`\n================================================================`);
 console.log(`🏆 INTEGRITY AUDIT SUMMARY: ${passCount} PASSED | ${failCount} FAILED`);
 console.log(`================================================================`);
