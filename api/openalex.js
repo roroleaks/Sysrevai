@@ -36,13 +36,19 @@ function reconstructAbstract(invertedIndex) {
   return words.filter(Boolean).join(' ');
 }
 
-function queryOpenAlex(query, pageSize = 30, startYear = null, endYear = null) {
+function queryOpenAlex(query, pageSize = 30, startYear = null, endYear = null, opts = {}) {
   return new Promise((resolve, reject) => {
     let filter = '';
-    if (startYear) {
+    if (opts.doi) {
+      // DOI lookup mode (used to enrich Google Scholar records)
+      filter = `doi:https://doi.org/${opts.doi}`;
+    } else if (startYear) {
       filter = endYear ? `publication_year:${startYear}-${endYear}` : `publication_year:${startYear}-${new Date().getFullYear()}`;
     }
-    const params = new URLSearchParams({
+    const params = new URLSearchParams(opts.doi ? {
+      per_page: '1',
+      mailto: 'raouf.roshdy@aimed.org'
+    } : {
       search: query,
       per_page: String(pageSize),
       mailto: 'raouf.roshdy@aimed.org'
@@ -165,6 +171,7 @@ module.exports = async (req, res) => {
   try {
     const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const query = urlObj.searchParams.get('query') || '';
+    const doi = (urlObj.searchParams.get('doi') || '').trim().toLowerCase().replace(/^https?:\/\/(?:dx\.)?doi\.org\//, '');
     const rawLimit = parseInt(urlObj.searchParams.get('limit') || '30', 10);
     const limit = Math.min(200, Math.max(1, isNaN(rawLimit) ? 30 : rawLimit));
     const year = urlObj.searchParams.get('year') || '';
@@ -182,13 +189,13 @@ module.exports = async (req, res) => {
       }
     }
 
-    if (!query) {
+    if (!query && !doi) {
       res.statusCode = 400;
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
       return res.end(JSON.stringify({ error: 'Missing query parameter' }));
     }
 
-    const result = await queryOpenAlex(query, limit, startYear, endYear);
+    const result = await queryOpenAlex(query, limit, startYear, endYear, { doi: /^10\.\d{4,9}\/\S+$/.test(doi) ? doi : '' });
     res.statusCode = result.statusCode || 200;
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.end(JSON.stringify({

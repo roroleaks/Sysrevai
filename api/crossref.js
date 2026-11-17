@@ -40,14 +40,17 @@ function extractYear(item) {
   return null;
 }
 
-function queryCrossref(query, pageSize = 30, startYear = null, endYear = null) {
+function queryCrossref(query, pageSize = 30, startYear = null, endYear = null, opts = {}) {
   return new Promise((resolve, reject) => {
-    const params = new URLSearchParams({
-      query: query,
-      rows: String(pageSize),
-      sort: 'relevance',
-      order: 'desc'
-    });
+    // Bibliographic lookup mode (used to enrich Google Scholar records with a DOI)
+    const params = opts.bibliographic
+      ? new URLSearchParams({ 'query.bibliographic': opts.bibliographic, rows: String(pageSize) })
+      : new URLSearchParams({
+        query: query,
+        rows: String(pageSize),
+        sort: 'relevance',
+        order: 'desc'
+      });
 
     const filters = [];
     if (startYear) {
@@ -190,6 +193,7 @@ module.exports = async (req, res) => {
   try {
     const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const query = urlObj.searchParams.get('query') || '';
+    const bibliographic = (urlObj.searchParams.get('bibliographic') || '').trim().slice(0, 500);
     const rawLimit = parseInt(urlObj.searchParams.get('limit') || urlObj.searchParams.get('rows') || '30', 10);
     const limit = Math.min(1000, Math.max(1, isNaN(rawLimit) ? 30 : rawLimit));
     const year = urlObj.searchParams.get('year') || '';
@@ -207,13 +211,13 @@ module.exports = async (req, res) => {
       }
     }
 
-    if (!query) {
+    if (!query && !bibliographic) {
       res.statusCode = 400;
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
       return res.end(JSON.stringify({ error: 'Missing query parameter' }));
     }
 
-    const result = await queryCrossref(query, limit, startYear, endYear);
+    const result = await queryCrossref(query, limit, startYear, endYear, { bibliographic });
     res.statusCode = result.statusCode || 200;
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.end(JSON.stringify({

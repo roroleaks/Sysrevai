@@ -28,6 +28,20 @@ function handler(req, res) {
     const crossrefHandler = require('./api/crossref.js');
     return crossrefHandler(req, res);
   }
+  if (reqPath === '/api/pubmed') {
+    return require('./api/pubmed.js')(req, res);
+  }
+  if (reqPath === '/api/scholar') {
+    return require('./api/scholar.js')(req, res);
+  }
+  if (reqPath === '/api/ctgov') {
+    return require('./api/ctgov.js')(req, res);
+  }
+  // Internal helper modules are never served
+  if (reqPath.startsWith('/api/_')) {
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    return res.end('404 Not Found');
+  }
   if (reqPath === '/' || reqPath === '') reqPath = '/index.html';
   
   const rootDir = path.resolve(__dirname);

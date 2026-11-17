@@ -26,6 +26,21 @@
       "description": "Server-side Crossref Official DOI Registry Search Proxy"
     },
     {
+      "path": "/api/pubmed",
+      "type": "api",
+      "description": "Server-side PubMed / MEDLINE proxy (NCBI E-utilities esearch + efetch)"
+    },
+    {
+      "path": "/api/scholar",
+      "type": "api",
+      "description": "Server-side Google Scholar proxy via SerpApi (engine=google_scholar); never scrapes Google Scholar"
+    },
+    {
+      "path": "/api/ctgov",
+      "type": "api",
+      "description": "Server-side ClinicalTrials.gov API v2 trial-registry proxy"
+    },
+    {
       "path": "/manus-routes.json",
       "type": "manifest",
       "description": "Route manifest and deployment compliance specification"
