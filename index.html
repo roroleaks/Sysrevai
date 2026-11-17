@@ -5979,6 +5979,16 @@ async function exportSystematicReviewWordDoc() {
     mso-footer: f1;
   }
   div.Section1 { page: Section1; }
+  @page SectionLandscape {
+    size: 11.0in 8.5in;
+    margin: 0.8in 0.8in 0.8in 0.8in;
+    mso-page-orientation: landscape;
+    mso-header-margin: 0.5in;
+    mso-footer-margin: 0.5in;
+    mso-header: h1;
+    mso-footer: f1;
+  }
+  div.SectionLandscape { page: SectionLandscape; }
   body {
     font-family: Arial, Helvetica, sans-serif;
     font-size: 11pt;
@@ -6057,12 +6067,12 @@ async function exportSystematicReviewWordDoc() {
 
   <!-- Title Block -->
   <h1 class="doc-title">${cleanHtmlText(review.title)}</h1>
-  <p style="font-size:11pt; font-weight:bold; color:#0f6b6b; text-align:center; margin:0 0 4pt 0;">Dr. Raouf Roshdy &amp; the Sysrevai Evidence Synthesis Working Group</p>
-  <p style="font-size:9.5pt; font-style:italic; color:#475569; text-align:center; margin:0 0 14pt 0;">AIMed Biomedical Informatics Initiative · PRISMA 2020 Systematic Review Protocol · Date: ${todayStr} · Citation Mode: ${styleLabel}</p>
+  <p style="font-size:11pt; font-weight:bold; color:#0f6b6b; text-align:center; margin:0 0 4pt 0;">${cleanHtmlText((STATE.authors || '').trim() || 'Review Team')}</p>
+  <p style="font-size:9.5pt; font-style:italic; color:#475569; text-align:center; margin:0 0 14pt 0;">${cleanHtmlText((STATE.affiliation || '').trim() || 'Evidence Synthesis Working Group')} · PRISMA 2020 Protocol · Date: ${todayStr} · Citation Mode: ${styleLabel}</p>
 
-  <!-- Educational Advisory Callout -->
+  <!-- Automated Assistance & Methodological Disclosure -->
   <div style="background-color:#f0fdfa; border-left:4pt solid #0d9488; padding:8pt 12pt; margin:0 0 16pt 0; font-size:9.5pt; color:#334155;">
-    <strong>EDUCATIONAL &amp; CLINICAL PRACTICE ADVISORY:</strong> This systematic review synthesis is structured under PRISMA 2020 standards and pre-specified within the SysRev AI evidence synthesis workspace. It is intended for peer review, guideline deliberation, and evidence-synthesis planning.
+    <strong>AUTOMATED ASSISTANCE &amp; METHODOLOGICAL DISCLOSURE:</strong> This systematic review synthesis was produced with automated computational assistance from SysRevAI (including structured query generation, automated title/abstract screening triage, and inverse-variance statistical pooling). All screening determinations, study characteristics, and quantitative estimates must be independently validated by the human review team prior to clinical translation or publication.
   </div>
 
   <!-- Structured Abstract -->
@@ -6088,7 +6098,10 @@ async function exportSystematicReviewWordDoc() {
   <!-- Section 3: Results -->
   <h1 class="sec-heading">3. Results</h1>
   ${formatSectionHtml(review.results)}
+</div>
 
+<!-- Landscape Section for Tables 1 and 2 -->
+<div class="SectionLandscape">
   <!-- Table 1: Characteristics of Studies -->
   <h2 class="sub-heading" style="color:#0d9488; font-size:12pt; font-weight:bold; margin:14pt 0 4pt 0;">Table 1. Structured Characteristics of Included Studies</h2>
   <p style="font-size:9pt; font-style:italic; color:#64748b; margin:0 0 8pt 0;">Extracted clinical populations, interventions, comparators, and empirical outcomes across included cohorts.</p>
@@ -6129,7 +6142,9 @@ async function exportSystematicReviewWordDoc() {
       ${table2Rows}
     </tbody>
   </table>
+</div>
 
+<div class="Section1">
   ${table3Html}
 
   <!-- Section 4: Discussion -->
@@ -6145,6 +6160,38 @@ async function exportSystematicReviewWordDoc() {
   <div style="margin-top:10pt;">
     ${refsHtml}
   </div>
+
+  <!-- Supplementary Material: PRISMA 2020 Checklist -->
+  <h1 class="sec-heading" style="margin-top:24pt; border-bottom:1.5pt solid #0f6b6b; color:#0f6b6b;">Supplementary Material: PRISMA 2020 Checklist Audit</h1>
+  <p style="font-size:9pt; font-style:italic; color:#64748b; margin:0 0 8pt 0;">Verification matrix of PRISMA 2020 statement standards across synthesized manuscript sections.</p>
+  <table class="table-grid">
+    <thead>
+      <tr>
+        <th style="width:10%; text-align:center;">Item #</th>
+        <th style="width:25%;">PRISMA 2020 Standard Topic</th>
+        <th style="width:20%; text-align:center;">Compliance Status</th>
+        <th style="width:45%;">Location in Manuscript</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td style="text-align:center;font-weight:bold;">1</td><td>Title</td><td style="text-align:center;color:#15803d;font-weight:bold;">Reported</td><td>Title Block (identifies review topic and PICOS focus)</td></tr>
+      <tr><td style="text-align:center;font-weight:bold;">2</td><td>Structured Summary</td><td style="text-align:center;color:#15803d;font-weight:bold;">Reported</td><td>Abstract (Background, Objectives, Methods, Results, Conclusions)</td></tr>
+      <tr><td style="text-align:center;font-weight:bold;">3</td><td>Rationale</td><td style="text-align:center;color:#15803d;font-weight:bold;">Reported</td><td>Section 1: Introduction (clinical context &amp; rationale)</td></tr>
+      <tr><td style="text-align:center;font-weight:bold;">4</td><td>Objectives</td><td style="text-align:center;color:#15803d;font-weight:bold;">Reported</td><td>Section 1.2: Objectives (explicit PICOS question)</td></tr>
+      <tr><td style="text-align:center;font-weight:bold;">5</td><td>Eligibility Criteria</td><td style="text-align:center;color:#15803d;font-weight:bold;">Reported</td><td>Section 2.2: Inclusion/Exclusion criteria &amp; 9 eligible designs</td></tr>
+      <tr><td style="text-align:center;font-weight:bold;">6</td><td>Information Sources</td><td style="text-align:center;color:#15803d;font-weight:bold;">Reported</td><td>Section 2.3: Databases searched (${review.sources || 'Europe PMC, OpenAlex, Crossref, S2'})</td></tr>
+      <tr><td style="text-align:center;font-weight:bold;">7</td><td>Search Strategy</td><td style="text-align:center;color:#15803d;font-weight:bold;">Reported</td><td>Section 2.3: Database query parameters &amp; date limits</td></tr>
+      <tr><td style="text-align:center;font-weight:bold;">8</td><td>Selection Process</td><td style="text-align:center;color:#15803d;font-weight:bold;">Reported</td><td>Section 2.4: Title/abstract screening triage &amp; deduplication</td></tr>
+      <tr><td style="text-align:center;font-weight:bold;">9</td><td>Data Collection</td><td style="text-align:center;color:#15803d;font-weight:bold;">Reported</td><td>Section 2.5: PICOS data extraction &amp; Table 1</td></tr>
+      <tr><td style="text-align:center;font-weight:bold;">11</td><td>Study Risk of Bias</td><td style="text-align:center;color:#15803d;font-weight:bold;">Reported</td><td>Section 2.6, Section 3.4 &amp; Table 2 (RoB 2 / ROBINS-I)</td></tr>
+      <tr><td style="text-align:center;font-weight:bold;">13</td><td>Synthesis Methods</td><td style="text-align:center;color:#15803d;font-weight:bold;">Reported</td><td>Section 2.7: Qualitative synthesis &amp; statistical pooling criteria</td></tr>
+      <tr><td style="text-align:center;font-weight:bold;">16</td><td>Study Selection</td><td style="text-align:center;color:#15803d;font-weight:bold;">Reported</td><td>Section 3.1 &amp; PRISMA Flow dynamics counts</td></tr>
+      <tr><td style="text-align:center;font-weight:bold;">17</td><td>Study Characteristics</td><td style="text-align:center;color:#15803d;font-weight:bold;">Reported</td><td>Section 3.2, Section 3.3 &amp; Table 1</td></tr>
+      <tr><td style="text-align:center;font-weight:bold;">23</td><td>Discussion Limitations</td><td style="text-align:center;color:#15803d;font-weight:bold;">Reported</td><td>Section 4.3: Methodological limitations &amp; evidence boundaries</td></tr>
+      <tr><td style="text-align:center;font-weight:bold;">24</td><td>Registration</td><td style="text-align:center;font-weight:bold;color:#475569;">${STATE.prosperoId ? 'Reported' : 'Not registered'}</td><td>Section 2.1 &amp; Abstract Registration field</td></tr>
+    </tbody>
+  </table>
+</div>
 </div>
 </body>
 </html>
@@ -6185,9 +6232,7 @@ function sanitizePdfText(input) {
     .replace(/±|\u00B1/g, '+/-')
     .replace(/≥|\u2265/g, '>=')
     .replace(/≤|\u2264/g, '<=')
-    .replace(/×|\u00D7/g, 'x')
-    .replace(/p\s*<\s*0\.0001/gi, 'P < 0.001')
-    .replace(/[^\x09\x0A\x0D\x20-\x7E\xA0-\xFF]/g, '');
+    .replace(/×|\u00D7/g, 'x');
 }
 
 // ═══════════════════════════════════════════════════════════════

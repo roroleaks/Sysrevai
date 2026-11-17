@@ -290,6 +290,11 @@ const xssPayload = '<img src=x onerror=alert(1)>';
 const escapedXss = escapeHtml(xssPayload);
 assert(!escapedXss.includes('<img') && escapedXss.includes('&lt;img'), 'TEST 10: XSS payload <img tag is safely escaped to &lt;img (got: "' + escapedXss + '")');
 
+// Test 11: PDF Unicode preservation ("Mureșan" and "Lukáčová")
+const unicodeRef = 'Mureșan D, Lukáčová M. Aspirin in preeclampsia prevention. 2024.';
+const sanitizedPdfRef = sanitizePdfText(unicodeRef);
+assert(sanitizedPdfRef.includes('Mureșan') && sanitizedPdfRef.includes('Lukáčová'), 'TEST 11: PDF Unicode characters "Mureșan" and "Lukáčová" preserved without character stripping');
+
 // Test 12: Deduplication: three copies (PMID-only, PMID+DOI, DOI-only) collapse to one
 const copy1 = { title: 'Aspirin for Preeclampsia Prevention', pmid: '99887766', source: 'epmc' };
 const copy2 = { title: 'Aspirin for Preeclampsia Prevention', pmid: '99887766', doi: '10.1016/j.ajog.2024.01.001', source: 's2' };
