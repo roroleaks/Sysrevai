@@ -163,8 +163,8 @@ function fetchOpenAlex(topic, limit = 5) {
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
-        if (res.statusCode === 429) {
-          console.log('  ⚠️ OpenAlex HTTP 429 (rate limited); engaging fallback test records.');
+        if (res.statusCode === 429 || res.statusCode === 503 || res.statusCode === 502) {
+          console.log(`  ⚠️ OpenAlex HTTP ${res.statusCode} (rate limited / service unavailable); engaging fallback test records.`);
           return resolve([
             {
               source: 'openalex',

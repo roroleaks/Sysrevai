@@ -184,8 +184,62 @@ for (const phrase of forbiddenPhrases) {
 }
 assert(!foundForbidden, 'TEST 4: Manuscript contains none of the forbidden claims (MeSH, two-stage screening, full-text evaluation, 27/27, Clinicians should, substantiate the validity, pre-specified)');
 
+// ─────────────────────────────────────────────────────────────
+// PHASE 2 INTEGRITY TESTS: SCREENING, ROB & PRISMA CORRECTNESS
+// ─────────────────────────────────────────────────────────────
+console.log('\n▶️ PHASE 2 AUDIT: SCREENING, ROB & PRISMA METHODOLOGY');
+
+// Test 5: Unicode hyphen in "meta‐analysis", reviews, commentaries, book chapters, and "nasal spray" vs "ASA"
+const metaUnicodePaper = { title: 'SGLT2 inhibitors in heart failure: a meta\u2010analysis', abstract: 'Review of trials.', pubType: ['journal-article'] };
+const reviewDashPaper = { title: 'Management of Heart Failure – A Review', abstract: 'Overview of evidence.', pubType: ['journal-article'] };
+const commentaryPaper = { title: 'Cardiovascular outcomes in elderly: Invited Commentary', abstract: 'Editorial opinion.', pubType: ['journal-article'] };
+const bookChapterPaper = { title: 'SGLT2 Biology and Therapeutics', abstract: 'Comprehensive monograph chapter.', type: 'book-chapter', pubType: [] };
+
+const metaDes = classifyStudyDesign(metaUnicodePaper);
+const reviewDes = classifyStudyDesign(reviewDashPaper);
+const commDes = classifyStudyDesign(commentaryPaper);
+const bookDes = classifyStudyDesign(bookChapterPaper);
+
+assert(metaDes.isEligible === false && metaDes.code === 'ineligible-review', 'TEST 5.1: Unicode hyphen (U+2010) in "meta‐analysis" is recognized and excluded');
+assert(reviewDes.isEligible === false && reviewDes.code === 'ineligible-review', 'TEST 5.2: Title ending in "– A Review" (en-dash) is recognized and excluded');
+assert(commDes.isEligible === false && commDes.code === 'ineligible-review', 'TEST 5.3: "Invited Commentary" is recognized and excluded');
+assert(bookDes.isEligible === false && bookDes.code === 'ineligible-review', 'TEST 5.4: Crossref type: book-chapter is recognized and excluded');
+
+const nasalSprayPaper = {
+  title: 'Efficacy of saline nasal spray on allergic rhinitis',
+  abstract: 'Patients treated with saline nasal spray showed reduced nasal congestion symptoms over 4 weeks.',
+  pubType: ['randomized controlled trial']
+};
+const nasalScreen = screenPaperAgainstCriteria(nasalSprayPaper, 'Allergic Rhinitis', { i: 'ASA' }, [], []);
+assert(nasalScreen.status === 'EXCLUDED' && nasalScreen.decisionRules.some(r => r.rule === 'Target Intervention' && !r.passed), 'TEST 5.5: "nasal spray" does not match intervention "ASA" due to word boundary enforcement');
+
+// Test 6: Risk of Bias correctness
+const admittedPaper = {
+  title: 'Trial of intensive versus standard therapy in heart failure',
+  abstract: 'Patients admitted to the cardiology department were randomized to receive therapy or standard care. Outcomes were recorded.',
+  pubType: ['randomized controlled trial']
+};
+const admittedRoB = evaluateRiskOfBias(admittedPaper);
+assert(admittedRoB.domains.d2 !== 'Low', 'TEST 6.1: Abstract containing "admitted" without blinding terms does not get D2 = Low (got: ' + admittedRoB.domains.d2 + ')');
+
+const rctSomeConcerns = {
+  title: 'Randomized clinical trial of drug A versus placebo',
+  abstract: 'In this double-blind randomized clinical trial, participants were randomly assigned to drug A or placebo. Adjudicated endpoints were measured. Attrition data was not reported.',
+  pubType: ['randomized controlled trial']
+};
+const rctRoB = evaluateRiskOfBias(rctSomeConcerns);
+assert(rctRoB.domains.d3 === 'Some Concerns' && rctRoB.overall === 'Some Concerns', 'TEST 6.2: An RCT with one "Some Concerns" domain gets overall "Some Concerns" (overall: ' + rctRoB.overall + ')');
+
+const nonRctPaper = {
+  title: 'Prospective observational cohort of surgical outcomes',
+  abstract: 'Prospective cohort of 500 patients evaluating postoperative recovery.',
+  pubType: ['journal-article']
+};
+const nonRctRoB = evaluateRiskOfBias(nonRctPaper);
+assert(nonRctRoB.tool.includes('ROBINS-I') && nonRctRoB.domains.d1 === 'Not assessed' && nonRctRoB.overall === 'Not assessed', 'TEST 6.3: Non-randomized observational cohort gets ROBINS-I tool and domains "Not assessed"');
+
 console.log(`\n================================================================`);
-console.log(`🏆 PHASE 1 INTEGRITY AUDIT: ${passCount} PASSED | ${failCount} FAILED`);
+console.log(`🏆 INTEGRITY AUDIT SUMMARY: ${passCount} PASSED | ${failCount} FAILED`);
 console.log(`================================================================`);
 
 if (failCount > 0) process.exit(1);

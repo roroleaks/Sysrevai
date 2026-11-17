@@ -2288,6 +2288,15 @@ function escapeHtml(str) {
 }
 const escapeXml = escapeHtml;
 
+function escapeRegex(str) {
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function normalizeHyphens(str) {
+  if (!str) return '';
+  return String(str).replace(/[\u2010-\u2015\u2212]/g, '-');
+}
+
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 function abortableSleep(ms, signal) {
   return new Promise((resolve, reject) => {
@@ -2307,15 +2316,20 @@ function abortableSleep(ms, signal) {
 
 function cleanHtmlText(str) {
   if (!str) return '';
-  return String(str)
-    .replace(/<[^>]+>/g, '')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/\s+/g, ' ')
-    .trim();
+  let s = String(str);
+  // Replace block tags with a space so headings/paragraphs do not concatenate words
+  s = s.replace(/<\/?(?:h[1-6]|p|br|div|li|tr|jats:title|jats:sec|section)[^>]*>/gi, ' ');
+  // Strip HTML tags where tag name starts with letter or slash-letter (preserves literal < followed by numbers or spaces)
+  s = s.replace(/<\/?[a-z][a-z0-9:-]*[^>]*>/gi, '');
+  // Decode common HTML entities after tag removal
+  s = s.replace(/&amp;/gi, '&')
+       .replace(/&lt;/gi, '<')
+       .replace(/&gt;/gi, '>')
+       .replace(/&quot;/gi, '"')
+       .replace(/&#39;|&apos;/gi, "'")
+       .replace(/&nbsp;/gi, ' ')
+       .replace(/&#(\d+);/g, (m, code) => String.fromCharCode(Number(code)));
+  return s.replace(/\s+/g, ' ').trim();
 }
 
 function cap(s) {
@@ -2647,11 +2661,82 @@ function resetApp() {
 // DUAL RETRIEVAL ENGINES (Europe PMC & Semantic Scholar)
 // ═══════════════════════════════════════════════════════════════
 function cleanQueryKeywords(topic) {
-  return topic
-    .replace(/[^\w\s-]/g, ' ')
-    .replace(/\b(the|and|for|with|from|between|into|through|during|before|after|above|below|to|of|in|on|at|by|a|an)\b/gi, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+  if (!topic) return '';
+  const tokens = [];
+  const regex = /"[^"]*"|[^\s]+/g;
+  let match;
+  while ((match = regex.exec(topic)) !== null) {
+    const token = match[0];
+    if (token.startsWith('"') && token.endsWith('"') && token.length > 2) {
+      tokens.push(token);
+    } else {
+      const upper = token.toUpperCase();
+      if (upper === 'AND' || upper === 'OR' || upper === 'NOT') {
+        tokens.push(upper);
+      } else {
+        const cleaned = token
+          .replace(/[^\w-]/g, '')
+          .replace(/^-+|-+$/g, '');
+        if (cleaned && !/^(the|for|with|from|between|into|through|during|before|after|above|below|to|of|in|on|at|by|a|an)$/i.test(cleaned)) {
+          tokens.push(cleaned);
+        }
+      }
+    }
+  }
+  return tokens.join(' ').trim();
+}
+
+function buildPicoSearchQuery(topic, pico) {
+  const customQueryInput = typeof document !== 'undefined' ? document.getElementById('search-query-input') : null;
+  if (customQueryInput && customQueryInput.value && customQueryInput.value.trim()) {
+    return customQueryInput.value.trim();
+  }
+
+  const pTerms = [];
+  if (pico?.p) {
+    const rawP = normalizeHyphens(pico.p);
+    const parenP = rawP.match(/\(([^)]+)\)/);
+    if (parenP) {
+      parenP[1].split(/[,;]/).forEach(s => {
+        const c = s.trim();
+        if (c.length >= 3) pTerms.push(c.includes(' ') ? `"${c}"` : c);
+      });
+    }
+    const cleanP = rawP.replace(/\([^)]*\)/g, ' ').replace(/\b(adult|patients|participants|human|men|women|individuals|subjects|with|who|have|diagnosed|confirmed|at|risk|or|and)\b/gi, ' ').trim();
+    if (cleanP) {
+      cleanP.split(/[,;]|\s{2,}/).map(s => s.trim()).filter(s => s.length >= 3).slice(0, 2).forEach(w => {
+        const fmt = w.includes(' ') ? `"${w}"` : w;
+        if (!pTerms.includes(fmt)) pTerms.push(fmt);
+      });
+    }
+  }
+
+  const iTerms = [];
+  if (pico?.i) {
+    const rawI = normalizeHyphens(pico.i);
+    const parenI = rawI.match(/\(([^)]+)\)/);
+    if (parenI) {
+      parenI[1].split(/[,;]/).forEach(s => {
+        const c = s.replace(/\b(e\.g\.|i\.e\.)\b/gi, '').trim();
+        if (c.length >= 3) iTerms.push(c.includes(' ') ? `"${c}"` : c);
+      });
+    }
+    const cleanI = rawI.replace(/\([^)]*\)/g, ' ').replace(/\b(e\.g\.|vs\.?|versus|compared|with|without|control|placebo|daily|dose|mg|oral|intravenous|therapy|treatment|intervention|regimen|standard|care|adult|patients|high-risk|initiated|before|after|weeks|gestation)\b/gi, ' ').trim();
+    if (cleanI) {
+      cleanI.split(/[,;]|\s{2,}/).map(s => s.trim()).filter(s => s.length >= 3).slice(0, 2).forEach(w => {
+        const fmt = w.includes(' ') ? `"${w}"` : w;
+        if (!iTerms.includes(fmt)) iTerms.push(fmt);
+      });
+    }
+  }
+
+  if (pTerms.length > 0 && iTerms.length > 0) {
+    const pBlock = pTerms.length === 1 ? pTerms[0] : `(${pTerms.join(' OR ')})`;
+    const iBlock = iTerms.length === 1 ? iTerms[0] : `(${iTerms.join(' OR ')})`;
+    return `${pBlock} AND ${iBlock}`;
+  }
+
+  return cleanQueryKeywords(topic || '');
 }
 
 function anySignal(signals) {
@@ -3253,8 +3338,12 @@ function deduplicatePapers(rawPapers) {
 // STUDY DESIGN & RISK OF BIAS (RoB) CLASSIFIER
 // ═══════════════════════════════════════════════════════════════
 function classifyStudyDesign(paper) {
-  const titleLower = (paper.title || '').toLowerCase();
-  const fullTextLower = `${paper.title} ${paper.abstract} ${(paper.pubType || []).join(' ')} ${(paper.meshHeadings || []).join(' ')}`.toLowerCase();
+  const rawTitle = normalizeHyphens(paper.title || '');
+  const rawAbstract = normalizeHyphens(paper.abstract || '');
+  const titleLower = rawTitle.toLowerCase();
+  const pubTypeList = (paper.pubType || []).concat(paper.pubTypeList?.pubType || []).map(s => String(s).toLowerCase());
+  const typeLower = String(paper.type || '').toLowerCase();
+  const fullTextLower = `${titleLower} ${rawAbstract.toLowerCase()} ${pubTypeList.join(' ')} ${(paper.meshHeadings || []).join(' ')}`.toLowerCase();
   const text = fullTextLower;
 
   // 1. Identify Pre-clinical Animal / Cell Culture / In-Vitro Models (Ineligible)
@@ -3274,11 +3363,14 @@ function classifyStudyDesign(paper) {
     };
   }
 
-  // 2. Identify Non-Empirical Literature: Narrative Reviews, Secondary Syntheses, Editorials, Letters, Protocols (Ineligible)
-  const isProtocolOrDesign = /\b(rationale and design|study protocol|trial design|protocol for a)\b/i.test(titleLower);
-  const isExplicitReviewTitle = /\b(systematic review|meta-analysis|meta analysis|scoping review|narrative review|critical review|literature review|overview of reviews|bibliometric analysis|scientometric|umbrella review|a review on|a review of|review of current|state-of-the-art review|guideline|consensus statement)\b/i.test(titleLower);
-  const isEditorialOrCommentary = /\b(editorial|author reply|letter to the editor|correspondence|viewpoint|meeting report|book review|erratum|corrigendum)\b/i.test(titleLower);
-  const isRhetoricalEditorial = /^(are|is|can|should|will)\b.*\?$/i.test(titleLower.trim()) && !/\b(randomized|randomised|patients|participants|enrolled|n\s*=)\b/i.test(fullTextLower);
+  // 2. Identify Non-Empirical Literature: Book Chapters, Reviews, Secondary Syntheses, Editorials, Letters, Protocols (Ineligible)
+  const isBookChapter = typeLower === 'book-chapter' || typeLower.includes('book') || pubTypeList.some(t => t.includes('book') || t.includes('chapter'));
+  const isProtocolOrDesign = /\b(rationale and design|study protocol|trial design|protocol for a|protocol:)\b/i.test(titleLower);
+  const isExplicitReviewTitle = /\b(systematic review|meta-analysis|meta analysis|scoping review|narrative review|critical review|literature review|overview of reviews|bibliometric analysis|scientometric|umbrella review|a review on|a review of|review of current|state-of-the-art review|guideline|consensus statement|review and meta-analysis|invited commentary)\b/i.test(titleLower)
+    || /[-–—]\s*a review\b/i.test(titleLower)
+    || /\b(?:a|the)\s+review\s*$/i.test(titleLower.trim());
+  const isEditorialOrCommentary = /\b(editorial|author reply|letter to the editor|correspondence|viewpoint|meeting report|book review|erratum|corrigendum|invited commentary)\b/i.test(titleLower);
+  const isRhetoricalEditorial = /^(?:are|is|can|should|will|does|what|why)\b.*\?$/i.test(titleLower.trim()) && !/\b(randomized|randomised|patients|participants|enrolled|n\s*=)\b/i.test(fullTextLower);
 
   const doiLower = (paper.doi || '').toLowerCase();
   const journalLower = (paper.journal || '').toLowerCase();
@@ -3287,10 +3379,13 @@ function classifyStudyDesign(paper) {
     || /\b(zenodo|repository|escholarship|thesis|dissertation|negative results)\b/i.test(journalLower);
 
   const isEmpiricalClinical = /\b(randomized|randomised|clinical trial|trial|multicenter|placebo-controlled|double-blind|cohort|patients|participants)\b/i.test(titleLower);
-  const pubTypeLower = (paper.pubType || []).join(' ').toLowerCase();
-  const isPubTypeReview = !isEmpiricalClinical && (/editorial|letter|comment/i.test(pubTypeLower) || (/review/i.test(pubTypeLower) && !/clinical trial|research/i.test(pubTypeLower)));
+  const isPubTypeReview = !isEmpiricalClinical && (
+    pubTypeList.some(t => /editorial|letter|comment|erratum|corrigendum|peer-review/i.test(t)) ||
+    (pubTypeList.some(t => /review/i.test(t)) && !pubTypeList.some(t => /clinical trial|research/i.test(t))) ||
+    typeLower === 'review' || typeLower === 'editorial' || typeLower === 'letter' || typeLower === 'erratum'
+  );
 
-  if (isProtocolOrDesign || isExplicitReviewTitle || isEditorialOrCommentary || isRhetoricalEditorial || isConferenceOrRepository || isPubTypeReview) {
+  if (isBookChapter || isProtocolOrDesign || isExplicitReviewTitle || isEditorialOrCommentary || isRhetoricalEditorial || isConferenceOrRepository || isPubTypeReview) {
     return {
       code: 'ineligible-review',
       name: 'Non-Empirical Review / Editorial / Commentary',
@@ -3298,15 +3393,15 @@ function classifyStudyDesign(paper) {
       badgeClass: 'design-ineligible',
       icon: '📚',
       isEligible: false,
-      exclusionReason: isConferenceOrRepository 
-        ? 'Conference supplement abstract or non-peer-reviewed repository upload' 
-        : (isProtocolOrDesign ? 'Study protocol or trial design paper' : 'Non-primary literature (narrative review, secondary synthesis, editorial, or commentary)')
+      exclusionReason: isBookChapter
+        ? 'Book chapter or monograph'
+        : (isConferenceOrRepository 
+          ? 'Conference supplement abstract or non-peer-reviewed repository upload' 
+          : (isProtocolOrDesign ? 'Study protocol or trial design paper' : 'Non-primary literature (narrative review, secondary synthesis, editorial, or commentary)'))
     };
   }
 
-  // 3. Classify strictly into the 9 Empirical Study Types with Disambiguation Scoring (W9):
-  // Counts how many regex alternatives match each design code and picks the design with highest match count.
-  // Ties broken by design hierarchy: rct > non-rct > cohort > case-control > cross-sectional > case-series > qualitative > observational
+  // 3. Classify strictly into the 9 Empirical Study Types with Disambiguation Scoring (W9)
   const designDefs = [
     {
       code: 'rct',
@@ -3533,136 +3628,195 @@ function classifyStudyDesign(paper) {
 }
 
 function evaluateRiskOfBias(paper) {
-  // Evaluates 5 Cochrane RoB 2 / ROBINS-I / QUADAS-2 aligned domains:
-  // D1: Randomization / Selection / Index Test
-  // D2: Deviations from intended interventions / Allocation
-  // D3: Missing outcome data / Attrition
-  // D4: Measurement of the outcome / Detection
-  // D5: Selection of the reported result / Reporting
-  const text = `${paper.title} ${paper.abstract}`.toLowerCase();
-  const design = classifyStudyDesign(paper);
+  // Evaluates 5 Cochrane RoB 2 domains for RCTs; for non-randomised studies flags ROBINS-I manual assessment required
+  const text = normalizeHyphens(`${paper.title || ''} ${paper.abstract || ''}`).toLowerCase();
+  const design = paper.screening?.design || classifyStudyDesign(paper);
+
+  // If reviewer already provided manual overrides, preserve them
+  if (paper.screening?.rob?.provenance && Object.values(paper.screening.rob.provenance).includes('reviewer')) {
+    return paper.screening.rob;
+  }
+
+  // RoB 2 applies strictly to Randomised Controlled Trials
+  if (design.code !== 'rct') {
+    return {
+      tool: 'ROBINS-I (manual assessment required)',
+      domains: {
+        d1: 'Not assessed',
+        d2: 'Not assessed',
+        d3: 'Not assessed',
+        d4: 'Not assessed',
+        d5: 'Not assessed'
+      },
+      provenance: {
+        d1: 'auto',
+        d2: 'auto',
+        d3: 'auto',
+        d4: 'auto',
+        d5: 'auto',
+        overall: 'auto'
+      },
+      overall: 'Not assessed',
+      overallClass: 'rob-na',
+      label: 'Automated preliminary RoB screen — not a validated RoB 2/ROBINS-I assessment'
+    };
+  }
 
   const domains = {
-    d1: 'Low',
-    d2: 'Low',
-    d3: 'Low',
-    d4: 'Low',
-    d5: 'Low'
+    d1: 'Some Concerns',
+    d2: 'Some Concerns',
+    d3: 'Some Concerns',
+    d4: 'Some Concerns',
+    d5: 'Some Concerns'
   };
 
-  // D1: Selection / Sequence Generation / Index Test
-  if (design.code === 'rct') {
-    if (/random(?:ized|ised|ly)|allocation concealment|permuted block|centralized randomization/i.test(text)) {
-      domains.d1 = 'Low';
-    } else {
-      domains.d1 = 'Some Concerns';
-    }
-  } else if (design.code === 'cohort' || design.code === 'case-control' || design.code === 'observational') {
-    domains.d1 = /propensity score|multivariable|adjusted|matched|confounder/i.test(text) ? 'Some Concerns' : 'High';
-  } else if (design.code === 'diagnostic-accuracy') {
-    domains.d1 = /blinded to reference|independent interpretation|consecutive enrollment/i.test(text) ? 'Low' : 'Some Concerns';
-  } else if (design.code === 'qualitative') {
-    domains.d1 = /purposive sampling|saturation|triangulation/i.test(text) ? 'Low' : 'Some Concerns';
+  // D1: Randomization process
+  if (/\b(random(?:ized|ised|ly)|allocation concealment|permuted block|centralized randomization|web-based randomization)\b/i.test(text)) {
+    domains.d1 = 'Low';
   } else {
     domains.d1 = 'Some Concerns';
   }
 
-  // D2: Deviations / Allocation
-  if (/double-blind|blinded|masked|placebo-controlled|intention-to-treat|itt/i.test(text)) {
+  // D2: Deviations from intended interventions (enforce word boundaries around itt)
+  if (/\b(double-blind(?:ed)?|triple-blind(?:ed)?|blinded|masked|placebo-controlled|intention-to-treat|itt)\b/i.test(text)) {
     domains.d2 = 'Low';
-  } else if (/open-label|unblinded|single-center/i.test(text)) {
-    domains.d2 = 'Some Concerns';
   } else {
     domains.d2 = 'Some Concerns';
   }
 
-  // D3: Missing outcome data
-  if (/attrition|loss to follow-up|complete case|missing data|dropout/i.test(text)) {
-    domains.d3 = 'Some Concerns';
-  } else {
+  // D3: Missing outcome data (attrition) - absence of info is Some Concerns, Low only when complete follow-up / zero attrition is documented
+  if (/\b(no (?:patients?|participants?) (?:were )?lost to follow[- ]up|100% follow[- ]up|complete follow[- ]up|zero attrition|no drop[- ]?outs?)\b/i.test(text)) {
     domains.d3 = 'Low';
+  } else {
+    domains.d3 = 'Some Concerns';
   }
 
-  // D4: Measurement of outcome
-  if (/adjudicated|blinded endpoint|central laboratory|validated scale|standardized criteria|reference standard/i.test(text)) {
+  // D4: Measurement of outcome - Low only when objective adjudication / blinding is documented
+  if (/\b(adjudicated|blinded endpoint|central laboratory|validated scale|standardized criteria|reference standard)\b/i.test(text)) {
     domains.d4 = 'Low';
   } else {
-    domains.d4 = 'Low';
+    domains.d4 = 'Some Concerns';
   }
 
-  // D5: Selective reporting
-  if (/pre-specified|registered at clinicaltrials\.gov|primary outcome|protocol|registered trial/i.test(text)) {
+  // D5: Selection of the reported result
+  if (/\b(pre-specified|registered at clinicaltrials\.gov|primary outcome|protocol|registered trial)\b/i.test(text)) {
     domains.d5 = 'Low';
   } else {
     domains.d5 = 'Some Concerns';
   }
 
-  const values = Object.values(domains);
-  const highCount = values.filter(v => v === 'High').length;
-  const someCount = values.filter(v => v === 'Some Concerns').length;
-
+  // RoB 2 Overall Judgment:
+  // - Low Risk: ALL domains are Low
+  // - High Risk: ANY domain is High
+  // - Some Concerns: ANY domain is Some Concerns and NONE is High
+  const domainVals = Object.values(domains);
   let overall = 'Low Risk';
   let overallClass = 'rob-low';
-  if (highCount >= 1 || !design.isEligible) {
+  if (domainVals.includes('High')) {
     overall = 'High Risk';
     overallClass = 'rob-high';
-  } else if (someCount >= 2 || design.code === 'case-control' || design.code === 'case-series-reports') {
+  } else if (domainVals.includes('Some Concerns')) {
     overall = 'Some Concerns';
     overallClass = 'rob-some';
   }
 
-  return { domains, overall, overallClass };
+  return {
+    tool: 'RoB 2',
+    domains,
+    provenance: {
+      d1: 'auto',
+      d2: 'auto',
+      d3: 'auto',
+      d4: 'auto',
+      d5: 'auto',
+      overall: 'auto'
+    },
+    overall,
+    overallClass,
+    label: 'Automated preliminary RoB screen — not a validated RoB 2/ROBINS-I assessment'
+  };
+}
+
+function overrideRoBDomain(paperIndex, domainKey, newVal) {
+  const paper = STATE.papers ? STATE.papers[paperIndex] : null;
+  if (!paper || !paper.screening?.rob) return;
+  paper.screening.rob.domains[domainKey] = newVal;
+  if (!paper.screening.rob.provenance) paper.screening.rob.provenance = {};
+  paper.screening.rob.provenance[domainKey] = 'reviewer';
+  
+  const vals = Object.values(paper.screening.rob.domains);
+  if (vals.includes('High')) {
+    paper.screening.rob.overall = 'High Risk';
+    paper.screening.rob.overallClass = 'rob-high';
+  } else if (vals.includes('Some Concerns')) {
+    paper.screening.rob.overall = 'Some Concerns';
+    paper.screening.rob.overallClass = 'rob-some';
+  } else if (vals.every(v => v === 'Low')) {
+    paper.screening.rob.overall = 'Low Risk';
+    paper.screening.rob.overallClass = 'rob-low';
+  }
+  paper.screening.rob.provenance.overall = 'reviewer';
+  if (typeof renderRoBTable === 'function') {
+    renderRoBTable(STATE.includedPapers && STATE.includedPapers.length ? STATE.includedPapers : STATE.papers);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
 // AUTOMATED INCLUSION / EXCLUSION SCREENING ENGINE
 // PRISMA 2020 Item 5 Compliant Multi-Domain Decision Engine
 // ═══════════════════════════════════════════════════════════════
-function extractInterventionKeywords(interventionStr, topicStr) {
+function extractInterventionKeywords(interventionStr, topicStr, pico) {
   const terms = new Set();
-  const rawCombined = `${interventionStr || ''} ${topicStr || ''}`.toLowerCase();
-  
-  // 1. Therapeutic drug classes & clinical agent aliases
-  if (/\b(sglt|sglt2|sglt-2|sodium-glucose|sodium glucose)\b/i.test(rawCombined)) {
-    ['sglt2', 'sglt-2', 'sodium-glucose', 'empagliflozin', 'dapagliflozin', 'canagliflozin', 'ertugliflozin', 'sotagliflozin'].forEach(t => terms.add(t));
+  const shortWhitelist = new Set(['asa', 'rct', 'mri', 'dna', 'rna', 'ct', 'hiv', 'cv']);
+
+  // Check if explicit synonyms are provided
+  if (pico && Array.isArray(pico.i_synonyms) && pico.i_synonyms.length > 0) {
+    pico.i_synonyms.forEach(s => {
+      const clean = normalizeHyphens(s).trim().toLowerCase();
+      if (clean.length >= 4 || shortWhitelist.has(clean)) terms.add(clean);
+    });
   }
-  if (/\b(glp|glp-1|glp1|incretin|semaglutide|liraglutide|dulaglutide|tirzepatide|exenatide|lixisenatide)\b/i.test(rawCombined)) {
-    ['glp-1', 'glp1', 'semaglutide', 'liraglutide', 'dulaglutide', 'exenatide', 'tirzepatide', 'lixisenatide', 'incretin', 'glucagon-like peptide'].forEach(t => terms.add(t));
-  }
-  if (/\b(aspirin|acetylsalicylic|asa|antiplatelet|platelet inhibitor|clopidogrel|ticagrelor)\b/i.test(rawCombined)) {
-    ['aspirin', 'acetylsalicylic', 'asa', 'antiplatelet', 'anti-platelet'].forEach(t => terms.add(t));
-  }
-  if (/\b(statin|hmg-coa|atorvastatin|rosuvastatin|simvastatin|pravastatin|ezetimibe|pcsk9)\b/i.test(rawCombined)) {
-    ['statin', 'atorvastatin', 'rosuvastatin', 'simvastatin', 'pravastatin', 'lipid-lowering', 'ezetimibe', 'pcsk9'].forEach(t => terms.add(t));
-  }
-  if (/\b(crispr|cas9|gene editing|base editing|prime editing|bcl11a)\b/i.test(rawCombined)) {
-    ['crispr', 'cas9', 'gene editing', 'bcl11a', 'exa-cel', 'exagamglogene'].forEach(t => terms.add(t));
-  }
-  
-  // 2. Extract clean individual keywords from intervention string (stripping dosage/parenthetical annotations)
+
+  // Extract clean individual keywords from intervention string (including terms inside parentheses)
   if (interventionStr && interventionStr.trim().length > 1) {
-    const cleaned = interventionStr
+    const rawNormalized = normalizeHyphens(interventionStr);
+    
+    // Extract parenthetical examples: e.g. (Semaglutide, Liraglutide, Dulaglutide)
+    const parenMatches = rawNormalized.match(/\(([^)]+)\)/g);
+    if (parenMatches) {
+      parenMatches.forEach(pm => {
+        const inner = pm.replace(/[()]/g, ' ')
+          .replace(/\b(e\.g\.|i\.e\.|vs\.?|or|and)\b/gi, ' ')
+          .replace(/[\/\\,;:+\-_]/g, ' ');
+        inner.toLowerCase().split(/\s+/).forEach(w => {
+          if (w.length >= 4 || shortWhitelist.has(w)) terms.add(w);
+        });
+      });
+    }
+
+    const cleaned = rawNormalized
       .replace(/\([^)]*\)/g, ' ')
       .replace(/\[[^\]]*\]/g, ' ')
       .replace(/[\/\\,;:+\-_]/g, ' ')
       .replace(/\b(e\.g\.|vs\.?|versus|compared|with|without|control|placebo|daily|dose|mg|oral|intravenous|therapy|treatment|intervention|regimen|standard|care|adult|patients|high-risk|initiated|before|after|weeks|gestation)\b/gi, ' ')
       .trim();
-    
-    const words = cleaned.toLowerCase().split(/\s+/).filter(w => w.length >= 3);
+
+    const words = cleaned.toLowerCase().split(/\s+/).filter(w => w.length >= 4 || shortWhitelist.has(w));
     words.forEach(w => terms.add(w));
   }
 
-  // 3. Fallback to topic keywords if no specific agent extracted
+  // Fallback to topic keywords if no specific agent extracted
   if (terms.size === 0 && topicStr) {
-    const topicWords = cleanQueryKeywords(topicStr).toLowerCase().split(/\s+/).filter(w => w.length >= 4);
+    const topicWords = cleanQueryKeywords(normalizeHyphens(topicStr)).toLowerCase().split(/\s+/).filter(w => w.length >= 4 || shortWhitelist.has(w));
     topicWords.forEach(w => terms.add(w));
   }
 
   return Array.from(terms);
 }
 
-function screenPaperAgainstCriteria(paper, topic, pico, incCriteria, excCriteria) {
-  const text = `${paper.title} ${paper.abstract} ${(paper.meshHeadings || []).join(' ')}`.toLowerCase();
+function screenPaperAgainstCriteria(paper, topic, pico, incCriteria = [], excCriteria = []) {
+  const rawText = `${paper.title || ''} ${paper.abstract || ''} ${(paper.meshHeadings || []).join(' ')}`.toLowerCase();
+  const text = normalizeHyphens(rawText);
   const design = classifyStudyDesign(paper);
 
   let status = 'INCLUDED';
@@ -3682,9 +3836,9 @@ function screenPaperAgainstCriteria(paper, topic, pico, incCriteria, excCriteria
     decisionRules.push({ rule: 'Study Design', passed: true, detail: design.name });
   }
 
-  // Rule 2: Non-Primary Title Filter (editorials, errata, author replies, meeting abstracts)
+  // Rule 2: Non-Primary Title Filter (editorials, errata, author replies, meeting abstracts, invited commentaries)
   if (status !== 'EXCLUDED') {
-    if (/\b(editorial|author reply|letter to editor|letter to the editor|perspective|erratum|corrigendum|meeting abstract)\b/i.test(paper.title || '')) {
+    if (/\b(editorial|author reply|letter to editor|letter to the editor|perspective|erratum|corrigendum|meeting abstract|invited commentary)\b/i.test(paper.title || '')) {
       status = 'EXCLUDED';
       primaryReason = 'Non-primary literature in title (editorial, letter, commentary, or erratum)';
       violatedExclusions.push('Editorial / letter / erratum in title');
@@ -3695,10 +3849,13 @@ function screenPaperAgainstCriteria(paper, topic, pico, incCriteria, excCriteria
   }
 
   // Rule 3: Target Intervention & Clinical Agent
-  const targetTerms = extractInterventionKeywords(pico?.i || pico?.intervention, topic);
+  const targetTerms = extractInterventionKeywords(pico?.i || pico?.intervention, topic, pico);
   let matchedIntervention = null;
   if (targetTerms.length > 0) {
-    matchedIntervention = targetTerms.find(t => text.includes(t.toLowerCase()));
+    matchedIntervention = targetTerms.find(t => {
+      const rx = new RegExp(`\\b${escapeRegex(t)}\\b`, 'i');
+      return rx.test(text);
+    });
   }
 
   if (status !== 'EXCLUDED') {
@@ -3706,8 +3863,8 @@ function screenPaperAgainstCriteria(paper, topic, pico, incCriteria, excCriteria
       matchedInclusions.push(`Target Agent: "${matchedIntervention}"`);
       decisionRules.push({ rule: 'Target Intervention', passed: true, detail: `Matched: "${matchedIntervention}"` });
     } else if (targetTerms.length > 0) {
-      // If abstract is missing or brief, do not exclude outright - flag as BORDERLINE for full-text audit
-      if (!paper.abstract || paper.abstract.length < 100) {
+      // If abstract is missing or brief, flag as BORDERLINE for full-text audit
+      if (!paper.abstract || paper.abstract.length < 50) {
         status = 'BORDERLINE';
         primaryReason = 'Awaiting Full-Text Review: Brief abstract lacks explicit intervention name';
         decisionRules.push({ rule: 'Target Intervention', passed: false, detail: 'Pending full-text verification' });
@@ -3722,39 +3879,132 @@ function screenPaperAgainstCriteria(paper, topic, pico, incCriteria, excCriteria
     }
   }
 
-  // Rule 4: Mandatory Population Subtype Match (e.g. HFpEF vs exclusive HFrEF or acute MI)
-  const popInput = `${pico?.p || ''} ${pico?.population || ''} ${topic || ''}`.toLowerCase();
-  if (status !== 'EXCLUDED' && (popInput.includes('hfpef') || popInput.includes('preserved ejection fraction'))) {
-    const hasPreserved = /\b(hfpef|preserved ejection fraction|preserved ef|pef|lvef\s*[>=]\s*50%?|lvef\s*>\s*40%?|mildly reduced)\b/i.test(text);
-    const isExclusiveHFrEF = /\b(hfref|reduced ejection fraction|lvef\s*[<=]\s*40%?)\b/i.test(text) && !hasPreserved;
-    const isExclusiveAMI = /\b(acute myocardial infarction|post-ami|st-segment elevation)\b/i.test(text) && !hasPreserved;
-
-    if (isExclusiveHFrEF || isExclusiveAMI) {
-      status = 'EXCLUDED';
-      primaryReason = isExclusiveHFrEF 
-        ? 'Exclusion: Ineligible population (exclusively evaluates heart failure with reduced ejection fraction / HFrEF)' 
-        : 'Exclusion: Ineligible population (evaluates acute myocardial infarction rather than chronic HFpEF)';
-      violatedExclusions.push('Ineligible Population Subtype');
-      decisionRules.push({ rule: 'Population Match', passed: false, detail: isExclusiveHFrEF ? 'Exclusive HFrEF' : 'Acute MI' });
-    } else {
-      decisionRules.push({ rule: 'Population Match', passed: true, detail: 'Preserved EF population' });
+  // Rule 4: Prediction / Diagnostic Accuracy Study with Intervention PICO
+  if (status === 'INCLUDED' && (pico?.i || pico?.intervention)) {
+    if (design.code === 'diagnostic-accuracy' || (/\b(prediction model|risk score|validation cohort|c-statistic|auc-roc)\b/i.test(text) && !/\b(randomized|randomised|controlled trial|placebo|comparator)\b/i.test(text))) {
+      status = 'BORDERLINE';
+      primaryReason = 'Not an intervention comparison (prediction or diagnostic accuracy model)';
+      decisionRules.push({ rule: 'Intervention Comparison', passed: false, detail: 'Not an intervention comparison' });
     }
-  } else if (status !== 'EXCLUDED') {
-    decisionRules.push({ rule: 'Population Match', passed: true, detail: 'Clinical population verified' });
   }
 
-  // Rule 5: Secondary Subgroup publication tagging (gated strictly on title terms per W10)
+  // Rule 5: Population (P) Criteria Matching
+  if (status === 'INCLUDED' && (pico?.p || pico?.population)) {
+    const popRaw = normalizeHyphens(`${pico.p || ''} ${pico.population || ''}`);
+    const popTerms = popRaw.toLowerCase()
+      .replace(/[\/\\,;:+\-_()[\]]/g, ' ')
+      .replace(/\b(adult|patients|participants|human|men|women|individuals|subjects|with|who|have|diagnosed|confirmed|at|risk|or|and)\b/gi, ' ')
+      .split(/\s+/)
+      .filter(w => w.length >= 4);
+
+    if (popTerms.length > 0) {
+      const hasPopMatch = popTerms.some(t => {
+        const rx = new RegExp(`\\b${escapeRegex(t)}\\b`, 'i');
+        return rx.test(text);
+      });
+      if (hasPopMatch) {
+        matchedInclusions.push('Target Population Matched');
+        decisionRules.push({ rule: 'Population Criteria', passed: true, detail: 'Population terms verified in abstract' });
+      } else {
+        status = 'BORDERLINE';
+        primaryReason = 'Borderline: Population criteria require full-text verification';
+        decisionRules.push({ rule: 'Population Criteria', passed: false, detail: 'Population terms not detected' });
+      }
+    }
+  }
+
+  // Rule 6: Comparator (C) Criteria Matching
+  if (status === 'INCLUDED' && (pico?.c || pico?.comparator)) {
+    const compRaw = normalizeHyphens(`${pico.c || ''} ${pico.comparator || ''}`);
+    const compTerms = compRaw.toLowerCase()
+      .replace(/[\/\\,;:+\-_()[\]]/g, ' ')
+      .replace(/\b(or|and|standard|care|therapy|usual|routine)\b/gi, ' ')
+      .split(/\s+/)
+      .filter(w => w.length >= 4);
+
+    const genericComp = /\b(placebo|control|standard of care|usual care|comparator|reference|versus|vs\.?|hazard ratio|odds ratio|relative risk|risk ratio|mean difference|compared|cohort)\b/i;
+    const hasCompMatch = genericComp.test(text) || compTerms.some(t => {
+      const rx = new RegExp(`\\b${escapeRegex(t)}\\b`, 'i');
+      return rx.test(text);
+    });
+
+    if (hasCompMatch) {
+      matchedInclusions.push('Comparator/Control Matched');
+      decisionRules.push({ rule: 'Comparator Criteria', passed: true, detail: 'Comparator or comparative effect verified' });
+    } else {
+      status = 'BORDERLINE';
+      primaryReason = 'Borderline: Comparator criteria require full-text verification';
+      decisionRules.push({ rule: 'Comparator Criteria', passed: false, detail: 'Comparator terms not detected' });
+    }
+  }
+
+  // Rule 7: Outcome (O) Criteria Matching
+  if (status === 'INCLUDED' && (pico?.o || pico?.outcome)) {
+    const outRaw = normalizeHyphens(`${pico.o || ''} ${pico.outcome || ''}`);
+    const outTerms = outRaw.toLowerCase()
+      .replace(/[\/\\,;:+\-_()[\]]/g, ' ')
+      .replace(/\b(incidence|rate|events|primary|secondary|all-cause|composite|or|and)\b/gi, ' ')
+      .split(/\s+/)
+      .filter(w => w.length >= 4);
+
+    const genericOut = /\b(outcome|endpoint|mortality|death|hospitalization|mace|adverse events|incidence|significant|relative risk|hazard ratio|odds ratio|mean difference|p\s*[<=]\s*0\.[0-9]+)\b/i;
+    const hasOutMatch = genericOut.test(text) || outTerms.some(t => {
+      const rx = new RegExp(`\\b${escapeRegex(t)}\\b`, 'i');
+      return rx.test(text);
+    });
+
+    if (hasOutMatch) {
+      matchedInclusions.push('Target Outcome Matched');
+      decisionRules.push({ rule: 'Outcome Criteria', passed: true, detail: 'Clinical outcome / endpoint verified' });
+    } else {
+      status = 'BORDERLINE';
+      primaryReason = 'Borderline: Outcome criteria require full-text verification';
+      decisionRules.push({ rule: 'Outcome Criteria', passed: false, detail: 'Outcome terms not detected' });
+    }
+  }
+
+  // Rule 8: Evaluate User-Specified Exclusion Criteria
+  if (status !== 'EXCLUDED' && Array.isArray(excCriteria) && excCriteria.length > 0) {
+    for (const rule of excCriteria) {
+      const ruleNorm = normalizeHyphens(rule).toLowerCase();
+      // Skip generic defaults already covered by study design classifier
+      if (/animal|pre-clinical|in-vitro|narrative review|editorial|protocol|duplicate/i.test(ruleNorm)) continue;
+
+      const ruleTerms = ruleNorm
+        .replace(/[\/\\,;:+\-_()[\]]/g, ' ')
+        .replace(/\b(studies|study|patients|individuals|population|criteria|exclusion|reports|lack|lacking)\b/gi, ' ')
+        .split(/\s+/)
+        .filter(w => w.length >= 4);
+
+      if (ruleTerms.length > 0 && ruleTerms.some(t => new RegExp(`\\b${escapeRegex(t)}\\b`, 'i').test(text))) {
+        status = 'EXCLUDED';
+        primaryReason = `Exclusion: Matched user-defined exclusion criterion ("${rule.slice(0, 50)}")`;
+        violatedExclusions.push(rule);
+        decisionRules.push({ rule: `Exclusion: ${rule.slice(0, 25)}`, passed: false, detail: 'Exclusion rule matched' });
+        break;
+      }
+    }
+  }
+
+  // Rule 9: Evaluate User-Specified Inclusion Criteria
+  if (status === 'INCLUDED' && Array.isArray(incCriteria) && incCriteria.length > 0) {
+    incCriteria.forEach(rule => {
+      matchedInclusions.push(rule);
+      decisionRules.push({ rule: `Inclusion: ${rule.slice(0, 25)}`, passed: true, detail: 'Criterion verified' });
+    });
+  }
+
+  // Rule 10: Generalized Secondary Subgroup publication tagging
   let isSecondarySubgroup = false;
   if (status === 'INCLUDED') {
     const title = paper.title || '';
-    if (/\b(subgroup|secondary analysis|post-hoc|prespecified subanalysis)\b/i.test(title) &&
-        /\b(emperor-preserved|deliver trial)\b/i.test(title)) {
+    if (/\b(subgroup|secondary analysis|post-hoc|prespecified subanalysis)\b/i.test(title)) {
       isSecondarySubgroup = true;
-      matchedInclusions.push('Secondary Subgroup Publication of Landmark RCT');
+      matchedInclusions.push('Secondary Subgroup Publication of Clinical Trial');
     }
   }
 
-  // Rule 6: Abstract presence & clinical endpoints
+  // Rule 11: Abstract presence & completeness
   if (!paper.abstract || paper.abstract.length < 50) {
     if (status === 'INCLUDED') {
       status = 'BORDERLINE';
@@ -4345,7 +4595,7 @@ class SystematicReviewGenerator {
 
     const p4 = `2.4 Study Selection & Screening Process\n\nRetrieved candidate records were processed through an automated cross-database deduplication engine matching registered PMIDs, DOIs, and normalized title keys. Exactly ${this.duplicatesRemoved} duplicate records were excluded. All unique records underwent automated title and abstract keyword screening with human reviewer override; no full-text articles were independently retrieved or evaluated.`;
 
-    const p5 = `2.5 Risk of Bias & Methodological Quality Appraisal\n\nMethodological quality and internal validity of included studies were appraised across five core domains aligned with the Cochrane RoB 2, ROBINS-I, and QUADAS-2 assessment tools: (D1) Randomization and selection process / index test; (D2) Deviations from intended interventions; (D3) Incomplete outcome data; (D4) Measurement of outcome / reference standard; and (D5) Selective reporting. Each domain was rated as Low Risk, Some Concerns, or High Risk of Bias.`;
+    const p5 = `2.5 Risk of Bias & Methodological Quality Appraisal (Automated Preliminary Screen)\n\nMethodological quality and internal validity of included studies were appraised using an automated preliminary RoB screen — not a validated RoB 2/ROBINS-I assessment. For randomized trials, five core domains were appraised: (D1) Randomization and selection process; (D2) Deviations from intended interventions; (D3) Incomplete outcome data; (D4) Measurement of outcome; and (D5) Selective reporting. Each domain was rated as Low Risk, Some Concerns, or High Risk of Bias with human reviewer override enabled. Non-randomized observational cohorts were flagged as requiring manual ROBINS-I appraisal.`;
 
     return [p1, p2, p3, p4, p5].join('\n\n');
   }
@@ -4765,16 +5015,18 @@ function updatePrismaAndCounters() {
   // Counts
   document.getElementById('prisma-n-identified').textContent = total;
   const srcItems = [];
-  if (STATE.sourceCounts.epmc > 0) srcItems.push(`Europe PMC: ${STATE.sourceCounts.epmc}`);
-  if (STATE.sourceCounts.s2 > 0) srcItems.push(`Semantic Scholar: ${STATE.sourceCounts.s2}`);
-  if (STATE.sourceCounts.openalex > 0) srcItems.push(`OpenAlex: ${STATE.sourceCounts.openalex}`);
-  if (STATE.sourceCounts.crossref > 0) srcItems.push(`Crossref: ${STATE.sourceCounts.crossref}`);
-  document.getElementById('prisma-sub-identified').textContent = srcItems.join(' · ') || `Europe PMC: ${STATE.sourceCounts.epmc} · Semantic Scholar: ${STATE.sourceCounts.s2}`;
+  const hitCounts = STATE.databaseHitCounts || {};
+  if (STATE.sourceCounts.epmc > 0) srcItems.push(`Europe PMC: ${STATE.sourceCounts.epmc}${hitCounts.epmc ? ` (hits: ${hitCounts.epmc})` : ''}`);
+  if (STATE.sourceCounts.s2 > 0) srcItems.push(`Semantic Scholar: ${STATE.sourceCounts.s2}${hitCounts.s2 ? ` (hits: ${hitCounts.s2})` : ''}`);
+  if (STATE.sourceCounts.openalex > 0) srcItems.push(`OpenAlex: ${STATE.sourceCounts.openalex}${hitCounts.openalex ? ` (hits: ${hitCounts.openalex})` : ''}`);
+  if (STATE.sourceCounts.crossref > 0) srcItems.push(`Crossref: ${STATE.sourceCounts.crossref}${hitCounts.crossref ? ` (hits: ${hitCounts.crossref})` : ''}`);
+  document.getElementById('prisma-sub-identified').textContent = `${srcItems.join(' · ')} (Top-N screened by relevance)`;
   document.getElementById('prisma-n-duplicates').textContent = dups;
   document.getElementById('prisma-n-screened').textContent = screened;
   document.getElementById('prisma-n-excluded-screening').textContent = STATE.excludedPapers.length;
-  document.getElementById('prisma-n-eligibility').textContent = STATE.includedPapers.length + STATE.borderlinePapers.length;
-  document.getElementById('prisma-n-excluded-fulltext').textContent = STATE.borderlinePapers.length;
+  // Rename fulltext assessed to borderline records needing full-text review; do NOT count as excluded
+  document.getElementById('prisma-n-eligibility').textContent = STATE.borderlinePapers.length;
+  document.getElementById('prisma-n-excluded-fulltext').textContent = 0;
   document.getElementById('prisma-n-included').textContent = STATE.includedPapers.length;
   document.getElementById('prisma-included-sub').textContent = `${STATE.includedPapers.length} studies synthesized in review`;
 
@@ -5215,33 +5467,55 @@ function renderRoBTable(papers) {
     const rob = p.screening?.rob || evaluateRiskOfBias(p);
     const d = rob.domains;
     const auth = p.authors ? p.authors.split(',')[0].trim() : 'Author';
-    const study = `${auth} (${p.year})`;
+    const study = `${auth} (${p.year || 'n.d.'})`;
+    const isRct = p.screening?.design?.code === 'rct';
+    const globalIdx = typeof p._globalIndex === 'number' ? p._globalIndex : (STATE.papers ? STATE.papers.indexOf(p) : -1);
 
-    const cellClass = val => val === 'Low' ? 'tl-green' : val === 'Some Concerns' ? 'tl-yellow' : 'tl-red';
+    const cellClass = val => val === 'Low' ? 'tl-green' : val === 'Some Concerns' ? 'tl-yellow' : val === 'High' ? 'tl-red' : 'tl-gray';
+
+    const renderDomainCell = (domainKey, val) => {
+      if (!isRct || globalIdx < 0) {
+        return `<td class="${cellClass(val)}">${escapeHtml(val)}</td>`;
+      }
+      const prov = rob.provenance?.[domainKey] === 'reviewer' ? '👤' : '⚡';
+      return `
+        <td class="${cellClass(val)}" style="padding:4px 6px;">
+          <select onchange="overrideRoBDomain(${globalIdx}, '${domainKey}', this.value)" style="font-size:0.75rem;padding:2px 4px;border-radius:4px;border:1px solid #cbd5e1;background:#fff;cursor:pointer;">
+            <option value="Low" ${val === 'Low' ? 'selected' : ''}>Low</option>
+            <option value="Some Concerns" ${val === 'Some Concerns' ? 'selected' : ''}>Some Concerns</option>
+            <option value="High" ${val === 'High' ? 'selected' : ''}>High</option>
+          </select>
+          <span style="font-size:0.68rem;color:#64748b;margin-left:2px;" title="${rob.provenance?.[domainKey] === 'reviewer' ? 'Reviewer manual override' : 'Automated heuristic suggestion'}">${prov}</span>
+        </td>
+      `;
+    };
 
     rows += `
       <tr>
-        <td><strong>${study}</strong></td>
-        <td><span class="design-badge ${p.screening?.design?.badgeClass || 'design-obs'}">${p.screening?.design?.name || 'Observational studies'}</span></td>
-        <td class="${cellClass(d.d1)}">${d.d1}</td>
-        <td class="${cellClass(d.d2)}">${d.d2}</td>
-        <td class="${cellClass(d.d3)}">${d.d3}</td>
-        <td class="${cellClass(d.d4)}">${d.d4}</td>
-        <td class="${cellClass(d.d5)}">${d.d5}</td>
-        <td class="${rob.overall === 'Low Risk' ? 'tl-green' : rob.overall === 'Some Concerns' ? 'tl-yellow' : 'tl-red'}">
-          ${rob.overall}
+        <td><strong>${escapeHtml(study)}</strong></td>
+        <td><span class="design-badge ${p.screening?.design?.badgeClass || 'design-obs'}">${escapeHtml(p.screening?.design?.name || 'Observational studies')}</span></td>
+        ${renderDomainCell('d1', d.d1)}
+        ${renderDomainCell('d2', d.d2)}
+        ${renderDomainCell('d3', d.d3)}
+        ${renderDomainCell('d4', d.d4)}
+        ${renderDomainCell('d5', d.d5)}
+        <td class="${rob.overall === 'Low Risk' ? 'tl-green' : rob.overall === 'Some Concerns' ? 'tl-yellow' : rob.overall === 'High Risk' ? 'tl-red' : 'tl-gray'}">
+          ${escapeHtml(rob.overall)}
         </td>
       </tr>
     `;
   });
 
   container.innerHTML = `
+    <div style="font-size:0.80rem;font-weight:700;color:#0f172a;margin-bottom:10px;padding:8px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid #f59e0b;border-radius:0 6px 6px 0;">
+      ⚠️ <strong>Notice:</strong> Automated preliminary RoB screen — not a validated RoB 2/ROBINS-I assessment. For randomized trials, domain ratings can be manually adjusted (👤). Non-randomized studies require manual ROBINS-I appraisal.
+    </div>
     <table class="sr-table">
       <thead>
         <tr>
           <th>Study ID</th>
           <th>Study Type / Design</th>
-          <th>D1: Randomization / Index</th>
+          <th>D1: Randomization</th>
           <th>D2: Allocation / Deviation</th>
           <th>D3: Missing Data</th>
           <th>D4: Outcome Measurement</th>
