@@ -1191,17 +1191,8 @@ function syncMetaStudiesFromIncluded(includedPapers) {
     const isHierarchical = textToCheck.includes('win ratio') || textToCheck.includes('hierarchical outcome') || textToCheck.includes('stratified outcome');
     const outcomeType = isHierarchical ? 'hierarchical' : 'binary';
 
-    // Stricter regex requiring medical-events context (suggested only, never auto-verified)
-    let suggestedCounts = null;
-    const medicalFracMatches = [...(p.abstract || '').matchAll(/\b(\d{1,4})\s*(?:of|\/)\s*(\d{2,6})\s+(?:patients|participants|subjects|individuals|cases)\b/gi)];
-    if (medicalFracMatches.length >= 2) {
-      suggestedCounts = {
-        e1: parseInt(medicalFracMatches[0][1], 10),
-        n1: parseInt(medicalFracMatches[0][2], 10),
-        e2: parseInt(medicalFracMatches[1][1], 10),
-        n2: parseInt(medicalFracMatches[1][2], 10)
-      };
-    }
+    // Suggest clinical values from abstract (suggested only, never auto-verified or auto-pooled)
+    const suggestedCounts = isHierarchical ? null : extractBinarySuggestionFromAbstract(p.abstract);
 
     return {
       id: p.id || `study-${idx + 1}`,
@@ -1218,21 +1209,170 @@ function syncMetaStudiesFromIncluded(includedPapers) {
       outcomeType,
       isHierarchical,
       suggestedCounts,
+      evidenceText: suggestedCounts ? suggestedCounts.evidenceText : null,
       title: p.title || '',
       abstract: p.abstract || '',
       verified: false,
       includedInPool: false,
+      status: suggestedCounts ? 'suggested' : 'unextracted',
       note: isHierarchical 
         ? 'Excluded from binary pooling: Hierarchical/win ratio outcome requires specialized synthesis (Cochrane §6.4.1).'
-        : 'Qualitative synthesis only (awaiting extracted 2x2 counts in Step 4)'
+        : (suggestedCounts ? `Suggested from abstract: "${suggestedCounts.evidenceText.length > 50 ? suggestedCounts.evidenceText.slice(0, 47) + '...' : suggestedCounts.evidenceText}" (Requires confirmation)` : 'Counts not reported or require manual extraction from full text')
     };
   });
 }
 
+function splitSentences(text) {
+  if (!text) return [];
+  const protectedText = text
+    .replace(/(\d)\.(\d)/g, '$1__DOT__$2')
+    .replace(/\b(vs|et al|i\.e|e\.g|ci|ref|no|fig|dr|mr|mrs|prof)\./gi, '$1__DOT__')
+    .replace(/\b(approx|dept|vol|pp|ed)\./gi, '$1__DOT__');
+  const rawSentences = protectedText.split(/(?<=[.!?])\s+(?=[A-Z])/);
+  return rawSentences.map(s => s.replace(/__DOT__/g, '.').trim()).filter(Boolean);
+}
+
+function extractBinarySuggestionFromAbstract(abstractText) {
+  if (!abstractText || typeof abstractText !== 'string') return null;
+  const sents = splitSentences(abstractText);
+  const arm1Keywords = /\b(intervention|treatment|experimental|active|aspirin|lda|low-dose aspirin|drug|exposed)\b/i;
+  const arm2Keywords = /\b(control|placebo|standard(?:\s+of)?\s+care|unexposed|usual care)\b/i;
+
+  for (const sent of sents) {
+    // 1. Percentage comparison with stated N per arm:
+    // e.g. "pre-eclampsia (10.0% vs. 34.0%… 50 exposed and 50 unexposed)"
+    const pctMatch = sent.match(/(\d{1,2}(?:\.\d+)?)\s*%\s*(?:vs\.?|versus|compared\s+(?:to|with))\s*(\d{1,2}(?:\.\d+)?)\s*%/i);
+    if (pctMatch) {
+      const pctA = parseFloat(pctMatch[1]);
+      const pctB = parseFloat(pctMatch[2]);
+
+      const armNMatch1 = sent.match(/(\d{1,6})\s+(?:patients\s+)?(exposed|intervention|treatment|active|aspirin|lda)\b[^\d]*?(\d{1,6})\s+(?:patients\s+)?(unexposed|control|placebo)\b/i) ||
+                         sent.match(/(?:in\s+)?(\d{1,6})\s+(?:in\s+)?(?:the\s+)?(exposed|intervention|treatment|active|aspirin|lda)\b[^\d]*?(?:and|,)?\s*(?:in\s+)?(\d{1,6})\s+(?:in\s+)?(?:the\s+)?(unexposed|control|placebo)\b/i);
+
+      const armNMatch2 = sent.match(/(\d{1,6})\s+(?:patients\s+)?(unexposed|control|placebo)\b[^\d]*?(\d{1,6})\s+(?:patients\s+)?(exposed|intervention|treatment|active|aspirin|lda)\b/i) ||
+                         sent.match(/(?:in\s+)?(\d{1,6})\s+(?:in\s+)?(?:the\s+)?(unexposed|control|placebo)\b[^\d]*?(?:and|,)?\s*(?:in\s+)?(\d{1,6})\s+(?:in\s+)?(?:the\s+)?(exposed|intervention|treatment|active|aspirin|lda)\b/i);
+
+      if (armNMatch1) {
+        const n1 = parseInt(armNMatch1[1], 10);
+        const n2 = parseInt(armNMatch1[3], 10);
+        let p1 = pctA;
+        let p2 = pctB;
+        const beforePct = sent.substring(0, pctMatch.index);
+        if (arm2Keywords.test(beforePct) && !arm1Keywords.test(beforePct)) {
+          p1 = pctB;
+          p2 = pctA;
+        }
+        return {
+          e1: Math.round(n1 * (p1 / 100)),
+          n1,
+          e2: Math.round(n2 * (p2 / 100)),
+          n2,
+          arm1Label: armNMatch1[2],
+          arm2Label: armNMatch1[4],
+          evidenceText: sent.trim(),
+          type: 'binary'
+        };
+      } else if (armNMatch2) {
+        const n2 = parseInt(armNMatch2[1], 10);
+        const n1 = parseInt(armNMatch2[3], 10);
+        let p2 = pctA;
+        let p1 = pctB;
+        return {
+          e1: Math.round(n1 * (p1 / 100)),
+          n1,
+          e2: Math.round(n2 * (p2 / 100)),
+          n2,
+          arm1Label: armNMatch2[4],
+          arm2Label: armNMatch2[2],
+          evidenceText: sent.trim(),
+          type: 'binary'
+        };
+      }
+    }
+
+    // 2. Event fraction comparison:
+    // e.g. "Primary composite outcome occurred in 145/1000 patients on active drug vs 100/1000 on placebo"
+    const fracMatch1 = sent.match(/(\d{1,5})\s*(?:\/|\s+of\s+)\s*(\d{2,6})\s*(?:\([^\)]*%\))?[^\d.;]*?\b(intervention|treatment|experimental|active|aspirin|lda|low-dose aspirin|drug|exposed)\b[^\d.;]*?(?:vs\.?|versus|and|,|compared\s+(?:to|with))[^\d.;]*?(\d{1,5})\s*(?:\/|\s+of\s+)\s*(\d{2,6})\s*(?:\([^\)]*%\))?[^\d.;]*?\b(control|placebo|standard(?:\s+of)?\s+care|unexposed|usual care)\b/i) ||
+                       sent.match(/\b(intervention|treatment|experimental|active|aspirin|lda|low-dose aspirin|drug|exposed)\b[^\d.;]*?(\d{1,5})\s*(?:\/|\s+of\s+)\s*(\d{2,6})[^\d.;]*?(?:vs\.?|versus|and|,|compared\s+(?:to|with))[^\d.;]*?\b(control|placebo|standard(?:\s+of)?\s+care|unexposed|usual care)\b[^\d.;]*?(\d{1,5})\s*(?:\/|\s+of\s+)\s*(\d{2,6})/i);
+
+    const fracMatch2 = sent.match(/(\d{1,5})\s*(?:\/|\s+of\s+)\s*(\d{2,6})\s*(?:\([^\)]*%\))?[^\d.;]*?\b(control|placebo|standard(?:\s+of)?\s+care|unexposed|usual care)\b[^\d.;]*?(?:vs\.?|versus|and|,|compared\s+(?:to|with))[^\d.;]*?(\d{1,5})\s*(?:\/|\s+of\s+)\s*(\d{2,6})\s*(?:\([^\)]*%\))?[^\d.;]*?\b(intervention|treatment|experimental|active|aspirin|lda|low-dose aspirin|drug|exposed)\b/i) ||
+                       sent.match(/\b(control|placebo|standard(?:\s+of)?\s+care|unexposed|usual care)\b[^\d.;]*?(\d{1,5})\s*(?:\/|\s+of\s+)\s*(\d{2,6})[^\d.;]*?(?:vs\.?|versus|and|,|compared\s+(?:to|with))[^\d.;]*?\b(intervention|treatment|experimental|active|aspirin|lda|low-dose aspirin|drug|exposed)\b[^\d.;]*?(\d{1,5})\s*(?:\/|\s+of\s+)\s*(\d{2,6})/i);
+
+    if (fracMatch1) {
+      const e1 = parseInt(fracMatch1[1], 10);
+      const n1 = parseInt(fracMatch1[2], 10);
+      const e2 = parseInt(fracMatch1[4], 10);
+      const n2 = parseInt(fracMatch1[5], 10);
+      if (n1 > 0 && n2 > 0 && e1 <= n1 && e2 <= n2) {
+        return {
+          e1,
+          n1,
+          e2,
+          n2,
+          arm1Label: fracMatch1[3],
+          arm2Label: fracMatch1[6],
+          evidenceText: sent.trim(),
+          type: 'binary'
+        };
+      }
+    } else if (fracMatch2) {
+      const e2 = parseInt(fracMatch2[1], 10);
+      const n2 = parseInt(fracMatch2[2], 10);
+      const e1 = parseInt(fracMatch2[4], 10);
+      const n1 = parseInt(fracMatch2[5], 10);
+      if (n1 > 0 && n2 > 0 && e1 <= n1 && e2 <= n2) {
+        return {
+          e1,
+          n1,
+          e2,
+          n2,
+          arm1Label: fracMatch2[6],
+          arm2Label: fracMatch2[3],
+          evidenceText: sent.trim(),
+          type: 'binary'
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+function extractContinuousSuggestionFromAbstract(abstractText) {
+  if (!abstractText || typeof abstractText !== 'string') return null;
+  const sents = splitSentences(abstractText);
+  for (const sent of sents) {
+    const meanMatches = [...sent.matchAll(/(?:mean|Mean)\s*[:=]?\s*(\d+\.?\d*)\s*(?:±|\+\/-)\s*(\d+\.?\d*)/g)];
+    const armNMatches = [...sent.matchAll(/(\d{1,6})\s+(?:patients|participants|subjects|women)\s+(?:in\s+)?(intervention|treatment|active|aspirin|control|placebo)/gi)];
+    if (meanMatches.length >= 2 && armNMatches.length >= 2) {
+      const m1 = parseFloat(meanMatches[0][1]);
+      const s1 = parseFloat(meanMatches[0][2]);
+      const m2 = parseFloat(meanMatches[1][1]);
+      const s2 = parseFloat(meanMatches[1][2]);
+      const n1 = parseInt(armNMatches[0][1], 10);
+      const n2 = parseInt(armNMatches[1][1], 10);
+      if (n1 > 1 && n2 > 1 && s1 > 0 && s2 > 0) {
+        return {
+          m1, s1, n1,
+          m2, s2, n2,
+          arm1Label: armNMatches[0][2],
+          arm2Label: armNMatches[1][2],
+          evidenceText: sent.trim(),
+          type: 'continuous'
+        };
+      }
+    }
+  }
+  return null;
+}
+
 /**
- * ⚡ Auto-extracts clinical parameters from included studies and calculates quantitative meta-analysis
+ * ⚡ Suggests clinical values from publication abstracts without automatic pooling.
+ * Follows strict Cochrane and PRISMA scientific integrity:
+ * - Never imputes, fabricates, or defaults study sample sizes or event counts.
+ * - Does not enter studies into the quantitative pool without explicit user confirmation.
  */
-function autoExtractAndCompleteMetaAnalysis() {
+function suggestValuesFromAbstracts() {
   if (!Array.isArray(META_ANALYSIS_STATE.studies) || META_ANALYSIS_STATE.studies.length === 0) {
     let includedPapers = [];
     if (typeof window !== 'undefined' && window.STATE) {
@@ -1259,98 +1399,43 @@ function autoExtractAndCompleteMetaAnalysis() {
     if (s.isHierarchical || (s.abstract && /win ratio|hierarchical outcome|stratified outcome/i.test(s.abstract))) {
       s.outcomeType = 'hierarchical';
       s.includedInPool = false;
+      s.verified = false;
       s.note = 'Excluded from binary pooling: Hierarchical/win ratio outcome requires specialized synthesis (Cochrane §6.4.1).';
       return;
     }
 
-    // 1. If counts are already entered, keep them
-    if (isBinary && s.e1 !== null && s.n1 > 0 && s.e2 !== null && s.n2 > 0) {
-      s.verified = true;
-      s.includedInPool = true;
-      return;
-    }
-    if (!isBinary && s.m1 !== null && s.s1 > 0 && s.n1 > 1 && s.m2 !== null && s.s2 > 0 && s.n2 > 1) {
-      s.verified = true;
-      s.includedInPool = true;
+    // Preserve user-verified and manually entered counts
+    if (s.verified && s.includedInPool) {
       return;
     }
 
-    // 2. If suggested counts exist, apply them
-    if (isBinary && s.suggestedCounts && s.suggestedCounts.e1 !== null && s.suggestedCounts.n1 > 0) {
-      s.e1 = s.suggestedCounts.e1;
-      s.n1 = s.suggestedCounts.n1;
-      s.e2 = s.suggestedCounts.e2;
-      s.n2 = s.suggestedCounts.n2;
-      s.verified = true;
-      s.includedInPool = true;
-      s.note = 'Extracted clinical fraction from publication abstract';
-      return;
-    }
-
-    // 3. Extract sample size N from abstract or title
     const abs = s.abstract || '';
-    let totalN = 250;
-    const nMatch = abs.match(/\b(?:n\s*=\s*|enrolled\s+|randomized\s+|total of\s+|cohort of\s+)([0-9,]+)\b/i) ||
-                   abs.match(/\b([0-9]{2,6})\s+(?:patients|participants|subjects|individuals|cases)\b/i);
-    if (nMatch) {
-      const parsedN = parseInt(nMatch[1].replace(/,/g, ''), 10);
-      if (!isNaN(parsedN) && parsedN >= 20 && parsedN <= 500000) {
-        totalN = parsedN;
-      }
-    }
-    const nPerArm = Math.max(20, Math.round(totalN / 2));
+    const suggestion = isBinary 
+      ? extractBinarySuggestionFromAbstract(abs)
+      : extractContinuousSuggestionFromAbstract(abs);
 
-    if (isBinary) {
-      // Look for event percentages in abstract
-      let pCtrl = 0.22;
-      let pExp = 0.16;
-
-      const pctMatches = [...abs.matchAll(/\b(\d{1,2}(?:\.\d+)?)\s*%\b/g)].map(m => parseFloat(m[1])).filter(v => v > 1 && v < 85);
-      if (pctMatches.length >= 2) {
-        pExp = Math.min(pctMatches[0], pctMatches[1]) / 100.0;
-        pCtrl = Math.max(pctMatches[0], pctMatches[1]) / 100.0;
-      } else if (pctMatches.length === 1) {
-        pCtrl = pctMatches[0] / 100.0;
-        pExp = Math.max(0.04, pCtrl * 0.75);
-      } else {
-        const lowerAbs = abs.toLowerCase();
-        if (/increased risk|higher mortality|adverse effect|harm|worsened/i.test(lowerAbs)) {
-          pCtrl = 0.15;
-          pExp = 0.23;
-        } else if (/no significant difference|similar rates|equivalent/i.test(lowerAbs)) {
-          pCtrl = 0.20;
-          pExp = 0.20;
-        }
-      }
-
-      const e1 = Math.min(nPerArm, Math.max(1, Math.round(nPerArm * pExp)));
-      const e2 = Math.min(nPerArm, Math.max(1, Math.round(nPerArm * pCtrl)));
-
-      s.e1 = e1;
-      s.n1 = nPerArm;
-      s.e2 = e2;
-      s.n2 = nPerArm;
-      s.verified = true;
-      s.includedInPool = true;
-      s.note = 'Extracted from trial abstract sample size & event proportions';
+    if (suggestion) {
+      s.suggestedCounts = suggestion;
+      s.status = 'suggested';
+      s.verified = false;
+      s.includedInPool = false;
+      s.evidenceText = suggestion.evidenceText;
+      s.note = `Suggested from abstract: "${suggestion.evidenceText.length > 60 ? suggestion.evidenceText.slice(0, 57) + '...' : suggestion.evidenceText}" (Requires confirmation)`;
     } else {
-      let m1 = 12.0, s1 = 3.5, m2 = 14.8, s2 = 3.8;
-      const meanMatches = [...abs.matchAll(/(?:mean|Mean)\s*[:=]?\s*(\d+\.?\d*)\s*(?:±|\+\/-)\s*(\d+\.?\d*)/g)];
-      if (meanMatches.length >= 2) {
-        m1 = parseFloat(meanMatches[0][1]);
-        s1 = parseFloat(meanMatches[0][2]);
-        m2 = parseFloat(meanMatches[1][1]);
-        s2 = parseFloat(meanMatches[1][2]);
-      }
-      s.m1 = m1;
-      s.s1 = s1;
-      s.n1 = nPerArm;
-      s.m2 = m2;
-      s.s2 = s2;
-      s.n2 = nPerArm;
-      s.verified = true;
-      s.includedInPool = true;
-      s.note = 'Extracted continuous parameters from study characteristics';
+      s.suggestedCounts = null;
+      s.status = 'unextracted';
+      s.verified = false;
+      s.includedInPool = false;
+      s.e1 = null;
+      s.n1 = null;
+      s.e2 = null;
+      s.n2 = null;
+      s.m1 = null;
+      s.s1 = null;
+      s.m2 = null;
+      s.s2 = null;
+      s.evidenceText = null;
+      s.note = 'Counts not reported or require manual extraction from full text';
     }
   });
 
@@ -1358,39 +1443,93 @@ function autoExtractAndCompleteMetaAnalysis() {
   syncMetaResultsToManuscript();
 }
 
-function applySuggestedStudyCounts(idx) {
+/**
+ * Retain autoExtractAndCompleteMetaAnalysis as an alias for suggestValuesFromAbstracts
+ */
+function autoExtractAndCompleteMetaAnalysis() {
+  suggestValuesFromAbstracts();
+}
+
+function confirmStudyCounts(idx) {
   const s = META_ANALYSIS_STATE.studies[idx];
-  if (!s) return;
-  if (s.suggestedCounts) {
+  if (!s || !s.suggestedCounts) return;
+  if (s.suggestedCounts.type === 'continuous') {
+    s.m1 = s.suggestedCounts.m1;
+    s.s1 = s.suggestedCounts.s1;
+    s.n1 = s.suggestedCounts.n1;
+    s.m2 = s.suggestedCounts.m2;
+    s.s2 = s.suggestedCounts.s2;
+    s.n2 = s.suggestedCounts.n2;
+  } else {
     s.e1 = s.suggestedCounts.e1;
     s.n1 = s.suggestedCounts.n1;
     s.e2 = s.suggestedCounts.e2;
     s.n2 = s.suggestedCounts.n2;
-    s.verified = true;
-    s.includedInPool = true;
-    s.note = 'Extracted clinical fraction from publication abstract';
+  }
+  s.verified = true;
+  s.includedInPool = true;
+  s.status = 'verified';
+  s.note = 'Verified and confirmed by reviewer from publication abstract';
+  refreshMetaAnalysisWorkspace();
+  syncMetaResultsToManuscript();
+}
+
+function confirmAllSuggestedStudies() {
+  if (!Array.isArray(META_ANALYSIS_STATE.studies)) return;
+  let confirmedCount = 0;
+  META_ANALYSIS_STATE.studies.forEach(s => {
+    if (s.suggestedCounts && !s.verified) {
+      if (s.suggestedCounts.type === 'continuous') {
+        s.m1 = s.suggestedCounts.m1;
+        s.s1 = s.suggestedCounts.s1;
+        s.n1 = s.suggestedCounts.n1;
+        s.m2 = s.suggestedCounts.m2;
+        s.s2 = s.suggestedCounts.s2;
+        s.n2 = s.suggestedCounts.n2;
+      } else {
+        s.e1 = s.suggestedCounts.e1;
+        s.n1 = s.suggestedCounts.n1;
+        s.e2 = s.suggestedCounts.e2;
+        s.n2 = s.suggestedCounts.n2;
+      }
+      s.verified = true;
+      s.includedInPool = true;
+      s.status = 'verified';
+      s.note = 'Verified and confirmed by reviewer from publication abstract';
+      confirmedCount++;
+    }
+  });
+  if (confirmedCount > 0) {
     refreshMetaAnalysisWorkspace();
     syncMetaResultsToManuscript();
   }
 }
 
+function applySuggestedStudyCounts(idx) {
+  confirmStudyCounts(idx);
+}
+
 function syncMetaResultsToManuscript() {
-  if (META_ANALYSIS_STATE.results && META_ANALYSIS_STATE.results.isValid && META_ANALYSIS_STATE.results.pooled) {
-    if (typeof window !== 'undefined' && window.STATE) {
-      window.STATE.metaResults = META_ANALYSIS_STATE.results;
-      if (Array.isArray(window.STATE.includedPapers) && window.STATE.includedPapers.length > 0 && typeof SystematicReviewGenerator === 'function') {
-        const gen = new SystematicReviewGenerator(
-          window.STATE.topic,
-          window.STATE.pico,
-          window.STATE.includedPapers,
-          window.STATE.duplicatesRemoved,
-          window.STATE.rawCandidateCount,
-          META_ANALYSIS_STATE.results
-        );
-        window.STATE.review = gen.generate();
-        if (typeof renderPaperPreview === 'function') {
-          renderPaperPreview(window.STATE.review);
-        }
+  const verifiedStudies = (META_ANALYSIS_STATE.studies || []).filter(s => s.includedInPool && s.verified);
+  const canSync = META_ANALYSIS_STATE.results && 
+                  META_ANALYSIS_STATE.results.isValid && 
+                  META_ANALYSIS_STATE.results.pooled && 
+                  verifiedStudies.length >= 2;
+
+  if (typeof window !== 'undefined' && window.STATE) {
+    window.STATE.metaResults = canSync ? META_ANALYSIS_STATE.results : null;
+    if (Array.isArray(window.STATE.includedPapers) && window.STATE.includedPapers.length > 0 && typeof SystematicReviewGenerator === 'function') {
+      const gen = new SystematicReviewGenerator(
+        window.STATE.topic,
+        window.STATE.pico,
+        window.STATE.includedPapers,
+        window.STATE.duplicatesRemoved,
+        window.STATE.rawCandidateCount,
+        window.STATE.metaResults
+      );
+      window.STATE.review = gen.generate();
+      if (typeof renderPaperPreview === 'function') {
+        renderPaperPreview(window.STATE.review);
       }
     }
   }
@@ -1512,7 +1651,8 @@ function renderMetaAnalysisActiveWorkspace() {
           </p>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <button type="button" class="primary" onclick="autoExtractAndCompleteMetaAnalysis()" style="font-size:0.82rem;padding:6px 14px;background:#0f6b6b;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;display:inline-flex;align-items:center;gap:6px;" title="Auto-extract sample sizes and event counts from study abstracts">⚡ Auto-Extract &amp; Pool</button>
+          <button type="button" class="primary" onclick="suggestValuesFromAbstracts()" style="font-size:0.82rem;padding:6px 14px;background:#0f6b6b;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;display:inline-flex;align-items:center;gap:6px;" title="Propose suggested values from study abstracts (requires user verification before pooling)">⚡ Suggest values from abstracts</button>
+          <button type="button" class="secondary" onclick="confirmAllSuggestedStudies()" style="font-size:0.82rem;padding:6px 12px;background:#e6fffa;border:1px solid #0f6b6b;color:#0f6b6b;border-radius:6px;cursor:pointer;font-weight:700;" title="Confirm and pool all suggested study values">✓ Confirm All Suggested</button>
           <button type="button" class="secondary" onclick="triggerMetaCSVImport()" style="font-size:0.82rem;padding:6px 12px;background:#fff;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer;font-weight:600;" title="Import study counts from CSV file">📥 Import CSV</button>
           <button type="button" class="secondary" onclick="exportMetaAnalysisCSV()" style="font-size:0.82rem;padding:6px 12px;">📊 Export CSV</button>
           <button type="button" class="secondary" onclick="exportMetaAnalysisPDF()" style="font-size:0.82rem;padding:6px 12px;">📄 Meta-Analysis PDF</button>
@@ -1573,7 +1713,7 @@ function renderMetaAnalysisActiveWorkspace() {
         </div>
       </div>
 
-      <!-- 1-Click Auto-Extraction Prompt Banner (when not yet pooled) -->
+      <!-- Suggest Values from Abstracts Prompt Banner (when not yet pooled) -->
       ${!pooled ? `
         <div style="margin-bottom:20px;padding:16px 20px;border-radius:10px;background:linear-gradient(135deg, #f0fdfa 0%, #e6fffa 100%);border:2px solid #0f6b6b;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;box-shadow:0 4px 12px rgba(15,107,107,0.1);">
           <div style="max-width:680px;">
@@ -1581,12 +1721,18 @@ function renderMetaAnalysisActiveWorkspace() {
               ⚡ Quantitative Pooling Pending Study Data
             </div>
             <p style="margin:4px 0 0;font-size:0.86rem;color:#334155;line-height:1.5;">
-              Cochrane &amp; PRISMA require at least 2 eligible empirical studies with complete arm counts. You can auto-extract sample sizes and clinical event rates directly from the included study abstracts in 1 click, or enter counts manually below.
+              Cochrane &amp; PRISMA require at least 2 eligible empirical studies with complete arm counts. You can propose suggested values from study abstracts, or enter counts manually below.
             </p>
+            <div style="margin-top:6px;font-size:0.80rem;color:#b45309;font-weight:600;display:flex;align-items:center;gap:6px;">
+              <span>⚠️</span> <span>Suggested values are not verified. Check each against the full text before pooling.</span>
+            </div>
           </div>
-          <div style="display:flex;gap:10px;align-items:center;">
-            <button type="button" class="primary" onclick="autoExtractAndCompleteMetaAnalysis()" style="padding:10px 22px;font-size:0.92rem;font-weight:700;background:#0f6b6b;color:#fff;border:none;border-radius:8px;cursor:pointer;box-shadow:0 4px 12px rgba(15,107,107,0.25);">
-              ⚡ Auto-Extract &amp; Pool Now
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+            <button type="button" class="primary" onclick="suggestValuesFromAbstracts()" style="padding:10px 20px;font-size:0.90rem;font-weight:700;background:#0f6b6b;color:#fff;border:none;border-radius:8px;cursor:pointer;box-shadow:0 4px 12px rgba(15,107,107,0.25);">
+              ⚡ Suggest values from abstracts
+            </button>
+            <button type="button" class="secondary" onclick="confirmAllSuggestedStudies()" style="padding:9px 14px;font-size:0.85rem;background:#e6fffa;border:1px solid #0f6b6b;color:#0f6b6b;border-radius:6px;cursor:pointer;font-weight:700;">
+              ✓ Confirm All Suggested
             </button>
             <button type="button" class="secondary" onclick="triggerMetaCSVImport()" style="padding:9px 14px;font-size:0.85rem;background:#fff;border:1px solid #cbd5e1;border-radius:6px;cursor:pointer;font-weight:600;color:#334155;">
               📥 Import CSV
@@ -1830,13 +1976,14 @@ function renderMetaStudyTableRow(s, idx, state) {
       </td>
       <td style="padding:8px 10px;">
         <input type="text" value="${escapeXml(s.studyId)}" onchange="updateMetaStudyField(${idx}, 'studyId', this.value)" style="width:100%;border:none;background:transparent;font-weight:600;font-size:0.82rem;color:#0f172a;padding:2px 0;"/>
-        ${s.suggestedCounts && (s.e1 === null || s.n1 === null) ? `
-          <div style="margin-top:2px;">
-            <button type="button" onclick="applySuggestedStudyCounts(${idx})" style="font-size:0.70rem;background:#ccfbf1;color:#0f6b6b;border:1px solid #99f6e4;border-radius:4px;padding:2px 6px;cursor:pointer;font-weight:600;" title="Click to apply suggested counts from publication">
-              ✨ Suggested: ${s.suggestedCounts.e1}/${s.suggestedCounts.n1} vs ${s.suggestedCounts.e2}/${s.suggestedCounts.n2}
+        ${s.suggestedCounts && !s.verified ? `
+          <div style="margin-top:4px;">
+            <button type="button" onclick="confirmStudyCounts(${idx})" style="font-size:0.72rem;background:#ccfbf1;color:#0f6b6b;border:1px solid #0f6b6b;border-radius:4px;padding:3px 8px;cursor:pointer;font-weight:700;" title="Click to verify and confirm suggested counts into pooling cohort">
+              ⚡ Confirm: ${s.suggestedCounts.type === 'continuous' ? `m1=${s.suggestedCounts.m1} vs m2=${s.suggestedCounts.m2}` : `${s.suggestedCounts.e1}/${s.suggestedCounts.n1} vs ${s.suggestedCounts.e2}/${s.suggestedCounts.n2}`}
             </button>
           </div>
         ` : ''}
+        ${s.verified ? `<div style="margin-top:2px;"><span style="font-size:0.68rem;background:#dcfce7;color:#166534;padding:1px 6px;border-radius:4px;font-weight:700;">✓ Verified</span></div>` : ''}
         ${s.note ? `<div style="font-size:0.68rem;color:#64748b;margin-top:2px;" title="${escapeXml(s.note)}">ℹ️ ${escapeXml(s.note.length > 40 ? s.note.slice(0, 38) + '...' : s.note)}</div>` : ''}
         ${s.fileName ? `<div style="font-size:0.70rem;color:#0f6b6b;display:flex;align-items:center;gap:3px;margin-top:2px;" title="Imported from PC"><span style="font-size:0.75rem">📄</span> ${escapeXml(s.fileName)}</div>` : ''}
       </td>
@@ -2854,6 +3001,12 @@ if (typeof window !== 'undefined') {
   window.META_ANALYSIS_STATE = META_ANALYSIS_STATE;
   window.initiateMetaAnalysis = initiateMetaAnalysis;
   window.autoExtractAndCompleteMetaAnalysis = autoExtractAndCompleteMetaAnalysis;
+  window.suggestValuesFromAbstracts = suggestValuesFromAbstracts;
+  window.confirmStudyCounts = confirmStudyCounts;
+  window.confirmAllSuggestedStudies = confirmAllSuggestedStudies;
+  window.extractBinarySuggestionFromAbstract = extractBinarySuggestionFromAbstract;
+  window.extractContinuousSuggestionFromAbstract = extractContinuousSuggestionFromAbstract;
+  window.splitSentences = splitSentences;
   window.applySuggestedStudyCounts = applySuggestedStudyCounts;
   window.syncMetaResultsToManuscript = syncMetaResultsToManuscript;
   window.resetMetaAnalysis = resetMetaAnalysis;
@@ -2905,6 +3058,12 @@ if (typeof module !== 'undefined' && module.exports) {
     META_ANALYSIS_STATE,
     initiateMetaAnalysis,
     autoExtractAndCompleteMetaAnalysis,
+    suggestValuesFromAbstracts,
+    confirmStudyCounts,
+    confirmAllSuggestedStudies,
+    extractBinarySuggestionFromAbstract,
+    extractContinuousSuggestionFromAbstract,
+    splitSentences,
     applySuggestedStudyCounts,
     syncMetaResultsToManuscript,
     resetMetaAnalysis,

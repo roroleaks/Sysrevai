@@ -525,14 +525,33 @@ assert(!isNaN(pooled.pointEstimate) && pooled.pointEstimate > 0.6 && pooled.poin
 assert(pooled.ciLow > 0 && pooled.ciHigh < 1.0, 'Meta-analysis confidence interval statistically significant [CI < 1.0]');
 assert(pooled.I2 !== undefined && !isNaN(pooled.I2), 'Heterogeneity I² statistic calculated');
 
-// Test 1-Click Auto-Extraction and Quantitative Meta-Analysis Completion
-window.STATE.includedPapers = included;
-META_ANALYSIS_STATE.studies = syncMetaStudiesFromIncluded(included);
+// Test Suggestion from Abstracts and Honest User-Confirmation Workflow (Phase 1)
+const testIncluded = [
+  {
+    title: 'Trial of Aspirin for Preeclampsia Prevention',
+    authors: 'Agana M et al.',
+    year: 2026,
+    abstract: 'Primary endpoint was preterm pre-eclampsia (10.0% vs. 34.0%… 50 exposed and 50 unexposed).',
+    screening: { status: 'INCLUDED', design: { name: 'Randomized controlled trials (RCTs)', code: 'rct' } }
+  },
+  {
+    title: 'Multicenter Evaluation of Active Agent',
+    authors: 'Smith J et al.',
+    year: 2025,
+    abstract: 'Primary composite outcome occurred in 145/1000 patients on active drug vs 100/1000 on placebo (P=0.002).',
+    screening: { status: 'INCLUDED', design: { name: 'Randomized controlled trials (RCTs)', code: 'rct' } }
+  }
+];
+window.STATE.includedPapers = testIncluded;
+META_ANALYSIS_STATE.studies = syncMetaStudiesFromIncluded(testIncluded);
 assert(META_ANALYSIS_STATE.studies.every(s => s.e1 === null), 'Synced studies initially have unpopulated null counts');
-autoExtractAndCompleteMetaAnalysis();
-assert(META_ANALYSIS_STATE.results && META_ANALYSIS_STATE.results.isValid && META_ANALYSIS_STATE.results.pooled, 'autoExtractAndCompleteMetaAnalysis successfully completes quantitative pooling in 1 click');
-assert(META_ANALYSIS_STATE.results.pooled.pointEstimate > 0, 'autoExtractAndCompleteMetaAnalysis produces valid pooled effect estimate');
-assert(META_ANALYSIS_STATE.results.pooled.totalN1 > 0 && META_ANALYSIS_STATE.results.pooled.totalN2 > 0, 'autoExtractAndCompleteMetaAnalysis extracted valid trial sample sizes');
+assert(META_ANALYSIS_STATE.studies.every(s => s.includedInPool === false && s.verified === false), 'Synced studies are unverified and not auto-included in pool');
+suggestValuesFromAbstracts();
+assert(META_ANALYSIS_STATE.studies.every(s => s.status === 'suggested' && s.includedInPool === false), 'Suggested values are proposed without auto-entering the pool');
+confirmAllSuggestedStudies();
+assert(META_ANALYSIS_STATE.results && META_ANALYSIS_STATE.results.isValid && META_ANALYSIS_STATE.results.pooled, 'Confirmed studies successfully complete quantitative pooling');
+assert(META_ANALYSIS_STATE.results.pooled.pointEstimate > 0, 'Confirmed studies produce valid pooled effect estimate');
+assert(META_ANALYSIS_STATE.results.pooled.totalN1 > 0 && META_ANALYSIS_STATE.results.pooled.totalN2 > 0, 'Confirmed studies contain valid trial sample sizes');
 
 // Regression Assertion: Integer-ness validation in calculateBinaryStudyEffect (W13)
 const nonIntRes = calculateBinaryStudyEffect({ e1: 12.5, n1: 100, e2: 15, n2: 100 }, 'RR', 1.96);
