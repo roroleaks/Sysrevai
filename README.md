@@ -12,16 +12,16 @@
 
 <br/>
 
-[![PRISMA 2020 Compliant](https://img.shields.io/badge/Standard-PRISMA%202020%20Compliant-0f6b6b?style=flat-square&logo=academia)](http://www.prisma-statement.org/)
-[![Cochrane RoB 2](https://img.shields.io/badge/Quality-Cochrane%20RoB%202%20Appraisal-15803d?style=flat-square)](https://www.cochrane.org/)
-[![Dual Literature Engine](https://img.shields.io/badge/APIs-Europe%20PMC%20%2B%20Semantic%20Scholar-blue?style=flat-square)](https://europepmc.org)
+[![PRISMA 2020 Aligned](https://img.shields.io/badge/Standard-PRISMA%202020%20Aligned-0f6b6b?style=flat-square&logo=academia)](http://www.prisma-statement.org/)
+[![Preliminary RoB Screen](https://img.shields.io/badge/Quality-Preliminary%20RoB%20Screen-15803d?style=flat-square)](https://www.cochrane.org/)
+[![Multi-Database Engine](https://img.shields.io/badge/APIs-Europe%20PMC%20%2B%20S2%20%2B%20OpenAlex%20%2B%20Crossref-blue?style=flat-square)](https://europepmc.org)
 [![Citation Styles](https://img.shields.io/badge/Citations-Vancouver%20%7C%20APA%20%7C%20Harvard-1d4ed8?style=flat-square)](https://www.nlm.nih.gov/bsd/uniform_requirements.html)
 [![Meta-Analysis](https://img.shields.io/badge/Meta--Analysis-Binary%20%26%20Continuous%20Pooling-7c3aed?style=flat-square)](#step-5-quantitative-synthesis--meta-analysis-engine)
 [![Author](https://img.shields.io/badge/Author-Dr.%20Raouf%20Roshdy-0a4a4a?style=flat-square)](#-author--attribution)
 
 <p align="center">
-  <strong>From Structured Clinical Question (PICOS) to Publication-Grade Systematic Review &amp; Meta-Analysis</strong><br/>
-  <em>An automated, high-throughput evidence synthesis platform engineered for clinicians, medical researchers, and systematic review methodologists. Strictly compliant with PRISMA 2020 reporting standards, Cochrane Risk of Bias heuristics, tri-modal citation formatting (Vancouver, APA 7th, Harvard), and DerSimonian-Laird / Inverse-Variance quantitative meta-analysis pooling.</em>
+  <strong>From Structured Clinical Question (PICOS) to Evidence Synthesis Workspace</strong><br/>
+  <em>An automated, high-throughput evidence synthesis platform engineered to assist clinicians, medical researchers, and review methodologists. Features PRISMA 2020 aligned structuring, preliminary Risk of Bias heuristics, tri-modal citation formatting (Vancouver, APA 7th, Harvard), and rigorous statistical meta-analysis pooling (Inverse-Variance, DerSimonian-Laird, REML, and Hartung-Knapp-Sidik-Jonkman).</em>
 </p>
 
 [**🚀 Explore Live App**](https://sysrevai.vercel.app) • [**📋 PRISMA 2020 Statement**](http://www.prisma-statement.org/) • [**🐛 Report an Issue**](https://github.com/roroleaks/Sysrevai/issues)
@@ -30,28 +30,41 @@
 
 ---
 
+## ⚠️ Limitations and Intended Use
+
+> [!IMPORTANT]
+> **SysRevAI is an assistive software tool designed to support — not replace — a qualified human review team.** Systematic evidence synthesis requires expert human judgment, dual-reviewer screening, full-text appraisal, and clinical contextualization:
+>
+> 1. **Automated Triage, Not Definitive Screening**: Title/abstract screening is an automated preliminary filter based on protocol keywords. PRISMA 2020 and Cochrane standards require that full-text reports be assessed independently by at least two human reviewers.
+> 2. **Preliminary RoB Screening Only**: Risk of bias domain ratings generated from abstract text are heuristic screening indicators, not validated RoB 2 or ROBINS-I assessments. Formal quality appraisal requires thorough manual evaluation of trial protocols, statistical analysis plans, and full publications.
+> 3. **Zero Fabrication & Verification Mandatory**: The platform never fabricates or imputes numbers. Extracted event counts and sample sizes are exploratory suggestions that require explicit human verification against primary trial tables before entering the statistical pooling cohort.
+> 4. **Working Draft Manuscript**: Synthesized manuscripts and PRISMA checklists are initial structural drafts. They do not issue clinical practice recommendations and must be critically examined, edited, and approved by the review team prior to publication or clinical application.
+
+---
+
 ## 📑 Table of Contents
-1. [Why Sysrevai? Paradigm Shift in Evidence Synthesis](#-why-sysrevai-paradigm-shift-in-evidence-synthesis)
-2. [End-to-End 5-Step Pipeline Architecture](#-end-to-end-5-step-pipeline-architecture)
-3. [System Workflow Diagrams](#-system-workflow-diagrams)
+1. [Limitations and Intended Use](#-limitations-and-intended-use)
+2. [Why Sysrevai? Paradigm Shift in Evidence Synthesis](#-why-sysrevai-paradigm-shift-in-evidence-synthesis)
+3. [End-to-End 5-Step Pipeline Architecture](#-end-to-end-5-step-pipeline-architecture)
+4. [System Workflow Diagrams](#-system-workflow-diagrams)
    - [High-Level 5-Step Pipeline Flow](#1-high-level-5-step-pipeline-flow)
    - [Dual Harvesting & Cross-Database Deduplication Sequence](#2-dual-harvesting--cross-database-deduplication-sequence)
    - [PRISMA 2020 Screening & Decision State Machine](#3-prisma-2020-screening--decision-state-machine)
    - [Quantitative Meta-Analysis Pooling & Forest Plot Engine](#4-quantitative-meta-analysis-pooling--forest-plot-engine)
-4. [Deep Dive into Pipeline Stages](#-deep-dive-into-pipeline-stages)
+5. [Deep Dive into Pipeline Stages](#-deep-dive-into-pipeline-stages)
    - [Step 1: PICOS & Eligibility Criteria Configuration](#step-1-picos--eligibility-criteria-configuration)
-   - [Step 2: Dual Retrieval & Entity Resolution](#step-2-dual-retrieval--entity-resolution)
-   - [Step 3: PRISMA Screening & Cochrane RoB 2](#step-3-prisma-screening--cochrane-rob-2)
+   - [Step 2: Multi-Database Retrieval & Entity Resolution](#step-2-dual-retrieval--entity-resolution)
+   - [Step 3: PRISMA Screening & Preliminary RoB](#step-3-prisma-screening--cochrane-rob-2)
    - [Step 4: Systematic Review Manuscript Synthesis](#step-4-systematic-review-manuscript-synthesis)
    - [Step 5: Quantitative Synthesis & Meta-Analysis Engine](#step-5-quantitative-synthesis--meta-analysis-engine)
-5. [Triple Citation Engine & Parity Guarantee](#-triple-citation-engine--parity-guarantee)
-6. [Interactive PRISMA 2020 Flow Diagram Generator](#-interactive-prisma-2020-flow-diagram-generator)
-7. [Medical & Scientific AI Advisory Compliance](#-medical--scientific-ai-advisory-compliance)
-8. [PRISMA 2020 27-Item Compliance Matrix](#-prisma-2020-27-item-compliance-matrix)
-9. [Quick Start & Installation](#-quick-start--installation)
-10. [Technology Stack](#-technology-stack)
-11. [Author & Attribution](#-author--attribution)
-12. [License & Disclaimer](#-license--disclaimer)
+6. [Triple Citation Engine & Citation Verification](#-triple-citation-engine--parity-guarantee)
+7. [Interactive PRISMA 2020 Flow Diagram Generator](#-interactive-prisma-2020-flow-diagram-generator)
+8. [Medical & Scientific AI Advisory Compliance](#-medical--scientific-ai-advisory-compliance)
+9. [PRISMA 2020 27-Item Compliance Matrix](#-prisma-2020-27-item-compliance-matrix)
+10. [Quick Start & Installation](#-quick-start--installation)
+11. [Technology Stack](#-technology-stack)
+12. [Author & Attribution](#-author--attribution)
+13. [License & Disclaimer](#-license--disclaimer)
 
 ---
 
@@ -65,16 +78,16 @@ Traditional conversational AI tools output unstructured narrative summaries or o
 | :--- | :--- | :--- | :--- |
 | **Protocol Framework** | Unstructured prompt | Free-form summary | **Structured 5-Point PICOS Protocol** |
 | **Eligible Study Types** | Unfiltered / mixed | Variable | **Strict Restriction to 9 Empirical Designs** |
-| **Search Infrastructure** | Single API / black box | Web search scraping | **Europe PMC + Semantic Scholar Dual APIs** |
-| **Entity Resolution** | Incomplete / duplicates | None | **PMID, DOI, and Title-Hash Deduplication** |
+| **Search Infrastructure** | Single API / black box | Web search scraping | **Europe PMC + S2 + OpenAlex + Crossref APIs** |
+| **Entity Resolution** | Incomplete / duplicates | None | **PMID, DOI, and Multi-Key Deduplication** |
 | **Screening Transparency** | Unverifiable | Opaque | **PRISMA 2020 Interactive Funnel with Rationale** |
-| **Quality Assessment** | Omitted | Subjective ranking | **5-Domain Cochrane RoB 2 Traffic-Light Matrix** |
+| **Quality Assessment** | Omitted | Subjective ranking | **Automated Preliminary RoB Screening Matrix** |
 | **Data Extraction** | Vague text snippets | Manual copying | **Automated Characteristics Table (Table 1)** |
 | **Citation Formatting** | Bracketed numbers `[1]` | Static links | **Vancouver (Superscript), APA 7th, Harvard** |
-| **Citation Parity** | Frequent discrepancies | Loose parity | **Deterministic 100% Text-to-Bibliography Audit** |
+| **Citation Parity** | Frequent discrepancies | Loose parity | **Automated Citation-to-Reference Verification** |
 | **Quantitative Pooling** | Unsupported | Unsupported | **Meta-Analysis: Binary (RR/OR/RD) & Continuous (MD/SMD)** |
 | **Forest & Funnel Plots** | Unsupported | Unsupported | **Vector SVG + High-Res PNG + Leave-One-Out Plots** |
-| **Academic Exports** | Raw text / Markdown | Basic document | **Triple Publication PDFs + CSV Dataset + SVG Diagrams** |
+| **Academic Exports** | Raw text / Markdown | Basic document | **Word-Compatible HTML + PDF + CSV + SVG** |
 
 ---
 
