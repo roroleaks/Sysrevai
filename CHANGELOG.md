@@ -156,3 +156,34 @@ All notable methodology, statistical, screening, security, and export improvemen
   - Test 10: XSS tag sanitization.
   - Test 11: PDF Unicode character preservation.
   - Test 12: 3-way multi-source deduplication resolution.
+
+---
+
+## [Phase 5] - Mandatory Literature Sources & "No Paper Repeated" Deduplication
+
+### New files
+- **`sources.js`**: frozen `SOURCE_REGISTRY` of 10 mandatory sources (PubMed, Google Scholar, Cochrane CDSR, Cochrane CENTRAL, ClinicalTrials.gov, Europe PMC, Europe PMC preprints, Semantic Scholar, OpenAlex, Crossref), each with `key`, `displayName`, `interfaceLabel`, `prismaCategory`, `fetch()`, `translateQuery()`, `requiresKey`, `peerReviewed`. One shared search strategy (`buildSearchStrategy`) with per-source translators; copy-ready Cochrane Library strategy; RIS parser; ClinicalTrials.gov and SerpApi mappers; Google Scholar enrichment (Crossref DOI match → Europe PMC / OpenAlex abstract).
+- **`dedup.js`**: union-find clustering over all raw records (PMID, PMCID, DOI, OpenAlex, S2, Scholar, Cochrane CD number, CENTRAL accession, exact and fuzzy titles) with a cluster-level conflict guard; study-level linking of preprints, trial registrations, errata/retraction notices and Cochrane `.pubN` versions; merge audit log.
+- **`api/pubmed.js`** (E-utilities esearch + efetch XML, NCBI throttle, structured abstracts), **`api/scholar.js`** (SerpApi; `not_configured` without `SERPAPI_KEY`, never scrapes), **`api/ctgov.js`** (API v2), shared **`api/_proxy-utils.js`**. `api/crossref.js` gains a bibliographic lookup mode and `api/openalex.js` a DOI lookup mode.
+- **`test-dedup.js`**, **`test-sources.js`**, **`test-app-harness.js`**.
+
+### Fixed defects
+1. **Silent cross-source substitution removed.** Europe PMC no longer returns OpenAlex results on failure and Semantic Scholar no longer returns OpenAlex + Crossref; those records were double-counted and credited to the wrong source. Each source reports only its own records and status; HTTP 429 is retried within the same source.
+2. **Greedy single-pass dedup replaced** by union-find clustering, so transitive duplicates (X{pmid:1} · Y{doi:A} · Z{pmid:1, doi:A}) collapse into one record.
+3. **Conflict guard**: records with different non-empty PMIDs or DOIs (multi-part papers, extension studies) are never merged, including transitively.
+4. **The PICO / custom query is what every source runs** (translated to native syntax); the exact executed string, endpoint, timestamp, hits and retrieved counts are logged per source.
+
+### `index.html`
+- Source checkboxes, *Select all*, *Dual core* and *Clear all*, and `STATE.selectedDatabases` / `STATE.searchSource` with all their handlers removed; replaced by a read-only *Mandatory literature sources* board with live status and per-source Retry.
+- `addRecordsToPool()` is the single entry point into `STATE.papers` (search, retry, CENTRAL RIS import, Step 5 full-text import, project load). The pool is rebuilt from raw per-source batches, so retries, RIS re-imports and reloads are idempotent. Reviewer *Remove* no longer splices the pool.
+- Step 3: multi-source badges and "Also reported as" chips; *Existing Cochrane evidence* panel and PICO-match banner; *Duplicates & linked reports* panel with "Not a duplicate — split" override and CSV export; visible integrity error if Σ retrieved ≠ identified ≠ unique + removed or any identifier is shared.
+- Screening rules: retracted → EXCLUDED ("Retracted publication"); Cochrane reviews → EXCLUDED (background/citation searching); Google Scholar records without an abstract → BORDERLINE, never auto-included; preprints and unlinked registrations → BORDERLINE.
+- Manuscript: Methods/Abstract name only sources whose status is `ok`, with interface labels and Table S1 (exact queries, dates, hits, retrieved); Limitations list failed / not-configured / not-searched sources with reasons; non-dismissable CENTRAL gate with acknowledgement printed in Limitations; matching Cochrane reviews cited in the Introduction only when referenced; reference lists de-duplicated in every citation style.
+- Project save/load and JSON export include `searchStrategy`, `searchLog`, `sourceStatus`, `sourceRecords`, `dedupLog`, `dedupOverrides` and the CENTRAL import file name/date.
+
+### `prisma-generator.js`
+- Automatically uses **Template B**: per-database counts, ClinicalTrials.gov under Registers, Google Scholar under Other methods (search engines). Duplicates removed vs. reports linked to their study ("removed for other reasons") are reported separately and reconcile exactly.
+
+### `meta-analysis-engine.js`
+- Step 5 custom PDF/DOCX study import is routed through `addRecordsToPool` (DOI/PMID/NCT read from the document); a report that matches a study already in the meta-analysis pool is linked, not added twice. No statistical code changed.
+

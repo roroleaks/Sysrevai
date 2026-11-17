@@ -14,7 +14,7 @@
 
 [![PRISMA 2020 Aligned](https://img.shields.io/badge/Standard-PRISMA%202020%20Aligned-0f6b6b?style=flat-square&logo=academia)](http://www.prisma-statement.org/)
 [![Preliminary RoB Screen](https://img.shields.io/badge/Quality-Preliminary%20RoB%20Screen-15803d?style=flat-square)](https://www.cochrane.org/)
-[![Multi-Database Engine](https://img.shields.io/badge/APIs-Europe%20PMC%20%2B%20S2%20%2B%20OpenAlex%20%2B%20Crossref-blue?style=flat-square)](https://europepmc.org)
+[![Mandatory Sources](https://img.shields.io/badge/Sources-PubMed%20%C2%B7%20Cochrane%20%C2%B7%20Google%20Scholar%20%C2%B7%20CT.gov%20%C2%B7%20EPMC%20%C2%B7%20S2%20%C2%B7%20OpenAlex%20%C2%B7%20Crossref-blue?style=flat-square)](#step-2-mandatory-multi-source-retrieval--entity-resolution)
 [![Citation Styles](https://img.shields.io/badge/Citations-Vancouver%20%7C%20APA%20%7C%20Harvard-1d4ed8?style=flat-square)](https://www.nlm.nih.gov/bsd/uniform_requirements.html)
 [![Meta-Analysis](https://img.shields.io/badge/Meta--Analysis-Binary%20%26%20Continuous%20Pooling-7c3aed?style=flat-square)](#step-5-quantitative-synthesis--meta-analysis-engine)
 [![Author](https://img.shields.io/badge/Author-Dr.%20Raouf%20Roshdy-0a4a4a?style=flat-square)](#-author--attribution)
@@ -53,7 +53,7 @@
    - [Quantitative Meta-Analysis Pooling & Forest Plot Engine](#4-quantitative-meta-analysis-pooling--forest-plot-engine)
 5. [Deep Dive into Pipeline Stages](#-deep-dive-into-pipeline-stages)
    - [Step 1: PICOS & Eligibility Criteria Configuration](#step-1-picos--eligibility-criteria-configuration)
-   - [Step 2: Multi-Database Retrieval & Entity Resolution](#step-2-dual-retrieval--entity-resolution)
+   - [Step 2: Mandatory Multi-Source Retrieval & Entity Resolution](#step-2-mandatory-multi-source-retrieval--entity-resolution)
    - [Step 3: PRISMA Screening & Preliminary RoB](#step-3-prisma-screening--cochrane-rob-2)
    - [Step 4: Systematic Review Manuscript Synthesis](#step-4-systematic-review-manuscript-synthesis)
    - [Step 5: Quantitative Synthesis & Meta-Analysis Engine](#step-5-quantitative-synthesis--meta-analysis-engine)
@@ -78,8 +78,8 @@ Traditional conversational AI tools output unstructured narrative summaries or o
 | :--- | :--- | :--- | :--- |
 | **Protocol Framework** | Unstructured prompt | Free-form summary | **Structured 5-Point PICOS Protocol** |
 | **Eligible Study Types** | Unfiltered / mixed | Variable | **Strict Restriction to 9 Empirical Designs** |
-| **Search Infrastructure** | Single API / black box | Web search scraping | **Europe PMC + S2 + OpenAlex + Crossref APIs** |
-| **Entity Resolution** | Incomplete / duplicates | None | **PMID, DOI, and Multi-Key Deduplication** |
+| **Search Infrastructure** | Single API / black box | Web search scraping | **10 mandatory sources: PubMed, Google Scholar (SerpApi), Cochrane CDSR + CENTRAL, ClinicalTrials.gov, Europe PMC (+ preprints), Semantic Scholar, OpenAlex, Crossref** |
+| **Entity Resolution** | Incomplete / duplicates | None | **Union-find clustering with conflict guard, study-level linking & audit log — no paper shown twice** |
 | **Screening Transparency** | Unverifiable | Opaque | **PRISMA 2020 Interactive Funnel with Rationale** |
 | **Quality Assessment** | Omitted | Subjective ranking | **Automated Preliminary RoB Screening Matrix** |
 | **Data Extraction** | Vague text snippets | Manual copying | **Automated Characteristics Table (Table 1)** |
@@ -96,11 +96,11 @@ Traditional conversational AI tools output unstructured narrative summaries or o
 The platform is organized into five tightly coupled, transparent stages:
 
 ```
-[ Step 1: PICOS & Eligibility ] ➔ [ Step 2: Dual Retrieval ] ➔ [ Step 3: PRISMA Screening & RoB ] ➔ [ Step 4: Manuscript Synthesis ] ➔ [ Step 5: Meta-Analysis ]
+[ Step 1: PICOS & Eligibility ] ➔ [ Step 2: Mandatory Multi-Source Retrieval ] ➔ [ Step 3: PRISMA Screening & RoB ] ➔ [ Step 4: Manuscript Synthesis ] ➔ [ Step 5: Meta-Analysis ]
 ```
 
 1. **Step 1 · PICOS & Eligibility Criteria**: Define clinical question, decompose into structured PICOS (Population, Intervention, Comparator, Outcomes, Study Design), set pre-specified inclusion/exclusion rules, and construct boolean search queries.
-2. **Step 2 · Dual Retrieval & Validation**: Harvest records concurrently from Europe PMC (MEDLINE, PMC) and Semantic Scholar Academic Graph with cross-database entity resolution, deduplication, and rate-limit backoff.
+2. **Step 2 · Mandatory Multi-Source Retrieval**: One shared search strategy is translated into each source's native syntax and run against all 10 mandatory sources concurrently. Every source reports only its own records and status (no cross-source substitution); records are clustered so that each study appears exactly once, with a badge for every source that found it.
 3. **Step 3 · PRISMA Screening & RoB**: Screen literature against protocol rules, classify into Included / Excluded / Borderline with explicit reasons, evaluate 5 Cochrane RoB domains, and generate dynamic PRISMA 2020 flow diagrams.
 4. **Step 4 · Systematic Review Manuscript**: Synthesize an IMRaD systematic review manuscript adhering to PRISMA 2020, generate Table 1 of study characteristics, support instant switching between Vancouver, APA 7th, and Harvard citations, and export publication PDFs.
 5. **Step 5 · Meta-Analysis (Quantitative Synthesis)**: User-initiated statistical pooling for binary (Relative Risk, Odds Ratio, Risk Difference) and continuous outcomes (Mean Difference, Hedges' g Standardized Mean Difference), heterogeneity profiling ($I^2$, $\tau^2$, Cochran's $Q$), custom PDF/DOCX paper ingestion, Forest Plots, Funnel Plots, and Leave-One-Out sensitivity analysis.
@@ -119,9 +119,11 @@ flowchart TD
         A3 --> A4["Search Query Builder<br/>• Year Range Filter (1-20y / All)<br/>• Boolean Mesh & Keyword Query"]
     end
 
-    subgraph S2["Step 2: Dual Harvesting & Deduplication"]
-        B1["Europe PMC API<br/>(MEDLINE, PubMed Central)"] & B2["Semantic Scholar Graph API<br/>(Allen Institute for AI)"] --> B3["Cross-Database Entity Resolution<br/>• PMID Exact Match<br/>• International DOI Resolution<br/>• Normalized Title Fingerprint"]
-        B3 --> B4["Deduplicated Candidate Pool<br/>(Tracked Total Identified & Removed)"]
+    subgraph S2["Step 2: Mandatory Multi-Source Retrieval & Deduplication"]
+        B0["Shared search strategy<br/>→ per-source translation"] --> B1["Databases<br/>PubMed · Europe PMC · Preprints · Cochrane CDSR<br/>Cochrane CENTRAL (RIS import) · S2 · OpenAlex · Crossref"]
+        B0 --> B2["Register<br/>ClinicalTrials.gov"] & B5["Other methods<br/>Google Scholar (SerpApi)"]
+        B1 & B2 & B5 --> B3["addRecordsToPool → union-find clustering<br/>• PMID / PMCID / DOI / OpenAlex / S2 / Scholar / CD number<br/>• exact & fuzzy title (+ year, first author)<br/>• conflict guard · study-level linking"]
+        B3 --> B4["One record per study + audit log<br/>(identified = unique + removed)"]
     end
 
     subgraph S3["Step 3: Screening, PRISMA 2020 & Cochrane RoB"]
@@ -152,25 +154,25 @@ sequenceDiagram
     autonumber
     actor User as Clinician / Researcher
     participant UI as SysRev UI Controller
-    participant EPMC as Europe PMC REST API
-    participant S2 as Semantic Scholar API
-    participant DEDUP as Entity Resolution Engine
+    participant REG as SOURCE_REGISTRY (sources.js)
+    participant API as /api/* proxies & Europe PMC
+    participant POOL as addRecordsToPool (dedup.js)
     participant STORE as Pipeline State Manager
 
-    User->>UI: Input Topic & Configure PICOS Criteria
-    UI->>UI: Generate Search Syntax & Set Time Horizon
-    par Concurrent Literature Retrieval
-        UI->>EPMC: GET /search?query=(topic)+AND+(human)&pageSize=50
-        UI->>S2: GET /graph/v1/paper/search?query=(topic)&limit=50
+    User->>UI: Input Topic, PICOS, optional CENTRAL RIS export
+    UI->>REG: buildSearchStrategy() — one shared strategy
+    par All 10 mandatory sources (Promise.allSettled)
+        REG->>API: PubMed esearch+efetch · CDSR journal filter · CT.gov v2
+        REG->>API: Europe PMC (MED/PMC) · Europe PMC SRC:PPR · S2 · OpenAlex · Crossref
+        REG->>API: Google Scholar via SerpApi (+ Crossref/EPMC enrichment)
     end
-    EPMC-->>UI: Return MEDLINE / PMC Records + PMIDs + DOIs
-    S2-->>UI: Return S2 Papers + Corpus IDs + TLDRs + OpenAccess
-    UI->>DEDUP: Ingest Raw Candidate Pool (Array of Records)
-    DEDUP->>DEDUP: Pass 1: Match Exact PMIDs
-    DEDUP->>DEDUP: Pass 2: Match Normalized DOIs
-    DEDUP->>DEDUP: Pass 3: Match Alphanumeric Title Fingerprints
-    DEDUP-->>STORE: Save Unique Literature Pool + Duplicate Counter
-    STORE-->>UI: Render Retrieval Metrics (EPMC count, S2 count, Duplicates)
+    API-->>REG: Records + hitCount, or failed / not_configured / not_searched
+    REG-->>STORE: searchLog[] (exact query, endpoint, timestamp, hits, retrieved)
+    REG->>POOL: Raw records per source (replace = idempotent)
+    POOL->>POOL: Union-find on identifiers & titles with conflict guard
+    POOL->>POOL: Link preprints, registrations, errata/retractions, Cochrane versions
+    POOL-->>STORE: Unique pool + dedupLog[] + invariant check
+    STORE-->>UI: Live source board, PRISMA (Template B), Duplicates panel
     UI-->>User: Transition to Step 3: Screening & Quality Appraisal
 ```
 
@@ -180,11 +182,11 @@ sequenceDiagram
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Identification: Records harvested from Europe PMC & S2
+    [*] --> Identification: Records harvested from all mandatory sources
 
     state Identification {
         RawPool: Total Raw Records Identified
-        Deduplication: Resolve PMIDs, DOIs, Title Hashes
+        Deduplication: Cluster identifiers & titles, link related reports
         RawPool --> Deduplication
     }
 
@@ -279,17 +281,26 @@ flowchart LR
   9. *Observational studies*
   *(All non-empirical articles, narrative reviews, secondary meta-analyses, commentaries, and letters are systematically excluded).*
 
-### Step 2: Dual Retrieval & Entity Resolution
-* **Europe PMC Integration**: Harvests peer-reviewed biomedical literature across PubMed, PubMed Central, and open preprints via REST API.
-* **Semantic Scholar Graph Integration**: Ingests citation metadata, TLDR summaries, corpus IDs, and influence metrics from the Allen Institute for AI.
-* **OpenAlex & Crossref Resilient Fallbacks**:
-  - **OpenAlex Works Engine**: Triggered automatically when Semantic Scholar encounters rate limits (HTTP 429) or upstream downtime, reconstructing inverted-index abstracts with polite pool support.
-  - **Crossref Public REST Engine**: Provides standard public access to international DOI registry metadata (`https://api.crossref.org/works`) with no API key requirement, enabling comprehensive secondary fallback.
-* **Multi-Stage Entity Resolution**:
-  - **PMID Matching**: Deduplicates records sharing identical PubMed identifiers.
-  - **DOI Resolution**: Canonicalizes international DOIs to eliminate cross-publisher duplications.
-  - **Title-Hash Fingerprinting**: Employs alphanumeric normalization (lowercased, stripped punctuation) to catch duplicate records lacking DOIs.
-* **Resilient Infrastructure**: Automatic backoff with jitter on HTTP 429 rate limits, seamless multi-provider fallback, partial failover, and local caching.
+### Step 2: Mandatory Multi-Source Retrieval & Entity Resolution
+Every run searches **all** sources below; none can be deselected. A source that could not be searched (missing key, outage, or a manual step not done) is shown as such on the live source board and is reported as **not searched / failed, with the reason** in PRISMA, Methods and Limitations — it is never listed as searched.
+
+| Source | Interface | PRISMA box | Notes |
+| :--- | :--- | :--- | :--- |
+| **PubMed / MEDLINE** | NCBI E-utilities (`/api/pubmed`, esearch + efetch XML) | Databases | `term[tiab]` translation; review/editorial/letter/comment excluded. Optional `NCBI_API_KEY`, `NCBI_EMAIL`. |
+| **Google Scholar** | SerpApi `engine=google_scholar` (`/api/scholar`) | Other methods | **Requires `SERPAPI_KEY`**; Google Scholar is never scraped. Results are matched to Crossref (title Jaccard ≥ 0.90, \|Δyear\| ≤ 1) for a DOI, then Europe PMC / OpenAlex for the abstract; unmatched records keep only a snippet and are forced to BORDERLINE. |
+| **Cochrane Library: CDSR** | Journal-restricted search via PubMed (`"Cochrane Database Syst Rev"[ta]`) and Europe PMC | Databases | Shown in an *Existing Cochrane evidence* panel; counted as identified and excluded as "Systematic review (used for background/citation searching)". `.pubN` versions collapse to the latest. |
+| **Cochrane Library: CENTRAL** | User-exported RIS from the Cochrane Library | Databases | Cochrane has no public search API. Step 1 generates a copy-ready Cochrane Library strategy; upload the RIS export. Without it CENTRAL is reported as *not searched* and manuscript generation requires an explicit acknowledgement (printed in Limitations). |
+| **ClinicalTrials.gov** | API v2 (`/api/ctgov`) | Registers | Registrations are linked to their publications by NCT number or registry-listed result PMIDs. |
+| **Europe PMC** | REST API (`SRC:MED OR SRC:PMC`) | Databases | |
+| **Preprints** | Europe PMC REST API (`SRC:PPR`) | Databases | Not peer reviewed; BORDERLINE by default; linked to the published version when found. |
+| **Semantic Scholar** | Graph API v1 (`/api/s2`) | Databases | Plain-text relevance search (no Boolean support). |
+| **OpenAlex** | Works API (`/api/openalex`) | Databases | |
+| **Crossref** | REST API (`/api/crossref`) | Databases | |
+
+* **One shared search strategy** (PICO blocks or the custom query) is translated per source; the exact executed query, endpoint, timestamp, hits and retrieved counts are logged (PRISMA-S) and printed in Methods Table S1 and the PRISMA audit PDF.
+* **No cross-source substitution**: if a source fails, it is reported as failed; HTTP 429 is retried with backoff within the same source only.
+* **No paper repeated, ever**: `addRecordsToPool()` is the only entry point into the screening pool (searches, retries, CENTRAL RIS import, Step 5 full-text imports, project load). Records are clustered with union-find over PMID, PMCID, DOI, OpenAlex, S2, Scholar and Cochrane identifiers, exact titles and fuzzy titles (token Jaccard ≥ 0.88, \|Δyear\| ≤ 1, matching first author). A **conflict guard** never merges records with different PMIDs or DOIs. Preprints, trial registrations, errata/retraction notices and superseded Cochrane versions are **linked** to their study rather than shown separately; retracted papers are forced to EXCLUDED.
+* **Audit trail**: every merge/link is listed in the Step 3 *Duplicates & linked reports* panel (CSV export, PRISMA audit PDF) with a one-click **"Not a duplicate — split"** override that immediately recomputes PRISMA counts. Invariant enforced on every rebuild: Σ retrieved per source = records identified = unique + removed.
 
 ### Step 3: PRISMA Screening & Cochrane RoB 2
 * **Automated PICOS Screening Engine**: Evaluates title, abstract, keywords, and study design to classify each paper as **Included**, **Excluded** (with specific rationale), or **Borderline**.
@@ -410,9 +421,9 @@ Sysrevai implements strict biomedical AI governance and transparency safeguards:
 | **Rationale** | 3 | Describe rationale in context of knowledge | Section 1.1 formalizes clinical background and therapeutic equipoise |
 | **Objectives** | 4 | Explicit PICOS statement | Section 1.2 models complete 5-point PICOS framework |
 | **Eligibility** | 5 | Specify inclusion and exclusion criteria | Section 2.2 formalizes pre-specified inclusion and exclusion rules |
-| **Information Sources**| 6 | Specify all databases searched | Concurrent Europe PMC and Semantic Scholar API execution |
-| **Search Strategy** | 7 | Present full electronic search query | Controlled MeSH and Boolean query construction |
-| **Selection Process** | 8 | Document screening and deduplication | Two-stage screening with tracked duplicate and exclusion tallies |
+| **Information Sources**| 6 | Specify all databases, registers and other sources searched | 10 mandatory sources (databases, ClinicalTrials.gov register, Google Scholar as other method); only sources actually searched are named, the rest are reported as not searched with reasons |
+| **Search Strategy** | 7 | Present full electronic search query | Exact executed query per source, date, hits and retrieved (Methods Table S1, PRISMA-S) |
+| **Selection Process** | 8 | Document screening and deduplication | Cluster-based deduplication with audit log and reviewer split override; automated title/abstract screening with human override |
 | **Data Collection** | 9 | Process for obtaining study data | Automated parameter extraction (Sample size, Population, Findings) |
 | **Risk of Bias** | 11, 14 | Methodological quality appraisal | 5-Domain Cochrane RoB 2 appraisal matrix with traffic-light indicators |
 | **Synthesis of Results**| 13 | Summarize characteristics & findings | Section 3.3 individual study synthesis with 100% citation parity |
@@ -457,14 +468,23 @@ vercel env add S2_API_KEY
 
 # Add OpenAlex Works API Key
 vercel env add OPENALEX_API_KEY
+
+# Google Scholar (required for the Google Scholar source; https://serpapi.com/)
+vercel env add SERPAPI_KEY
+
+# NCBI E-utilities (optional key raises PubMed limits from 3 to 10 req/s; e-mail requested by NCBI)
+vercel env add NCBI_API_KEY
+vercel env add NCBI_EMAIL
 ```
+
+Without `SERPAPI_KEY`, Google Scholar is reported as **not configured** (in the source board, PRISMA, Methods and Limitations); no other source is substituted for it.
 
 For local development with customized environment variables:
 1. Copy `.env.example` to `.env`:
    ```bash
    cp .env.example .env
    ```
-2. Populate `S2_API_KEY` and `OPENALEX_API_KEY`. Server proxy endpoints (`/api/s2`, `/api/openalex`) automatically read these keys on the server without ever exposing them to browser clients.
+2. Populate `S2_API_KEY`, `OPENALEX_API_KEY`, `SERPAPI_KEY`, `NCBI_API_KEY` and `NCBI_EMAIL`. Server proxy endpoints (`/api/s2`, `/api/openalex`, `/api/scholar`, `/api/pubmed`) read these keys on the server without ever exposing them to browser clients.
 
 ---
 
@@ -475,9 +495,14 @@ For local development with customized environment variables:
 * **PRISMA 2020 Vector Engine**: Scalable Vector Graphics (SVG) template renderer (`prisma-generator.js`).
 * **PDF Document Generator**: [jsPDF 2.5.1](https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js) client-side vector engine.
 * **Document Parsers**: [PDF.js 3.11](https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js) and [Mammoth.js 1.6](https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js) for parsing user-uploaded trial publications.
-* **Literature APIs**:
-  * [Europe PMC REST Web Service](https://europepmc.org/RestfulWebService) (EMBL-EBI).
+* **Literature sources** (registry in `sources.js`, deduplication in `dedup.js`):
+  * [PubMed via NCBI E-utilities](https://www.ncbi.nlm.nih.gov/books/NBK25501/) (`/api/pubmed`).
+  * [Google Scholar via SerpApi](https://serpapi.com/google-scholar-api) (`/api/scholar`, requires `SERPAPI_KEY`).
+  * Cochrane Library: CDSR via PubMed / Europe PMC journal filter; [CENTRAL](https://www.cochranelibrary.com/advanced-search) via user-exported RIS.
+  * [ClinicalTrials.gov API v2](https://clinicaltrials.gov/data-api/api) (`/api/ctgov`).
+  * [Europe PMC REST Web Service](https://europepmc.org/RestfulWebService) (EMBL-EBI), including preprints (`SRC:PPR`).
   * [Semantic Scholar Academic Graph API](https://api.semanticscholar.org/graph/v1) (Allen Institute for AI).
+  * [OpenAlex Works API](https://docs.openalex.org/) and [Crossref REST API](https://api.crossref.org/).
 * **Hosting & Deployment**: Vercel Cloud Serverless Edge Platform (`vercel.json`).
 
 ---
