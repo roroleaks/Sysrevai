@@ -2289,7 +2289,11 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 }
-const escapeXml = escapeHtml;
+var escapeXml = typeof escapeXml === 'function' ? escapeXml : escapeHtml;
+if (typeof window !== 'undefined') {
+  window.escapeHtml = escapeHtml;
+  window.escapeXml = escapeXml;
+}
 
 function escapeRegex(str) {
   return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -6917,19 +6921,24 @@ async function exportReferencesPDF() {
 // MAIN PIPELINE EXECUTION (Step 1 -> Step 2 -> Step 3)
 // ═══════════════════════════════════════════════════════════════
 async function runPipeline() {
-  const topic = document.getElementById('topic-input').value.trim();
+  const topicInput = document.getElementById('topic-input');
+  const topic = topicInput ? topicInput.value.trim() : '';
   if (!topic) {
     showStep1Alert('Topic Required', 'Please enter a biomedical or scientific research topic before initiating the review pipeline.');
+    if (topicInput) {
+      topicInput.focus();
+      topicInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
     return;
   }
 
   STATE.topic = topic;
   STATE.pico = {
-    p: document.getElementById('pico-p').value.trim(),
-    i: document.getElementById('pico-i').value.trim(),
-    c: document.getElementById('pico-c').value.trim(),
-    o: document.getElementById('pico-o').value.trim(),
-    s: document.getElementById('pico-s').value.trim()
+    p: document.getElementById('pico-p')?.value?.trim() || '',
+    i: document.getElementById('pico-i')?.value?.trim() || '',
+    c: document.getElementById('pico-c')?.value?.trim() || '',
+    o: document.getElementById('pico-o')?.value?.trim() || '',
+    s: document.getElementById('pico-s')?.value?.trim() || ''
   };
   STATE.inclusionCriteria = getCriteriaList('inc');
   STATE.exclusionCriteria = getCriteriaList('exc');
@@ -6939,14 +6948,16 @@ async function runPipeline() {
   STATE.outcomeDirection = document.getElementById('outcome-direction-select')?.value || 'lower_is_better';
   STATE.searchDate = new Date().toISOString().split('T')[0];
 
-  if (!STATE.selectedDatabases) {
+  if (!STATE.selectedDatabases || Object.values(STATE.selectedDatabases).every(v => !v)) {
     STATE.selectedDatabases = { epmc: true, s2: true, openalex: true, crossref: true };
+    ['epmc', 's2', 'openalex', 'crossref'].forEach(k => {
+      const cb = document.getElementById(`db-cb-${k}`);
+      if (cb) cb.checked = true;
+      if (typeof updateDatabaseOptionUI === 'function') updateDatabaseOptionUI(k);
+    });
+    if (typeof syncSearchSourceState === 'function') syncSearchSourceState();
   }
   const activeDbs = Object.keys(STATE.selectedDatabases).filter(k => STATE.selectedDatabases[k]);
-  if (activeDbs.length === 0) {
-    showStep1Alert('Search Database Required', 'Please select at least one literature search database (Europe PMC, Semantic Scholar, OpenAlex, or Crossref) before searching.');
-    return;
-  }
 
   currentAbortController = new AbortController();
   const signal = currentAbortController.signal;
@@ -7216,7 +7227,9 @@ function loadProjectState() {
     const raw = localStorage.getItem('SYSREVAI_PROJECT_STATE');
     if (!raw) return false;
     const parsed = JSON.parse(raw);
-    if (parsed && (parsed.state || parsed.topic || parsed.papers)) {
+    const hasTopic = !!((parsed && parsed.state && parsed.state.topic && parsed.state.topic.trim()) || (parsed && parsed.topic && parsed.topic.trim()));
+    const hasPapers = !!((parsed && parsed.state && Array.isArray(parsed.state.papers) && parsed.state.papers.length > 0) || (parsed && Array.isArray(parsed.papers) && parsed.papers.length > 0));
+    if (parsed && (hasTopic || hasPapers)) {
       applyProjectData(parsed);
       return true;
     }

@@ -302,6 +302,51 @@ const copy3 = { title: 'Aspirin for Preeclampsia Prevention: Secondary Analysis'
 const dedupResult = deduplicatePapers([copy1, copy2, copy3]);
 assert(dedupResult.unique.length === 1 && dedupResult.duplicates === 2, 'TEST 12: Three copies (PMID-only, PMID+DOI, DOI-only) collapse into exactly 1 unique record (got unique: ' + dedupResult.unique.length + ', dups: ' + dedupResult.duplicates + ')');
 
+// Test 13: Browser runtime simulation: prisma-generator.js, meta-analysis-engine.js, and index.html co-exist in same global scope
+const prismaCode = fs.readFileSync(path.join(__dirname, 'prisma-generator.js'), 'utf8');
+const metaCode = fs.readFileSync(path.join(__dirname, 'meta-analysis-engine.js'), 'utf8');
+const indexHtmlContent = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+const inlineScriptMatch = indexHtmlContent.match(/<script>([\s\S]*?)<\/script>\s*<\/body>/i);
+
+let browserCoexistenceError = null;
+const browserSandbox = {
+  window: {},
+  document: {
+    getElementById: () => ({ value: '', classList: { add: () => {}, remove: () => {}, contains: () => false }, style: {}, addEventListener: () => {}, scrollIntoView: () => {} }),
+    querySelector: () => ({ style: {} }),
+    querySelectorAll: () => [],
+    addEventListener: () => {},
+    body: { style: {} }
+  },
+  console: console,
+  setTimeout: setTimeout,
+  clearTimeout: clearTimeout,
+  localStorage: { getItem: () => null, setItem: () => {} },
+  navigator: { clipboard: { writeText: () => Promise.resolve() } },
+  Date, Math, JSON, String, Number, Array, Object, RegExp, Promise, AbortController
+};
+browserSandbox.window = browserSandbox;
+browserSandbox.global = browserSandbox;
+browserSandbox.window.addEventListener = browserSandbox.document.addEventListener;
+vm.createContext(browserSandbox);
+
+try {
+  vm.runInContext(prismaCode, browserSandbox);
+  vm.runInContext(metaCode, browserSandbox);
+  if (!inlineScriptMatch) throw new Error('Inline script not found in index.html');
+  vm.runInContext(inlineScriptMatch[1], browserSandbox);
+} catch (e) {
+  browserCoexistenceError = e;
+}
+
+assert(!browserCoexistenceError && typeof browserSandbox.runPipeline === 'function' && typeof browserSandbox.setExampleTopic === 'function',
+  'TEST 13: All browser scripts parse and co-exist in shared global scope without SyntaxError (runPipeline & setExampleTopic active)' + (browserCoexistenceError ? ' Error: ' + browserCoexistenceError.message : ''));
+
+// Test 14: loadProjectState returns false on empty/missing topic to allow default topic hydration
+const emptyStorageSandbox = { ...browserSandbox, localStorage: { getItem: () => JSON.stringify({ state: {} }) } };
+const restoredEmpty = browserSandbox.loadProjectState.call(emptyStorageSandbox);
+assert(restoredEmpty === false, 'TEST 14: loadProjectState safely rejects empty state object to allow default example topic hydration');
+
 console.log(`\n================================================================`);
 console.log(`🏆 INTEGRITY AUDIT SUMMARY: ${passCount} PASSED | ${failCount} FAILED`);
 console.log(`================================================================`);
